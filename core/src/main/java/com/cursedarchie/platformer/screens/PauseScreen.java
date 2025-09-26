@@ -12,29 +12,28 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.cursedarchie.platformer.Main;
 
-public class MenuScreen implements Screen {
+public class PauseScreen implements Screen {
     private Stage stage;
     private Skin skin;
 
-    public MenuScreen(Main game) {
+    public PauseScreen(Main game, Screen previousScreen) {
         stage = new Stage(new ScreenViewport());
         skin = new Skin(Gdx.files.internal("uiskin.json"));
 
-        TextButton startButton = new TextButton("START", skin);
-        TextButton exitButton = new TextButton("EXIT", skin);
+        TextButton continueButton = new TextButton("Continue", skin);
+        TextButton exitButton = new TextButton("To Menu", skin);
 
-        startButton.addListener(new ClickListener() {
+        continueButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                game.startGame();
-                dispose();
+                game.setScreen(previousScreen); // вернуться в игру
             }
         });
 
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                Gdx.app.exit();
+                game.showMenu(); // выйти в меню
             }
         });
 
@@ -42,7 +41,7 @@ public class MenuScreen implements Screen {
         table.setFillParent(true);
         table.center();
 
-        table.add(startButton).width(200).height(50).pad(10);
+        table.add(continueButton).width(200).height(50).pad(10);
         table.row();
         table.add(exitButton).width(200).height(50).pad(10);
 
@@ -56,23 +55,17 @@ public class MenuScreen implements Screen {
 
     @Override
     public void render(float delta) {
-        Gdx.gl.glClearColor(0, 0, 0.2f, 1); // темно-синий фон
+        Gdx.gl.glClearColor(0, 0, 0.2f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
         stage.act(delta);
         stage.draw();
     }
 
-    @Override
-    public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
-    }
-
-    @Override
-    public void pause() { }
-    @Override
-    public void resume() { }
-    @Override
-    public void hide() { }
-    @Override
-    public void dispose() { stage.dispose(); skin.dispose(); }
+    @Override public void resize(int width, int height) { stage.getViewport().update(width, height, true); }
+    @Override public void pause() { }
+    @Override public void resume() { }
+    @Override public void hide() { }
+    @Override public void dispose() { stage.dispose(); skin.dispose(); }
 }
+

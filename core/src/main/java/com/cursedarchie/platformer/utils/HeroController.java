@@ -1,5 +1,8 @@
 package com.cursedarchie.platformer.utils;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
+import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
@@ -13,7 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-public class HeroController {
+public class HeroController implements InputProcessor {
 
     enum Keys {
         LEFT, RIGHT, JUMP, ATTACK
@@ -42,8 +45,8 @@ public class HeroController {
         }
     };
 
-    static Map<Keys, Boolean> keys = new HashMap<HeroController.Keys, Boolean>();
-    static {
+    private final Map<Keys, Boolean> keys = new HashMap<HeroController.Keys, Boolean>();
+    {
         keys.put(Keys.LEFT, false);
         keys.put(Keys.RIGHT, false);
         keys.put(Keys.JUMP, false);
@@ -57,34 +60,80 @@ public class HeroController {
         this.hero = world.getHero();
     }
 
-    public void leftPressed() {
-        keys.get(keys.put(Keys.LEFT, true));
+    @Override
+    public boolean keyDown(int keycode) {
+        switch (keycode) {
+            case Input.Keys.LEFT:
+                keys.put(Keys.LEFT, true);
+                break;
+            case Input.Keys.RIGHT:
+                keys.put(Keys.RIGHT, true);
+                break;
+            case Input.Keys.SPACE:
+                keys.put(Keys.JUMP, true);
+                break;
+            case Input.Keys.X:
+                keys.put(Keys.ATTACK, true);
+                break;
+        }
+        return true;
     }
-    public void rightPressed() {
-        keys.get(keys.put(Keys.RIGHT, true));
+    @Override
+    public boolean keyUp(int keycode) {
+        switch (keycode) {
+            case Input.Keys.LEFT:
+                keys.put(Keys.LEFT, false);
+                break;
+            case Input.Keys.RIGHT:
+                keys.put(Keys.RIGHT, false);
+                break;
+            case Input.Keys.SPACE:
+                keys.put(Keys.JUMP, false);
+                jumpingPressed = false;
+                break;
+            case Input.Keys.X:
+                keys.put(Keys.ATTACK, false);
+                attackingPressed = false;
+                break;
+        }
+        return true;
     }
-    public void jumpPressed() {
-        keys.get(keys.put(Keys.JUMP, true));
+
+    @Override
+    public boolean keyTyped(char c) {
+        return false;
     }
-    public void attackPressed() {
-        keys.get(keys.put(Keys.ATTACK, true));
+    @Override
+    public boolean touchDown(int i, int i1, int i2, int i3) {
+        return false;
     }
-    public void leftReleased() {
-        keys.get(keys.put(Keys.LEFT, false));
+    @Override
+    public boolean touchUp(int i, int i1, int i2, int i3) {
+        return false;
     }
-    public void rightReleased() {
-        keys.get(keys.put(Keys.RIGHT, false));
+    @Override
+    public boolean touchCancelled(int i, int i1, int i2, int i3) {
+        return false;
     }
-    public void jumpReleased() {
-        keys.get(keys.put(Keys.JUMP, false));
-        jumpingPressed = false;
+    @Override
+    public boolean touchDragged(int i, int i1, int i2) {
+        return false;
     }
-    public void attackReleased() {
-        keys.get(keys.put(Keys.ATTACK, false));
-        attackingPressed = false;
+    @Override
+    public boolean mouseMoved(int i, int i1) {
+        return false;
+    }
+    @Override
+    public boolean scrolled(float v, float v1) {
+        return false;
     }
 
     public void update(float delta) {
+        keys.put(Keys.LEFT, Gdx.input.isKeyPressed(Input.Keys.LEFT));
+        keys.put(Keys.RIGHT, Gdx.input.isKeyPressed(Input.Keys.RIGHT));
+        keys.put(Keys.JUMP, Gdx.input.isKeyPressed(Input.Keys.SPACE));
+        keys.put(Keys.ATTACK, Gdx.input.isKeyPressed(Input.Keys.X));
+
         processInput();
 
         if (grounded && hero.getState().equals(HeroState.JUMPING)) {
