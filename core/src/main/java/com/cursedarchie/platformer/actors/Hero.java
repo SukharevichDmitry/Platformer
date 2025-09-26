@@ -7,6 +7,11 @@ public class Hero extends Actor<Hero.HeroState>{
         IDLE, WALKING, JUMPING, ATTACKING, DYING
     }
 
+    /**
+     * Hero attributes... (open to details)
+     *
+     * @param HeroState enum of states that hero can have
+     */
     public static final float SIZE = 0.5f;
     public static final float MAX_HEALTH = 3;
 

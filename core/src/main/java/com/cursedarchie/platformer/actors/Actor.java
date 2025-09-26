@@ -6,8 +6,21 @@ import com.badlogic.gdx.math.Vector2;
 
 public abstract class Actor<T extends Enum<T>> {
 
+    /**
+     * Actor's attributes... (open to details)
+     *
+     * @param state actor's state in current time
+     * @param facingLeft indicates the direction the actor is looking at
+     * @param position indicates coordinates of actor
+     * @param bounds indicates square of actor's location (x, y, width, height)
+     * @param acceleration value which change speed
+     * @param velocity speed
+     * @param stateTime time that actor keeps it's state
+     * @param isAlive indicates is actor alive
+     * @param health value of health
+     * @param damage value of damage that actor can deal
+     */
     T state;
-
     boolean facingLeft;
     Vector2 position = new Vector2();
     Rectangle bounds = new Rectangle();
