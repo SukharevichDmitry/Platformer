@@ -4,9 +4,9 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
 import com.cursedarchie.platformer.actors.tiles.Tile;
-import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Hero;
-import com.cursedarchie.platformer.actors.Hero.State;
+import com.cursedarchie.platformer.actors.Hero.HeroState;
 import com.cursedarchie.platformer.world.World;
 
 import java.util.HashMap;
@@ -87,8 +87,8 @@ public class HeroController {
     public void update(float delta) {
         processInput();
 
-        if (grounded && hero.getState().equals(State.JUMPING)) {
-            hero.setState(State.IDLE);
+        if (grounded && hero.getState().equals(HeroState.JUMPING)) {
+            hero.setState(HeroState.IDLE);
         }
 
         hero.getAcceleration().y = GRAVITY;
@@ -110,7 +110,7 @@ public class HeroController {
 
         hero.update(delta);
 
-        if (hero.getState().equals(State.ATTACKING)) {
+        if (hero.getState().equals(HeroState.ATTACKING)) {
             checkAttackingEnemies();
         } else attackHandled = false;
     }
@@ -254,10 +254,10 @@ public class HeroController {
 
     private boolean processInput() {
         if (keys.get(Keys.JUMP)) {
-            if (!hero.getState().equals(State.JUMPING)) {
+            if (!hero.getState().equals(HeroState.JUMPING)) {
                 jumpingPressed = true;
                 jumpPressedTime = System.currentTimeMillis();
-                hero.setState(State.JUMPING);
+                hero.setState(HeroState.JUMPING);
                 hero.getVelocity().y = MAX_JUMP_SPEED;
                 grounded = false;
             } else {
@@ -272,32 +272,32 @@ public class HeroController {
         }
         if (keys.get(Keys.LEFT)) {
             hero.setFacingLeft(true);
-            if (!hero.getState().equals(State.JUMPING)) {
-                hero.setState(State.WALKING);
+            if (!hero.getState().equals(HeroState.JUMPING)) {
+                hero.setState(HeroState.WALKING);
             }
             hero.getAcceleration().x = -ACCELERATION;
         } else if (keys.get(Keys.RIGHT)) {
             hero.setFacingLeft(false);
-            if (!hero.getState().equals(State.JUMPING)) {
-                hero.setState(State.WALKING);
+            if (!hero.getState().equals(HeroState.JUMPING)) {
+                hero.setState(HeroState.WALKING);
             }
             hero.getAcceleration().x = ACCELERATION;
         } else {
-            if (!hero.getState().equals(State.JUMPING) && !hero.getState().equals(State.ATTACKING)) {
-                hero.setState(State.IDLE);
+            if (!hero.getState().equals(HeroState.JUMPING) && !hero.getState().equals(HeroState.ATTACKING)) {
+                hero.setState(HeroState.IDLE);
             }
             hero.getAcceleration().x = 0;
         }
 
         if (keys.get(Keys.LEFT) && keys.get(Keys.RIGHT)){
-            if (!hero.getState().equals(State.JUMPING)) {
-                hero.setState(State.IDLE);
+            if (!hero.getState().equals(HeroState.JUMPING)) {
+                hero.setState(HeroState.IDLE);
             }
             hero.getAcceleration().x = 0;
         }
 
         if (keys.get(Keys.ATTACK) && !attackingPressed) {
-            hero.setState(State.ATTACKING);
+            hero.setState(HeroState.ATTACKING);
             hero.setStateTime(0);
             attackingPressed = true;
         }
