@@ -26,3 +26,5 @@ replay_pid*
 # Graddle
 .gradle/
 core/build/
+lwjgl3/build/resources/main/actor/
+

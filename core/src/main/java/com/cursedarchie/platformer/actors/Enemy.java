@@ -8,6 +8,15 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
         IDLE, WALKING, JUMPING, ATTACKING, DYING
     }
 
+    /**
+     * Enemy attributes... (open to details)
+     *
+     * @param EnemyState enum of states that enemy can have
+     * @param grounded flag that indicates isn't enemy falling
+     * @param damageDealt flag that indicates is enemy end his attack
+     * @param isHeroInSight flag that indicates is enemy can see hero
+     * @param attackTime current time of attack animation
+     */
     public float SIZE;
     private float MAX_HEALTH;
     private float ATTACK_DURATION;
