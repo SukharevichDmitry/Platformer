@@ -41,6 +41,9 @@ public abstract class Enemy {
         this.bounds.height = SIZE;
     }
 
+    /**
+     *  @return This method return true when enemy is facing left
+     */
     public boolean isFacingLeft() {
         return facingLeft;
     }
@@ -48,6 +51,9 @@ public abstract class Enemy {
         this.facingLeft = facingLeft;
     }
 
+    /**
+     * @return This method return true when enemy stay on any block
+     */
     public boolean isGrounded() {
         return grounded;
     }
@@ -55,6 +61,9 @@ public abstract class Enemy {
         this.grounded = grounded;
     }
 
+    /**
+     * @return This method return position of enemy coordinates (x, y)
+     */
     public Vector2 getPosition() {
         return position;
     }
@@ -64,12 +73,19 @@ public abstract class Enemy {
         this.bounds.setY(position.y);
     }
 
+    /**
+     * @return This method return acceleration limits of the enemy
+     */
     public float getMaxAcceleration() {
         return MAX_ACCELERATION;
     }
     public void setMaxAcceleration(float maxAcceleration) {
         this.MAX_ACCELERATION = maxAcceleration;
     }
+
+    /**
+     * @return current acceleration
+     */
     public Vector2 getAcceleration() {
         return acceleration;
     }
@@ -77,6 +93,9 @@ public abstract class Enemy {
         this.acceleration.set(acceleration);
     }
 
+    /**
+     * @return current speed of enemy
+     */
     public Vector2 getVelocity() {
         return velocity;
     }
@@ -84,6 +103,9 @@ public abstract class Enemy {
         this.velocity.set(velocity);
     }
 
+    /**
+     * @return square where enemy is located (x, y, width, height)
+     */
     public Rectangle getBounds() {
         return bounds;
     }
@@ -91,6 +113,9 @@ public abstract class Enemy {
         this.bounds.set(bounds);
     }
 
+    /**
+     * @return time which enemy staying in current EnemyState
+     */
     public float getStateTime() {
         return stateTime;
     }
@@ -98,6 +123,9 @@ public abstract class Enemy {
         this.stateTime = stateTime;
     }
 
+    /**
+     * @return current EnemyState
+     */
     public EnemyState getState() {
         return enemyState;
     }
@@ -110,6 +138,9 @@ public abstract class Enemy {
 
     }
 
+    /**
+     * @return SIZE. this.bounds.width = this.bounds.height = SIZE
+     */
     public float getSize() {
         return SIZE;
     }
@@ -117,18 +148,29 @@ public abstract class Enemy {
         this.SIZE = SIZE;
     }
 
+    /**
+     * @return True when enemy can see hero
+     */
     public boolean isHeroInSight() {
         return isHeroInSight;
     }
     public void setHeroInSight(boolean heroInSight) {
         isHeroInSight = heroInSight;
     }
+
+    /**
+     * @return float of Angle of the field of view
+     */
     public float getViewAngle() {
         return VIEW_ANGLE;
     }
     public void setViewAngle(float VIEW_ANGLE) {
         this.VIEW_ANGLE = VIEW_ANGLE;
     }
+
+    /**
+     * @return the distance of view
+     */
     public float getViewDistance() {
         return VIEW_DISTANCE;
     }
@@ -136,23 +178,37 @@ public abstract class Enemy {
         this.VIEW_DISTANCE = VIEW_DISTANCE;
     }
 
-
+    /**
+     * @return the time before causing damage
+     */
     public float getAttackDuration() {
         return ATTACK_DURATION;
     }
     public void setAttackDuration(float ATTACK_DURATION) {
         this.ATTACK_DURATION = ATTACK_DURATION;
     }
+
+    /**
+     * @param damage the damage is will take
+     */
     public void takeDamage (float damage) {
         this.health -= damage;
         Gdx.app.log("INFO", "TAKE DAMAGE. HP: " + this.getHealth());
     }
+
+    /**
+     * @return the enemy's damage
+     */
     public float getDamage() {
         return damage;
     }
     public void setDamage(float damage) {
         this.damage = damage;
     }
+
+    /**
+     * @Description: checks if already attacking. If not, set state and start count time before damage dealing.
+     */
     public void startAttack() {
         if (getState() != EnemyState.ATTACKING) {
             setState(EnemyState.ATTACKING);
@@ -160,6 +216,11 @@ public abstract class Enemy {
             damageDealt = false;
         }
     }
+
+    /**
+     * @param delta unit of time
+     * @Description: if enemy attacks update time before damage dealing, if enemy had already attacked set IDLE state
+     */
     public void updateAttack(float delta) {
         if (getState() == EnemyState.ATTACKING) {
             attackTime += delta;
@@ -168,6 +229,10 @@ public abstract class Enemy {
             }
         }
     }
+
+    /**
+     * @return true if hero so nearby to deal damage
+     */
     public boolean canDealDamage() {
         return getState() == EnemyState.ATTACKING && !damageDealt && attackTime >= ATTACK_DURATION / 2f;
     }
