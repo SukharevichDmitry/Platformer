@@ -1,0 +1,118 @@
+
+game.png
+size: 128, 256
+format: RGBA8888
+filter: Nearest, Nearest
+repeat: none
+block
+  rotate: false
+  xy: 2, 76
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+boss
+  rotate: false
+  xy: 2, 110
+  size: 64, 128
+  orig: 64, 128
+  offset: 0, 0
+  index: -1
+enemy
+  rotate: false
+  xy: 68, 206
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+enemy1
+  rotate: false
+  xy: 68, 206
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+enemy2
+  rotate: false
+  xy: 2, 42
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+enemy3
+  rotate: false
+  xy: 68, 172
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+enemy4
+  rotate: false
+  xy: 2, 8
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+enemy_attack1
+  rotate: false
+  xy: 68, 138
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+enemy_attack2
+  rotate: false
+  xy: 36, 76
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+hero
+  rotate: false
+  xy: 36, 42
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+hero_attack3
+  rotate: false
+  xy: 36, 42
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+hero1
+  rotate: false
+  xy: 36, 8
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+hero2
+  rotate: false
+  xy: 70, 104
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+hero3
+  rotate: false
+  xy: 70, 70
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+hero_attack1
+  rotate: false
+  xy: 70, 36
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+hero_attack2
+  rotate: false
+  xy: 70, 2
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
