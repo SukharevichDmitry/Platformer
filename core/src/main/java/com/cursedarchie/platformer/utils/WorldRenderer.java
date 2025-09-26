@@ -10,10 +10,10 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.actors.tiles.Tile;
 import com.cursedarchie.platformer.actors.enemies.Boss;
-import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Hero;
-import com.cursedarchie.platformer.actors.Hero.State;
-import com.cursedarchie.platformer.actors.enemies.Enemy.EnemyState;
+import com.cursedarchie.platformer.actors.Hero.HeroState;
+import com.cursedarchie.platformer.actors.Enemy.EnemyState;
 import com.cursedarchie.platformer.world.World;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -214,23 +214,23 @@ public class WorldRenderer {
         Hero hero = world.getHero();
 
         TextureRegion heroFrame = hero.isFacingLeft() ? heroIdleLeft : heroIdleRight;
-        if (hero.getState().equals(State.WALKING)) {
+        if (hero.getState().equals(HeroState.WALKING)) {
             heroFrame = hero.isFacingLeft() ?
                 heroWalkLeftAnimation.getKeyFrame(hero.getStateTime(), true) :
                 heroWalkRightAnimation.getKeyFrame(hero.getStateTime(), true);
-        } else if (hero.getState().equals(State.JUMPING)) {
+        } else if (hero.getState().equals(HeroState.JUMPING)) {
             if (hero.getVelocity().y > 0) {
                 heroFrame = hero.isFacingLeft() ? heroJumpLeft : heroJumpRight;
             } else {
                 heroFrame = hero.isFacingLeft() ? heroFallLeft : heroFallRight;
             }
-        } else if (hero.getState().equals(State.ATTACKING)) {
+        } else if (hero.getState().equals(HeroState.ATTACKING)) {
             heroFrame = hero.isFacingLeft() ?
                 heroAttackLeftAnimation.getKeyFrame(hero.getStateTime(), false) :
                 heroAttackRightAnimation.getKeyFrame(hero.getStateTime(), false);
 
             if (heroAttackLeftAnimation.isAnimationFinished(hero.getStateTime())) {
-                hero.setState(State.IDLE);
+                hero.setState(HeroState.IDLE);
             }
         }
 

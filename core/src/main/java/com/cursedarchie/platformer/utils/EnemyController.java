@@ -7,11 +7,10 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
 import com.cursedarchie.platformer.actors.tiles.Tile;
-import com.cursedarchie.platformer.actors.enemies.Enemy;
-import com.cursedarchie.platformer.actors.enemies.Enemy.EnemyState;
+import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.Enemy.EnemyState;
 import com.cursedarchie.platformer.actors.Hero;
 import com.cursedarchie.platformer.world.World;
-
 
 public class EnemyController{
 
