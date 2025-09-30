@@ -16,7 +16,6 @@
         private WorldRenderer renderer;
         private HeroController heroController;
         private EnemyController enemyController;
-        private int width, height;
 
 
         private Main game;
@@ -43,7 +42,6 @@
             });
             multiplexer.addProcessor(heroController);
 
-
             Gdx.input.setInputProcessor(multiplexer);
         }
 
@@ -67,8 +65,6 @@
         @Override
         public void resize(int width, int height) {
             renderer.setSize(width, height);
-            this.width = width;
-            this.height = height;
         }
 
         @Override

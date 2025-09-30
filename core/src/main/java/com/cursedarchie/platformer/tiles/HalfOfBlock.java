@@ -1,4 +1,4 @@
-package com.cursedarchie.platformer.actors.tiles;
+package com.cursedarchie.platformer.tiles;
 
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;

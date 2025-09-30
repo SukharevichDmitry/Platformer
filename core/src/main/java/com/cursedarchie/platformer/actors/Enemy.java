@@ -1,12 +1,21 @@
 package com.cursedarchie.platformer.actors;
-import com.badlogic.gdx.Gdx;
+
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.Pool;
+import com.cursedarchie.platformer.actors.enemies.logic.EnemyStateMachine;
+import com.cursedarchie.platformer.actors.enemies.logic.states.DeadState;
 
 public abstract class Enemy extends Actor<Enemy.EnemyState> {
 
-    public enum EnemyState {
-        IDLE, WALKING, JUMPING, ATTACKING, DYING
-    }
+     public enum EnemyState{
+        IDLE,
+        PATROL,
+        CHASE,
+        ATTACK,
+        RETREAT,
+        DYING
+     }
 
     /**
      * Enemy attributes... (open to details)
@@ -14,56 +23,57 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
      * @param EnemyState enum of states that enemy can have
      * @param grounded flag that indicates isn't enemy falling
      * @param damageDealt flag that indicates is enemy end his attack
-     * @param isHeroInSight flag that indicates is enemy can see hero
+     * @param canSeeHero flag that indicates is enemy can see hero
      * @param attackTime current time of attack animation
      */
-    public float SIZE;
-    private float MAX_HEALTH;
-    private float ATTACK_DURATION;
-    private float VIEW_DISTANCE;
-    private float VIEW_ANGLE;
-    private float MAX_ACCELERATION;
-
+    private float size;
+    private float maxHealth;
+    private float attackDuration;
+    private float viewDistance;
+    private float viewAngle;
+    private float maxAcceleration;
     private boolean grounded = false;
     private boolean damageDealt = false;
-    private boolean isHeroInSight = false;
+    private boolean canSeeHero = false;
+    private boolean canAttackHero = false;
+    private boolean canDealDamage = false;
+
+
 
     private float attackTime = 0f;
+    private Vector2 heroLastKnownPos = new Vector2();
 
-    public Enemy(Vector2 pos) {
+    private final Pool<Rectangle> rectPool = new Pool<Rectangle>() {
+        @Override
+        protected Rectangle newObject() {
+            return new Rectangle();
+        }
+    };
+
+    private final EnemyStateMachine stateMachine;
+
+    public Enemy(Vector2 pos, float size, float maxHealth) {
+        this.size = size;
         this.position.set(pos);
         this.bounds.x = pos.x;
         this.bounds.y = pos.y;
-        this.bounds.width = SIZE;
-        this.bounds.height = SIZE;
+        this.bounds.width = size;
+        this.bounds.height = size;
         this.state = EnemyState.IDLE;
         this.stateTime = 0f;
-        this.isAlive = true;
-        this.health = MAX_HEALTH;
+        this.health = maxHealth;
         this.facingLeft = true;
+        this.alive = true;
+        this.stateMachine = new EnemyStateMachine(this);
     }
 
-    /**
-     * @param state value of EnemyState enum
-     */
-    @Override
-    public void setState(EnemyState state) {
-        if (this.state != state) {
-            Gdx.app.log("Enemy", "EnemyState change: " + this.state + " -> " + state);
-            this.state = state;
-            stateTime = 0f;
-        }
-    }
-
-    /**
-     * @return maximum health of actor
-     */
+    /*===========================================GETTERS/SETTERS===================================================*/
     @Override
     public float getMaxHealth() {
-        return MAX_HEALTH;
+        return maxHealth;
     }
     public void setMaxHealth(float maxHealth) {
-        MAX_HEALTH = maxHealth;
+        this.maxHealth = maxHealth;
     }
 
     /**
@@ -77,96 +87,171 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
     }
 
     /**
-     * @return SIZE. this.bounds.width = this.bounds.height = SIZE
+     * @return size. this.bounds.width = this.bounds.height = size
      */
     public float getSize() {
-        return SIZE;
+        return this.size;
     }
-    public void setSize(float SIZE) {
-        this.SIZE = SIZE;
+    public void setSize(float size) {
+        this.size = size;
+        this.getBounds().setSize(size, size);
     }
 
     /**
      * @return True when enemy can see hero
      */
-    public boolean isHeroInSight() {
-        return isHeroInSight;
+    public boolean isCanSeeHero() {
+        return canSeeHero;
     }
-    public void setHeroInSight(boolean heroInSight) {
-        isHeroInSight = heroInSight;
+    public void setCanSeeHero(boolean canSeeHero) {
+        this.canSeeHero = canSeeHero;
     }
 
     /**
      * @return float of Angle of the field of view
      */
     public float getViewAngle() {
-        return VIEW_ANGLE;
+        return viewAngle;
     }
-    public void setViewAngle(float VIEW_ANGLE) {
-        this.VIEW_ANGLE = VIEW_ANGLE;
+    public void setViewAngle(float viewAngle) {
+        this.viewAngle = viewAngle;
     }
 
     /**
      * @return the distance of view
      */
     public float getViewDistance() {
-        return VIEW_DISTANCE;
+        return viewDistance;
     }
-    public void setViewDistance(float VIEW_DISTANCE) {
-        this.VIEW_DISTANCE = VIEW_DISTANCE;
+    public void setViewDistance(float viewDistance) {
+        this.viewDistance = viewDistance;
     }
 
     /**
      * @return the time before causing damage
      */
     public float getAttackDuration() {
-        return ATTACK_DURATION;
+        return attackDuration;
     }
-    public void setAttackDuration(float ATTACK_DURATION) {
-        this.ATTACK_DURATION = ATTACK_DURATION;
-    }
-
-    /**
-     * @Description: checks if already attacks. If not, set state and start count AttackTime.
-     */
-    public void startAttack() {
-        if (getState() != EnemyState.ATTACKING) {
-            setState(EnemyState.ATTACKING);
-            attackTime = 0f;
-            damageDealt = false;
-        }
-    }
-
-    /**
-     * @param delta unit of time
-     * @Description: if enemy attacks update AttackTime, if enemy had already attacked set IDLE state
-     */
-    public void updateAttack(float delta) {
-        if (getState() == EnemyState.ATTACKING) {
-            attackTime += delta;
-            if (attackTime >= ATTACK_DURATION) {
-                setState(EnemyState.IDLE);
-            }
-        }
-    }
-
-    /**
-     * @return true if hero so nearby to deal damage
-     */
-    public boolean canDealDamage() {
-        return getState() == EnemyState.ATTACKING && !damageDealt && attackTime >= ATTACK_DURATION / 2f;
-    }
-    public void markDamageDealt() {
-        damageDealt = true;
+    public void setAttackDuration(float attackDuration) {
+        this.attackDuration = attackDuration;
     }
 
     /**
      * @return maximum enemy's acceleration
      */
     public float getMaxAcceleration() {
-        return MAX_ACCELERATION;
+        return maxAcceleration;
     }
     public void setMaxAcceleration(float maxAcceleration) {
-        this.MAX_ACCELERATION = maxAcceleration;
+        this.maxAcceleration = maxAcceleration;
+    }
+
+    public EnemyStateMachine getStateMachine() {
+        return stateMachine;
+    }
+
+    public Vector2 getHeroLastKnownPos() {
+        return heroLastKnownPos;
+    }
+
+    public void setHeroLastKnownPos(Vector2 heroLastKnownPos) {
+        this.heroLastKnownPos = heroLastKnownPos;
+    }
+
+    public Rectangle getAttackRect() {
+        Rectangle attackRect = rectPool.obtain();
+
+        if (this.isFacingLeft()) {
+            attackRect.set(
+                this.getBounds().x - this.getBounds().width/2,
+                this.getBounds().y - this.getBounds().height/2,
+                this.getBounds().width,
+                this.getBounds().height);
+        } else {
+            attackRect.set(
+                this.getBounds().x + this.getBounds().width/2,
+                this.getBounds().y + this.getBounds().height/2,
+                this.getBounds().width,
+                this.getBounds().height
+            );
+        }
+        return  attackRect;
+    }
+
+    public Pool<Rectangle> getRectPool() {
+        return rectPool;
+    }
+
+    public float getAttackTime() {
+        return attackTime;
+    }
+
+    public void setAttackTime(float attackTime) {
+        this.attackTime = attackTime;
+    }
+
+    public boolean isCanAttackHero() {
+        return canAttackHero;
+    }
+
+    public void setCanAttackHero(boolean canAttackHero) {
+        this.canAttackHero = canAttackHero;
+    }
+
+    public void setCanDealDamage(boolean canDealDamage) {
+        this.canDealDamage = canDealDamage;
+    }
+
+    public boolean isDamageDealt() {
+        return damageDealt;
+    }
+
+    public void setDamageDealt(boolean damageDealt) {
+        this.damageDealt = damageDealt;
+    }
+
+    /*============================================================================================================*/
+
+    /**
+     * @return true if hero so nearby to deal damage
+     */
+    public boolean isCanDealDamage() {
+        return canDealDamage;
+    }
+    public void markDamageDealt() {
+        damageDealt = true;
+    }
+
+    /**
+     * @param damage the damage is will take
+     */
+    @Override
+    public void takeDamage(float damage) {
+        this.health -= damage;
+        if (this.health <= 0) {
+            this.die();
+        }
+    }
+
+    public void moveLeft() {
+        this.setAccelerationX(-this.getMaxAcceleration());
+        this.setFacingLeft(true);
+    }
+
+    public void moveRight() {
+        this.setAccelerationX(this.getMaxAcceleration());
+        this.setFacingLeft(false);
+    }
+
+    public void stopMoving() {
+        this.setAccelerationX(0.0f);
+    }
+
+    /**
+     * @Description: dying logic. Starts DeadState. Do not call another States in Enemy class!
+     */
+    public void die() {
+        stateMachine.changeState(new DeadState());
     }
 }

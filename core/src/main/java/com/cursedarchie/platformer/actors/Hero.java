@@ -25,9 +25,14 @@ public class Hero extends Actor<Hero.HeroState>{
         this.bounds.height = SIZE;
         this.state = HeroState.IDLE;
         this.stateTime = 0f;
-        this.isAlive = true;
+        this.alive = true;
         this.health = MAX_HEALTH;
         this.damage = 1f;
+    }
+
+    @Override
+    public void takeDamage(float damage) {
+        this.health -= damage;
     }
 
     /**

@@ -8,12 +8,15 @@ import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
-import com.cursedarchie.platformer.actors.tiles.Tile;
+import com.cursedarchie.platformer.actors.enemies.logic.states.AttackState;
+import com.cursedarchie.platformer.actors.enemies.logic.states.ChaseState;
+import com.cursedarchie.platformer.actors.enemies.logic.states.IdleState;
+import com.cursedarchie.platformer.actors.enemies.logic.states.PatrolState;
+import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.enemies.Boss;
 import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Hero;
 import com.cursedarchie.platformer.actors.Hero.HeroState;
-import com.cursedarchie.platformer.actors.Enemy.EnemyState;
 import com.cursedarchie.platformer.world.World;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -291,23 +294,29 @@ public class WorldRenderer {
                     enemyFrame = enemy.isFacingLeft() ? bossIdleLeft : bossIdleRight;
                 } else {
                     enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
-                    if (enemy.getState().equals(EnemyState.WALKING)) {
+                    if (enemy.getStateMachine().getCurrentState() instanceof AttackState) {
+                        enemyFrame = enemy.isFacingLeft() ?
+                            enemyAttackLeftAnimation.getKeyFrame(enemy.getAttackTime(), false) :
+                            enemyAttackRightAnimation.getKeyFrame(enemy.getAttackTime(), false);
+
+                        if (enemyAttackLeftAnimation.isAnimationFinished(enemy.getAttackTime())) {
+                            enemy.getStateMachine().changeState(new IdleState());
+                        }
+                    }
+                    else if (enemy.getStateMachine().getCurrentState() instanceof ChaseState ||
+                        enemy.getStateMachine().getCurrentState() instanceof PatrolState) {
                         enemyFrame = enemy.isFacingLeft() ?
                             enemyWalkLeftAnimation.getKeyFrame(enemy.getStateTime(), true) :
                             enemyWalkRightAnimation.getKeyFrame(enemy.getStateTime(), true);
-                    } else if (enemy.getState().equals(EnemyState.JUMPING)) {
+                    }
+                    else if (enemy.getStateMachine().getCurrentState() instanceof IdleState) {
+                        enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
+                    }
+                    else if (!enemy.isGrounded()) {
                         if (enemy.getVelocity().y > 0) {
                             enemyFrame = enemy.isFacingLeft() ? enemyJumpLeft : enemyJumpRight;
                         } else {
                             enemyFrame = enemy.isFacingLeft() ? enemyFallLeft : enemyFallRight;
-                        }
-                    } else if (enemy.getState().equals(EnemyState.ATTACKING)) {
-                        enemyFrame = enemy.isFacingLeft() ?
-                            enemyAttackLeftAnimation.getKeyFrame(enemy.getStateTime(), false) :
-                            enemyAttackRightAnimation.getKeyFrame(enemy.getStateTime(), false);
-
-                        if (enemyAttackLeftAnimation.isAnimationFinished(enemy.getStateTime())) {
-                            enemy.setState(EnemyState.IDLE);
                         }
                     }
                 }
@@ -336,6 +345,7 @@ public class WorldRenderer {
 
             Vector2 pos = enemy.getPosition();
             float viewDistance = enemy.getViewDistance();
+            Gdx.app.log("INFO: ", "VIEW DISTANSE: " + enemy.getViewDistance());
             float viewAngle = enemy.getViewAngle();
 
             // Направление взгляда — влево или вправо

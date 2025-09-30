@@ -2,9 +2,9 @@ package com.cursedarchie.platformer.levels;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
-import com.cursedarchie.platformer.actors.tiles.HalfOfBlock;
-import com.cursedarchie.platformer.actors.tiles.Tile;
-import com.cursedarchie.platformer.actors.tiles.DefaultBlock;
+import com.cursedarchie.platformer.tiles.HalfOfBlock;
+import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.DefaultBlock;
 import com.cursedarchie.platformer.actors.enemies.Boss;
 import com.cursedarchie.platformer.actors.enemies.DefaultEnemy;
 import com.cursedarchie.platformer.actors.Enemy;
@@ -66,7 +66,7 @@ public class Level {
         tiles[3][3] = new DefaultBlock(new Vector2(3, 3));
         tiles[4][2] = new HalfOfBlock(new Vector2(4,2));
 
-        enemies.add(new DefaultEnemy(new Vector2(7.25f, 1)));
+        enemies.add(new DefaultEnemy(new Vector2(7.25f, 4)));
     }
 
     public void loadLevel2() {
@@ -91,7 +91,7 @@ public class Level {
         }
 
         enemies.add(new DefaultEnemy(new Vector2(3.25f, 2)));
-        enemies.add(new DefaultEnemy(new Vector2(6.25f, 2)));
+        enemies.add(new DefaultEnemy(new Vector2(9.25f, 2)));
     }
 
     public void loadLevel3() {
