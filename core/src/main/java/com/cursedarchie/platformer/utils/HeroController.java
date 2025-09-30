@@ -7,7 +7,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
 import com.cursedarchie.platformer.tiles.Tile;
-import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.NewEnemy;
 import com.cursedarchie.platformer.actors.Hero;
 import com.cursedarchie.platformer.actors.Hero.HeroState;
 import com.cursedarchie.platformer.world.World;
@@ -290,9 +290,9 @@ public class HeroController implements InputProcessor {
             );
         }
 
-        Array<Enemy> enemies = world.getLevel().getEnemies();
+        Array<NewEnemy> enemies = world.getLevel().getEnemies();
 
-        for (Enemy enemy : enemies) {
+        for (NewEnemy enemy : enemies) {
             if (attackRect.overlaps(enemy.getBounds())) {
                 enemy.takeDamage(hero.getDamage());
                 attackHandled = true;

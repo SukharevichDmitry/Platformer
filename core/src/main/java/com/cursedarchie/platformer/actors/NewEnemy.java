@@ -1,11 +1,10 @@
 package com.cursedarchie.platformer.actors;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Pool;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyStateMachine;
-import com.cursedarchie.platformer.actors.enemies.logic.states.DyingState;
+import com.cursedarchie.platformer.actors.enemies.logic.states.DeadState;
 
 public abstract class NewEnemy extends Actor<NewEnemy.EnemyState> {
 
@@ -51,9 +50,10 @@ public abstract class NewEnemy extends Actor<NewEnemy.EnemyState> {
         }
     };
 
-    private EnemyStateMachine stateMachine;
+    private final EnemyStateMachine stateMachine;
 
-    public NewEnemy(Vector2 pos) {
+    public NewEnemy(Vector2 pos, float size, float maxHealth) {
+        this.size = size;
         this.position.set(pos);
         this.bounds.x = pos.x;
         this.bounds.y = pos.y;
@@ -63,18 +63,8 @@ public abstract class NewEnemy extends Actor<NewEnemy.EnemyState> {
         this.stateTime = 0f;
         this.health = maxHealth;
         this.facingLeft = true;
-    }
-
-    /**
-     * @param state value of EnemyState enum
-     */
-    @Override
-    public void setState(EnemyState state) {
-        if (this.state != state) {
-            Gdx.app.log("Enemy", "EnemyState change: " + this.state + " -> " + state);
-            this.state = state;
-            stateTime = 0f;
-        }
+        this.alive = true;
+        this.stateMachine = new EnemyStateMachine(this);
     }
 
     /*===========================================GETTERS/SETTERS===================================================*/
@@ -99,11 +89,12 @@ public abstract class NewEnemy extends Actor<NewEnemy.EnemyState> {
     /**
      * @return size. this.bounds.width = this.bounds.height = size
      */
-    public float getsize() {
-        return size;
+    public float getSize() {
+        return this.size;
     }
-    public void setsize(float size) {
+    public void setSize(float size) {
         this.size = size;
+        this.getBounds().setSize(size, size);
     }
 
     /**
@@ -258,9 +249,9 @@ public abstract class NewEnemy extends Actor<NewEnemy.EnemyState> {
     }
 
     /**
-     * @Description: dying logic. Starts DyingState. Do not call another States in Enemy class!
+     * @Description: dying logic. Starts DeadState. Do not call another States in Enemy class!
      */
     public void die() {
-        stateMachine.changeState(new DyingState());
+        stateMachine.changeState(new DeadState());
     }
 }

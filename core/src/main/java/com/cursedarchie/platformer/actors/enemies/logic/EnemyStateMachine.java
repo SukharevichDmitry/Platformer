@@ -24,6 +24,11 @@ public class EnemyStateMachine {
             currentState.exit(enemy);
         }
         currentState = newState;
+        enemy.setStateTime(0f);
         currentState.enter(enemy);
+    }
+
+    public EnemyState getCurrentState () {
+        return currentState;
     }
 }

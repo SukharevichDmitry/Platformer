@@ -7,7 +7,7 @@ import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.tiles.DefaultBlock;
 import com.cursedarchie.platformer.actors.enemies.Boss;
 import com.cursedarchie.platformer.actors.enemies.DefaultEnemy;
-import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.NewEnemy;
 
 import java.util.Arrays;
 
@@ -17,7 +17,7 @@ public class Level {
     private int height;
     private Tile[][] tiles;
 
-    private Array<Enemy> enemies;
+    private Array<NewEnemy> enemies;
 
 
     public int getWidth() {
@@ -32,7 +32,7 @@ public class Level {
     public void setHeight(int height) {
         this.height = height;
     }
-    public Array<Enemy> getEnemies() {
+    public Array<NewEnemy> getEnemies() {
         return enemies;
     }
     public Tile[][] getTiles() {
@@ -53,7 +53,7 @@ public class Level {
         width = 10;
         height = 7;
 
-        enemies = new Array<Enemy>();
+        enemies = new Array<NewEnemy>();
 
         tiles = new Tile[width][height];
         fillBlocks(tiles);
@@ -66,14 +66,14 @@ public class Level {
         tiles[3][3] = new DefaultBlock(new Vector2(3, 3));
         tiles[4][2] = new HalfOfBlock(new Vector2(4,2));
 
-        enemies.add(new DefaultEnemy(new Vector2(7.25f, 1)));
+        enemies.add(new DefaultEnemy(new Vector2(7.25f, 4)));
     }
 
     public void loadLevel2() {
         width = 10;
         height = 7;
 
-        enemies = new Array<Enemy>();
+        enemies = new Array<NewEnemy>();
 
         tiles = new Tile[width][height];
         fillBlocks(tiles);
@@ -91,14 +91,14 @@ public class Level {
         }
 
         enemies.add(new DefaultEnemy(new Vector2(3.25f, 2)));
-        enemies.add(new DefaultEnemy(new Vector2(6.25f, 2)));
+        enemies.add(new DefaultEnemy(new Vector2(9.25f, 2)));
     }
 
     public void loadLevel3() {
         width = 10;
         height = 7;
 
-        enemies = new Array<Enemy>();
+        enemies = new Array<NewEnemy>();
 
         tiles = new Tile[width][height];
         fillBlocks(tiles);
@@ -119,7 +119,7 @@ public class Level {
         width = 10;
         height = 7;
 
-        enemies = new Array<Enemy>();
+        enemies = new Array<NewEnemy>();
         tiles = new Tile[width][height];
         fillBlocks(tiles);
         loadTopWalls(tiles);

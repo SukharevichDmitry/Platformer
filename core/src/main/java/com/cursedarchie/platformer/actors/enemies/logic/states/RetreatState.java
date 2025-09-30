@@ -6,7 +6,6 @@ import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 public class RetreatState implements EnemyState {
     @Override
     public void enter(NewEnemy enemy) {
-
     }
 
     @Override

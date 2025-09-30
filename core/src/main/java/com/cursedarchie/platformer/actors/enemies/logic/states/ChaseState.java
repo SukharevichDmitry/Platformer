@@ -14,7 +14,7 @@ public class ChaseState implements EnemyState {
     @Override
     public void update (NewEnemy enemy, float delta) {
         if(!enemy.isCanSeeHero() && enemy.getHeroLastKnownPos() != null) {
-            enemy.getStateMachine().changeState(new PatrolState());
+            enemy.getStateMachine().changeState(new IdleState());
             return;
         }
 
@@ -22,6 +22,7 @@ public class ChaseState implements EnemyState {
         if (target != null) {
             if (target.x < enemy.getPosition().x) {
                 enemy.moveLeft();
+                Gdx.app.log("INFO: ", "Move left");
             } else if (target.x > enemy.getPosition().x) {
                 enemy.moveRight();
             }

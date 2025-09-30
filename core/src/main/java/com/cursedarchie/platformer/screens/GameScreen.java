@@ -5,7 +5,7 @@
     import com.badlogic.gdx.graphics.GL20;
 
     import com.cursedarchie.platformer.Main;
-    import com.cursedarchie.platformer.utils.EnemyController;
+    import com.cursedarchie.platformer.utils.NewEnemyController;
     import com.cursedarchie.platformer.utils.HeroController;
     import com.cursedarchie.platformer.utils.WorldRenderer;
     import com.cursedarchie.platformer.world.World;
@@ -15,7 +15,7 @@
         private World world;
         private WorldRenderer renderer;
         private HeroController heroController;
-        private EnemyController enemyController;
+        private NewEnemyController enemyController;
 
 
         private Main game;
@@ -24,7 +24,7 @@
             world = new World();
             renderer = new WorldRenderer(world, true);
             heroController = new HeroController(world);
-            enemyController = new EnemyController(world);
+            enemyController = new NewEnemyController(world);
         }
 
         @Override

@@ -25,17 +25,19 @@ public class EnemyPerception {
         Vector2 enemyCenter = new Vector2(enemyRect.x + enemyRect.width / 2f, enemyRect.y + enemyRect.height / 2f);
         Vector2 heroCenter = new Vector2(heroRect.x + heroRect.width / 2f, heroRect.y + heroRect.height / 2f);
 
-        Vector2 toHero = new Vector2(heroCenter).sub(enemyCenter).nor();
+        if (heroCenter.dst(enemyCenter) <= enemy.getViewDistance()) {
+            Vector2 toHero = new Vector2(heroCenter).sub(enemyCenter).nor();
 
-        Vector2 enemyDirection = enemy.isFacingLeft() ? new Vector2(-1, 0) : new Vector2(1, 0);
+            Vector2 enemyDirection = enemy.isFacingLeft() ? new Vector2(-1, 0) : new Vector2(1, 0);
 
-        float dot = toHero.dot(enemyDirection);
-        float viewCosThreshold = (float) Math.cos(Math.toRadians(enemy.getViewAngle() / 2f));
-        if (dot >= viewCosThreshold) {
-            enemy.setCanSeeHero(!isLineBlocked(enemyCenter, heroCenter));
-            updateHeroLastKnownPos(enemy);
-        } else {
-            enemy.setCanSeeHero(false);
+            float dot = toHero.dot(enemyDirection);
+            float viewCosThreshold = (float) Math.cos(Math.toRadians(enemy.getViewAngle() / 2f));
+            if (dot >= viewCosThreshold) {
+                enemy.setCanSeeHero(!isLineBlocked(enemyCenter, heroCenter));
+                updateHeroLastKnownPos(enemy);
+            } else {
+                enemy.setCanSeeHero(false);
+            }
         }
     }
 
@@ -70,9 +72,7 @@ public class EnemyPerception {
 
     public void checkHeroToAttack(float delta, NewEnemy enemy) {
         Hero hero = world.getHero();
-        if(enemy.getAttackRect().overlaps(hero.getBounds())) {
-            enemy.setCanAttackHero(true);
-        }
+        enemy.setCanAttackHero(enemy.getAttackRect().overlaps(hero.getBounds()));
     }
 
     public void dealDamage(NewEnemy enemy) {

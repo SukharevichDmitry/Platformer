@@ -10,7 +10,7 @@ public class AttackState implements EnemyState {
         enemy.stopMoving();
         enemy.setAttackTime(0f);
         enemy.setDamageDealt(false);
-        Gdx.app.log("INFO", "START ATTACK " + enemy.getState() + " " + (enemy.getState().equals(NewEnemy.EnemyState.ATTACK)));
+        Gdx.app.log("INFO", "Start Attacking");
     }
 
     @Override
@@ -19,11 +19,15 @@ public class AttackState implements EnemyState {
         if (enemy.getAttackTime() >= enemy.getAttackDuration()) {
             enemy.getStateMachine().changeState(new ChaseState());
         }
-        enemy.setCanDealDamage(!enemy.isDamageDealt() && enemy.getAttackTime() >= enemy.getAttackDuration() / 2f);
+        enemy.setCanDealDamage(
+            !enemy.isDamageDealt() &&
+            enemy.getAttackTime() >= enemy.getAttackDuration() / 2f &&
+            enemy.isCanAttackHero());
     }
 
     @Override
     public void exit (NewEnemy enemy) {
+        Gdx.app.log("INFO", "Finished Attacking");
 
     }
 }

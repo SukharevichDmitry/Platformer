@@ -1,9 +1,7 @@
 package com.cursedarchie.platformer.actors;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.actors.enemies.logic.states.DyingState;
 
 public abstract class Actor<T extends Enum<T>> {
 
@@ -89,6 +87,7 @@ public abstract class Actor<T extends Enum<T>> {
     }
     public void setBounds(Rectangle bounds) {
         this.bounds.set(bounds);
+
     }
 
     /**

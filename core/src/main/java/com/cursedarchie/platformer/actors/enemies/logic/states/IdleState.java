@@ -14,6 +14,7 @@ public class IdleState implements EnemyState {
     @Override
     public void update (NewEnemy enemy, float delta) {
         if (enemy.isCanSeeHero()) {
+            Gdx.app.log("INFO", "Can see hero");
             enemy.getStateMachine().changeState(new ChaseState());
             return;
         }
