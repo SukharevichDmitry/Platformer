@@ -6,7 +6,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
-import com.cursedarchie.platformer.actors.tiles.Tile;
+import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Enemy.EnemyState;
 import com.cursedarchie.platformer.actors.Hero;
@@ -48,9 +48,6 @@ public class EnemyController{
         world.getEnemyCollisionRects().clear();
         for (Enemy enemy : new Array<>(enemies)) {
             if (enemy.isAlive()){
-                if (enemy.isGrounded() && enemy.getState().equals(EnemyState.JUMPING)) {
-                    enemy.setState(EnemyState.IDLE);
-                }
 
                 enemy.getAcceleration().y = GRAVITY;
                 enemy.getAcceleration().scl(delta);
@@ -69,11 +66,11 @@ public class EnemyController{
                 enemyDying(enemy);
                 noticeHero(enemy);
 
-                if(enemy.isHeroInSight()) {
+                if(enemy.isCanSeeHero()) {
                     chaseHero(enemy);
                     checkHeroToAttack(delta, enemy);
                 } else {
-                    if (enemy.getState() != EnemyState.ATTACKING && enemy.getState() != EnemyState.JUMPING) {
+                    if (enemy.getState() != EnemyState.ATTACKING) {
                         enemy.setState(EnemyState.IDLE);
                         enemy.getAcceleration().x = 0;
                     }
@@ -98,9 +95,9 @@ public class EnemyController{
         float dot = toHero.dot(enemyDirection);
         float viewCosThreshold = (float) Math.cos(Math.toRadians(enemy.getViewAngle() / 2f));
         if (dot >= viewCosThreshold) {
-            enemy.setHeroInSight(!isLineBlocked(enemyCenter, heroCenter));
+            enemy.setCanSeeHero(!isLineBlocked(enemyCenter, heroCenter));
         } else {
-            enemy.setHeroInSight(false);
+            enemy.setCanSeeHero(false);
         }
     }
 

@@ -8,7 +8,7 @@ import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
-import com.cursedarchie.platformer.actors.tiles.Tile;
+import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.enemies.Boss;
 import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Hero;

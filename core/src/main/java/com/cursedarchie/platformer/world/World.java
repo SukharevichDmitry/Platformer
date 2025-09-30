@@ -3,7 +3,7 @@ package com.cursedarchie.platformer.world;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
-import com.cursedarchie.platformer.actors.tiles.Tile;
+import com.cursedarchie.platformer.tiles.Tile;
 
 import com.cursedarchie.platformer.actors.Hero;
 import com.cursedarchie.platformer.levels.Level;
@@ -112,4 +112,5 @@ public class World {
         }
     }
 
+    //TODO добавить удаление противника при его смерти
 }

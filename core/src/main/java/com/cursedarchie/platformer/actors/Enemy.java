@@ -9,12 +9,23 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
     }
 
     /**
+     * Новая логика противника
+    public enum NewEnemyState{
+        IDLE,
+        PATROL,
+        CHASE,
+        ATTACK,
+        RETREAT
+    }
+     */
+
+    /**
      * Enemy attributes... (open to details)
      *
      * @param EnemyState enum of states that enemy can have
      * @param grounded flag that indicates isn't enemy falling
      * @param damageDealt flag that indicates is enemy end his attack
-     * @param isHeroInSight flag that indicates is enemy can see hero
+     * @param canSeeHero flag that indicates is enemy can see hero
      * @param attackTime current time of attack animation
      */
     public float SIZE;
@@ -26,7 +37,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
 
     private boolean grounded = false;
     private boolean damageDealt = false;
-    private boolean isHeroInSight = false;
+    private boolean canSeeHero = false;
 
     private float attackTime = 0f;
 
@@ -38,7 +49,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
         this.bounds.height = SIZE;
         this.state = EnemyState.IDLE;
         this.stateTime = 0f;
-        this.isAlive = true;
+        this.alive = true;
         this.health = MAX_HEALTH;
         this.facingLeft = true;
     }
@@ -89,11 +100,11 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
     /**
      * @return True when enemy can see hero
      */
-    public boolean isHeroInSight() {
-        return isHeroInSight;
+    public boolean isCanSeeHero() {
+        return canSeeHero;
     }
-    public void setHeroInSight(boolean heroInSight) {
-        isHeroInSight = heroInSight;
+    public void setCanSeeHero(boolean canSeeHero) {
+        this.canSeeHero = canSeeHero;
     }
 
     /**
@@ -125,6 +136,17 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
     public void setAttackDuration(float ATTACK_DURATION) {
         this.ATTACK_DURATION = ATTACK_DURATION;
     }
+
+    /**
+     * @return maximum enemy's acceleration
+     */
+    public float getMaxAcceleration() {
+        return MAX_ACCELERATION;
+    }
+    public void setMaxAcceleration(float maxAcceleration) {
+        this.MAX_ACCELERATION = maxAcceleration;
+    }
+
 
     /**
      * @Description: checks if already attacks. If not, set state and start count AttackTime.
@@ -160,13 +182,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
         damageDealt = true;
     }
 
-    /**
-     * @return maximum enemy's acceleration
-     */
-    public float getMaxAcceleration() {
-        return MAX_ACCELERATION;
-    }
-    public void setMaxAcceleration(float maxAcceleration) {
-        this.MAX_ACCELERATION = maxAcceleration;
+    @Override
+    public void takeDamage(float damage) {
+        this.health -= damage;
     }
 }

@@ -1,20 +1,26 @@
-package com.cursedarchie.platformer.actors.enemies.logic;
+package com.cursedarchie.platformer.actors.enemies.logic.states;
 
-import com.cursedarchie.platformer.actors.Enemy;
+import com.badlogic.gdx.Gdx;
+import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 
-public class IdleState implements EnemyState{
+public class IdleState implements EnemyState {
+
     @Override
-    void enter(Enemy enemy) {
-    
+    public void enter(NewEnemy enemy) {
+        Gdx.app.log("Enemy", "Started Idling");
     }
 
     @Override
-    void update (Enemy enemy, float delta) {
-
+    public void update (NewEnemy enemy, float delta) {
+        if (enemy.isCanSeeHero()) {
+            enemy.getStateMachine().changeState(new ChaseState());
+            return;
+        }
     }
 
     @Override
-    void exit (Enemy enemy) {
-
+    public void exit (NewEnemy enemy) {
+        Gdx.app.log("Enemy", "Finished Idling");
     }
 }

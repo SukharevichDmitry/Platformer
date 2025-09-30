@@ -19,11 +19,4 @@ public class Boss extends Enemy {
         this.getBounds().setHeight(this.getSize());
     }
 
-    // Можно добавить уникальные способности, например:
-    public void specialAttack() {
-        if (isAlive() && getState() != EnemyState.ATTACKING) {
-            startAttack();
-        }
-    }
-
 }

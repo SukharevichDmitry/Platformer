@@ -6,7 +6,7 @@ import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
-import com.cursedarchie.platformer.actors.tiles.Tile;
+import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Hero;
 import com.cursedarchie.platformer.actors.Hero.HeroState;
