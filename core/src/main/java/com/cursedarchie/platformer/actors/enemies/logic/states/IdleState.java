@@ -1,18 +1,18 @@
 package com.cursedarchie.platformer.actors.enemies.logic.states;
 
 import com.badlogic.gdx.Gdx;
-import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 
 public class IdleState implements EnemyState {
 
     @Override
-    public void enter(NewEnemy enemy) {
+    public void enter(Enemy enemy) {
         Gdx.app.log("Enemy", "Started Idling");
     }
 
     @Override
-    public void update (NewEnemy enemy, float delta) {
+    public void update (Enemy enemy, float delta) {
         if (enemy.isCanSeeHero()) {
             Gdx.app.log("INFO", "Can see hero");
             enemy.getStateMachine().changeState(new ChaseState());
@@ -21,7 +21,7 @@ public class IdleState implements EnemyState {
     }
 
     @Override
-    public void exit (NewEnemy enemy) {
+    public void exit (Enemy enemy) {
         Gdx.app.log("Enemy", "Finished Idling");
     }
 }

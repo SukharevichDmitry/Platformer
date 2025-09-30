@@ -1,9 +1,9 @@
 package com.cursedarchie.platformer.actors.enemies;
 
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.Enemy;
 
-public class DefaultEnemy extends NewEnemy {
+public class DefaultEnemy extends Enemy {
 
 
     public DefaultEnemy(Vector2 pos) {

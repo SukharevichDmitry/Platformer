@@ -14,7 +14,7 @@ import com.cursedarchie.platformer.actors.enemies.logic.states.IdleState;
 import com.cursedarchie.platformer.actors.enemies.logic.states.PatrolState;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.enemies.Boss;
-import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Hero;
 import com.cursedarchie.platformer.actors.Hero.HeroState;
 import com.cursedarchie.platformer.world.World;
@@ -283,9 +283,9 @@ public class WorldRenderer {
 
 
     private void drawEnemy() {
-        Array<NewEnemy> enemies = world.getLevel().getEnemies();
+        Array<Enemy> enemies = world.getLevel().getEnemies();
 
-        for (NewEnemy enemy : enemies) {
+        for (Enemy enemy : enemies) {
             if (enemy.isAlive()) {
                 TextureRegion enemyFrame;
 
@@ -333,14 +333,14 @@ public class WorldRenderer {
     }
 
     private void drawViewCones() {
-        Array<NewEnemy> enemies = world.getLevel().getEnemies();
+        Array<Enemy> enemies = world.getLevel().getEnemies();
 
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
         debugRenderer.setColor(new Color(1, 1, 0, 0.7f)); // ярко-желтый, чуть прозрачный
 
 
-        for (NewEnemy enemy : enemies) {
+        for (Enemy enemy : enemies) {
             if (!enemy.isAlive()) continue;
 
             Vector2 pos = enemy.getPosition();
@@ -393,8 +393,8 @@ public class WorldRenderer {
         debugRenderer.setColor(new Color(0, 1, 0, 1));
         debugRenderer.rect(heroRect.x, heroRect.y,   heroRect.width, heroRect.height);
 
-        Array<NewEnemy> enemies = world.getLevel().getEnemies();
-        for (NewEnemy enemy: enemies) {
+        Array<Enemy> enemies = world.getLevel().getEnemies();
+        for (Enemy enemy: enemies) {
             Rectangle enemyRect = enemy.getBounds();
             debugRenderer.setColor(new Color(1, 1, 0, 1));
             debugRenderer.rect(enemyRect.x, enemyRect.y, enemyRect.width, enemyRect.height);

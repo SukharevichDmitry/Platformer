@@ -2,17 +2,17 @@ package com.cursedarchie.platformer.actors.enemies.logic.states;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 
 public class ChaseState implements EnemyState {
     @Override
-    public void enter(NewEnemy enemy) {
+    public void enter(Enemy enemy) {
         Gdx.app.log("Enemy", "Started Chasing");
     }
 
     @Override
-    public void update (NewEnemy enemy, float delta) {
+    public void update (Enemy enemy, float delta) {
         if(!enemy.isCanSeeHero() && enemy.getHeroLastKnownPos() != null) {
             enemy.getStateMachine().changeState(new IdleState());
             return;
@@ -33,7 +33,7 @@ public class ChaseState implements EnemyState {
     }
 
     @Override
-    public void exit (NewEnemy enemy) {
+    public void exit (Enemy enemy) {
         Gdx.app.log("Enemy", "Finished Chasing");
     }
 }

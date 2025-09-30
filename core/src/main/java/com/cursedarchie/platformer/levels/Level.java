@@ -7,7 +7,7 @@ import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.tiles.DefaultBlock;
 import com.cursedarchie.platformer.actors.enemies.Boss;
 import com.cursedarchie.platformer.actors.enemies.DefaultEnemy;
-import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.Enemy;
 
 import java.util.Arrays;
 
@@ -17,7 +17,7 @@ public class Level {
     private int height;
     private Tile[][] tiles;
 
-    private Array<NewEnemy> enemies;
+    private Array<Enemy> enemies;
 
 
     public int getWidth() {
@@ -32,7 +32,7 @@ public class Level {
     public void setHeight(int height) {
         this.height = height;
     }
-    public Array<NewEnemy> getEnemies() {
+    public Array<Enemy> getEnemies() {
         return enemies;
     }
     public Tile[][] getTiles() {
@@ -53,7 +53,7 @@ public class Level {
         width = 10;
         height = 7;
 
-        enemies = new Array<NewEnemy>();
+        enemies = new Array<Enemy>();
 
         tiles = new Tile[width][height];
         fillBlocks(tiles);
@@ -73,7 +73,7 @@ public class Level {
         width = 10;
         height = 7;
 
-        enemies = new Array<NewEnemy>();
+        enemies = new Array<Enemy>();
 
         tiles = new Tile[width][height];
         fillBlocks(tiles);
@@ -98,7 +98,7 @@ public class Level {
         width = 10;
         height = 7;
 
-        enemies = new Array<NewEnemy>();
+        enemies = new Array<Enemy>();
 
         tiles = new Tile[width][height];
         fillBlocks(tiles);
@@ -119,7 +119,7 @@ public class Level {
         width = 10;
         height = 7;
 
-        enemies = new Array<NewEnemy>();
+        enemies = new Array<Enemy>();
         tiles = new Tile[width][height];
         fillBlocks(tiles);
         loadTopWalls(tiles);

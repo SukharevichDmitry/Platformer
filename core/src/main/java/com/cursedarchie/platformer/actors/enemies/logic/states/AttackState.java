@@ -1,12 +1,12 @@
 package com.cursedarchie.platformer.actors.enemies.logic.states;
 
 import com.badlogic.gdx.Gdx;
-import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 
 public class AttackState implements EnemyState {
     @Override
-    public void enter(NewEnemy enemy) {
+    public void enter(Enemy enemy) {
         enemy.stopMoving();
         enemy.setAttackTime(0f);
         enemy.setDamageDealt(false);
@@ -14,7 +14,7 @@ public class AttackState implements EnemyState {
     }
 
     @Override
-    public void update (NewEnemy enemy, float delta) {
+    public void update (Enemy enemy, float delta) {
         enemy.setAttackTime(enemy.getAttackTime() + delta);
         if (enemy.getAttackTime() >= enemy.getAttackDuration()) {
             enemy.getStateMachine().changeState(new ChaseState());
@@ -26,7 +26,7 @@ public class AttackState implements EnemyState {
     }
 
     @Override
-    public void exit (NewEnemy enemy) {
+    public void exit (Enemy enemy) {
         Gdx.app.log("INFO", "Finished Attacking");
 
     }

@@ -5,7 +5,7 @@ import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.cursedarchie.platformer.actors.Hero;
-import com.cursedarchie.platformer.actors.NewEnemy;
+import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.world.World;
 
@@ -16,7 +16,7 @@ public class EnemyPerception {
         this.world = world;
     }
 
-    public void canSeeHero(NewEnemy enemy) {
+    public void canSeeHero(Enemy enemy) {
         Hero hero = world.getHero();
 
         Rectangle enemyRect = enemy.getBounds();
@@ -66,16 +66,16 @@ public class EnemyPerception {
         return false;
     }
 
-    private void updateHeroLastKnownPos(NewEnemy enemy) {
+    private void updateHeroLastKnownPos(Enemy enemy) {
         enemy.setHeroLastKnownPos(world.getHero().getPosition());
     }
 
-    public void checkHeroToAttack(float delta, NewEnemy enemy) {
+    public void checkHeroToAttack(float delta, Enemy enemy) {
         Hero hero = world.getHero();
         enemy.setCanAttackHero(enemy.getAttackRect().overlaps(hero.getBounds()));
     }
 
-    public void dealDamage(NewEnemy enemy) {
+    public void dealDamage(Enemy enemy) {
         Hero hero = world.getHero();
 
         Gdx.app.log("INFO", "ATTACKING");
