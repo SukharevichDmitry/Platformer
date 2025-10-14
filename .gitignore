@@ -28,3 +28,4 @@ replay_pid*
 core/build/
 lwjgl3/build/
 
+Platformer/*

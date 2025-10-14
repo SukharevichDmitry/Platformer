@@ -1,5 +1,6 @@
 package com.cursedarchie.platformer.levels;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.tiles.HalfOfBlock;
@@ -10,11 +11,12 @@ import com.cursedarchie.platformer.actors.enemies.DefaultEnemy;
 import com.cursedarchie.platformer.actors.Enemy;
 
 import java.util.Arrays;
+import java.util.Iterator;
 
 public class Level {
 
-    private int width;
-    private int height;
+    private int width = 10;
+    private int height = 7;
     private Tile[][] tiles;
 
     private Array<Enemy> enemies;
@@ -32,13 +34,20 @@ public class Level {
     public void setHeight(int height) {
         this.height = height;
     }
-    public Array<Enemy> getEnemies() {
+
+    public Array<Enemy> getAliveEnemies() {
+        for (Iterator<Enemy> it = enemies.iterator(); it.hasNext(); ) {
+            Enemy enemy = it.next();
+            if (!enemy.isAlive()) {
+                it.remove();
+            }
+        }
         return enemies;
     }
     public Tile[][] getTiles() {
         return tiles;
     }
-    public Tile get(int x, int y) {
+    public Tile getTile(int x, int y) {
         return tiles[x][y];
     }
     public void setTiles(Tile[][] tiles) {
@@ -46,58 +55,51 @@ public class Level {
     }
 
     public Level() {
-        this.enemies = new Array<>();
+        Gdx.app.log("Level", "Creating Level");
+        this.enemies = new Array<Enemy>();
+        this.tiles = new Tile[width][height];
     }
 
     public void loadLevel1() {
-        width = 10;
-        height = 7;
+        this.enemies = new Array<Enemy>();
 
-        enemies = new Array<Enemy>();
+        this.tiles = new Tile[width][height];
+        fillBlocks(this.tiles);
+        loadTopWalls(this.tiles);
+        loadBottomWalls(this.tiles);
+        loadLeftWalls(this.tiles);
 
-        tiles = new Tile[width][height];
-        fillBlocks(tiles);
-        loadTopWalls(tiles);
-        loadBottomWalls(tiles);
-        loadLeftWalls(tiles);
+        this.tiles[2][2] = new DefaultBlock(new Vector2(2, 2));
+        this.tiles[3][2] = new DefaultBlock(new Vector2(3, 2));
+        this.tiles[3][3] = new DefaultBlock(new Vector2(3, 3));
+        this.tiles[4][2] = new HalfOfBlock(new Vector2(4,2));
 
-        tiles[2][2] = new DefaultBlock(new Vector2(2, 2));
-        tiles[3][2] = new DefaultBlock(new Vector2(3, 2));
-        tiles[3][3] = new DefaultBlock(new Vector2(3, 3));
-        tiles[4][2] = new HalfOfBlock(new Vector2(4,2));
-
-        enemies.add(new DefaultEnemy(new Vector2(7.25f, 4)));
+        this.enemies.add(new DefaultEnemy(new Vector2(7.25f, 4)));
     }
 
     public void loadLevel2() {
-        width = 10;
-        height = 7;
+        this.enemies = new Array<Enemy>();
 
-        enemies = new Array<Enemy>();
+        this.tiles = new Tile[width][height];
+        fillBlocks(this.tiles);
+        loadTopWalls(this.tiles);
+        loadBottomWalls(this.tiles);
 
-        tiles = new Tile[width][height];
-        fillBlocks(tiles);
-        loadTopWalls(tiles);
-        loadBottomWalls(tiles);
+        this.tiles[6][3] = new DefaultBlock(new Vector2(6, 3));
+        this.tiles[6][4] = new DefaultBlock(new Vector2(6, 4));
+        this.tiles[6][5] = new DefaultBlock(new Vector2(6, 5));
 
-        tiles[6][3] = new DefaultBlock(new Vector2(6, 3));
-        tiles[6][4] = new DefaultBlock(new Vector2(6, 4));
-        tiles[6][5] = new DefaultBlock(new Vector2(6, 5));
-
-        for (int col = 0; col < tiles.length; col++) {
+        for (int col = 0; col < this.tiles.length; col++) {
             if (col > 2) {
-                tiles[col][1] = new DefaultBlock(new Vector2(col, 1));
+                this.tiles[col][1] = new DefaultBlock(new Vector2(col, 1));
             }
         }
 
-        enemies.add(new DefaultEnemy(new Vector2(3.25f, 2)));
-        enemies.add(new DefaultEnemy(new Vector2(9.25f, 2)));
+        this.enemies.add(new DefaultEnemy(new Vector2(3.25f, 2)));
+        this.enemies.add(new DefaultEnemy(new Vector2(9.25f, 2)));
     }
 
     public void loadLevel3() {
-        width = 10;
-        height = 7;
-
         enemies = new Array<Enemy>();
 
         tiles = new Tile[width][height];
@@ -116,9 +118,6 @@ public class Level {
     }
 
     public void loadLevel4() {
-        width = 10;
-        height = 7;
-
         enemies = new Array<Enemy>();
         tiles = new Tile[width][height];
         fillBlocks(tiles);
@@ -142,9 +141,6 @@ public class Level {
     }
 
     public void loadLevel5() {
-        width = 10;
-        height = 7;
-
         enemies = new Array<>();
         tiles = new Tile[width][height];
         fillBlocks(tiles);

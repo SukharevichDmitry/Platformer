@@ -7,7 +7,6 @@ import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 public class AttackState implements EnemyState {
     @Override
     public void enter(Enemy enemy) {
-        enemy.stopMoving();
         enemy.setAttackTime(0f);
         enemy.setDamageDealt(false);
         Gdx.app.log("INFO", "Start Attacking");

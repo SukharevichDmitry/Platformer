@@ -1,5 +1,6 @@
 package com.cursedarchie.platformer.world;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
@@ -21,7 +22,12 @@ public class World {
     Array<Rectangle> heroCollisionRects = new Array<Rectangle>();
     Array<Rectangle> enemyCollisionRects = new Array<Rectangle>();
 
-
+    public World() {
+        Gdx.app.log("World", "Creating World");
+        this.currentLevel = 0;
+        this.level = createLevel(currentLevel);
+        this.hero = new Hero(new Vector2(1, 1));
+    }
 
     public Array<Rectangle> getHeroCollisionRects() {
         return heroCollisionRects;
@@ -33,7 +39,7 @@ public class World {
         return hero;
     }
     public Level getLevel() {
-        return level;
+        return this.level;
     }
 
     public List<Tile> getDrawableTiles(int width, int height) {
@@ -67,17 +73,12 @@ public class World {
         return tiles;
     }
 
-    public World() {
-        hero = new Hero(new Vector2(1, 1));
-        currentLevel = 0;
-        level = createLevel(currentLevel);
-    }
-
     private Level createLevel(int levelIndex) {
         Level newLevel = new Level();
 
         switch (levelIndex) {
             case 0:
+                Gdx.app.log("World", "Creating Level 0");
                 newLevel.loadLevel1();
                 break;
             case 1:
@@ -112,5 +113,4 @@ public class World {
         }
     }
 
-    //TODO добавить удаление противника при его смерти
 }
