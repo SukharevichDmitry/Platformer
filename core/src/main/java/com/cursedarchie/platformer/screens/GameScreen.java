@@ -20,11 +20,12 @@
 
         private Main game;
         public GameScreen(Main game) {
+            Gdx.app.log("GameScreen", "Initializing Game Screen");
             this.game = game;
             world = new World();
-            renderer = new WorldRenderer(world, true);
             heroController = new HeroController(world);
             enemyController = new EnemyController(world);
+            renderer = new WorldRenderer(world, true);
         }
 
         @Override

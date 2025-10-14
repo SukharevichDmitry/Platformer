@@ -55,10 +55,9 @@ public class EnemyPerception {
                 continue;
             }
 
-            Tile tile = world.getLevel().get(tileX, tileY);
+            Tile tile = world.getLevel().getTile(tileX, tileY);
             if (tile != null && tile.isBlockingSight()) {
                 if (Intersector.intersectSegmentRectangle(from, to, tile.getBounds())) {
-                    Gdx.app.log("LineBlocked", "Blocked by tile at (" + tileX + ", " + tileY + "), bounds: " + tile.getBounds());
                     return true;
                 }
             }
@@ -70,7 +69,7 @@ public class EnemyPerception {
         enemy.setHeroLastKnownPos(world.getHero().getPosition());
     }
 
-    public void checkHeroToAttack(float delta, Enemy enemy) {
+    public void checkHeroToAttack(Enemy enemy) {
         Hero hero = world.getHero();
         enemy.setCanAttackHero(enemy.getAttackRect().overlaps(hero.getBounds()));
     }
@@ -78,7 +77,7 @@ public class EnemyPerception {
     public void dealDamage(Enemy enemy) {
         Hero hero = world.getHero();
 
-        Gdx.app.log("INFO", "ATTACKING");
+        Gdx.app.log("INFO", "DEAL DAMAGE");
         Rectangle attackRect = enemy.getAttackRect();
 
         if (attackRect.overlaps(hero.getBounds())) {

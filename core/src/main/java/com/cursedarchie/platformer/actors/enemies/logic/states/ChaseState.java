@@ -34,6 +34,7 @@ public class ChaseState implements EnemyState {
 
     @Override
     public void exit (Enemy enemy) {
+        enemy.stopMoving();
         Gdx.app.log("Enemy", "Finished Chasing");
     }
 }

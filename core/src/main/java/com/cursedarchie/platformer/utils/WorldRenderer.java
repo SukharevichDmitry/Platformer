@@ -12,11 +12,13 @@ import com.cursedarchie.platformer.actors.enemies.logic.states.AttackState;
 import com.cursedarchie.platformer.actors.enemies.logic.states.ChaseState;
 import com.cursedarchie.platformer.actors.enemies.logic.states.IdleState;
 import com.cursedarchie.platformer.actors.enemies.logic.states.PatrolState;
+import com.cursedarchie.platformer.actors.hero.states.HeroAttackState;
+import com.cursedarchie.platformer.actors.hero.states.HeroJumpState;
+import com.cursedarchie.platformer.actors.hero.states.HeroMoveState;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.enemies.Boss;
 import com.cursedarchie.platformer.actors.Enemy;
 import com.cursedarchie.platformer.actors.Hero;
-import com.cursedarchie.platformer.actors.Hero.HeroState;
 import com.cursedarchie.platformer.world.World;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -54,7 +56,6 @@ public class WorldRenderer {
     private Animation<TextureRegion> enemyAttackLeftAnimation;
     private Animation<TextureRegion> enemyAttackRightAnimation;
 
-
     private TextureRegion enemyIdleLeft;
     private TextureRegion enemyIdleRight;
     private TextureRegion enemyJumpLeft;
@@ -86,6 +87,7 @@ public class WorldRenderer {
     }
 
     public WorldRenderer(World world, boolean debug) {
+        Gdx.app.log("World Renderer", "Initializing World Renderer");
         this.world = world;
         this.cam = new OrthographicCamera(CAMERA_WIDTH, CAMERA_HEIGHT);
         this.cam.position.set(CAMERA_WIDTH / 2f, CAMERA_HEIGHT / 2f, 0);
@@ -101,45 +103,45 @@ public class WorldRenderer {
         loadEnemyTextures(atlas);
     }
 
-    private void loadHeroTextures(TextureAtlas atlas) {
-        heroIdleLeft = atlas.findRegion("hero");
-        heroIdleRight = new TextureRegion(heroIdleLeft);
-        heroIdleRight.flip(true, false);
+        private void loadHeroTextures(TextureAtlas atlas) {
+            heroIdleLeft = atlas.findRegion("hero");
+            heroIdleRight = new TextureRegion(heroIdleLeft);
+            heroIdleRight.flip(true, false);
 
-        TextureRegion[] walkLeftFrames = new TextureRegion[3];
-        for (int i = 0; i < walkLeftFrames.length; i++) {
-            walkLeftFrames[i] = atlas.findRegion("hero" + (i + 1));
+            TextureRegion[] walkLeftFrames = new TextureRegion[3];
+            for (int i = 0; i < walkLeftFrames.length; i++) {
+                walkLeftFrames[i] = atlas.findRegion("hero" + (i + 1));
+            }
+            heroWalkLeftAnimation = new Animation<>(RUNNING_FRAME_DURATION, walkLeftFrames);
+
+            TextureRegion[] walkRightFrames = new TextureRegion[3];
+            for (int i = 0; i < walkRightFrames.length; i++) {
+                walkRightFrames[i] = new TextureRegion(walkLeftFrames[i]);
+                walkRightFrames[i].flip(true, false);
+            }
+            heroWalkRightAnimation = new Animation<>(RUNNING_FRAME_DURATION, walkRightFrames);
+
+            heroJumpLeft = atlas.findRegion("hero");
+            heroJumpRight = new TextureRegion(heroJumpLeft);
+            heroJumpRight.flip(true, false);
+            heroFallLeft = atlas.findRegion("hero2");
+            heroFallRight = new TextureRegion(heroFallLeft);
+            heroFallRight.flip(true, false);
+
+            TextureRegion[] attackLeftFrames = new TextureRegion[3];
+            for (int i = 0; i < attackLeftFrames.length; i++) {
+                attackLeftFrames[i] = atlas.findRegion("hero_attack" + (i + 1));
+            }
+            heroAttackLeftAnimation = new Animation<>(ATTACK_FRAME_DURATION, attackLeftFrames);
+
+            TextureRegion[] attackRightFrames = new TextureRegion[3];
+            for (int i = 0; i < attackRightFrames.length; i++) {
+                attackRightFrames[i] = new TextureRegion(attackLeftFrames[i]);
+                attackRightFrames[i].flip(true, false);
+            }
+            heroAttackRightAnimation = new Animation<>(ATTACK_FRAME_DURATION, attackRightFrames);
+
         }
-        heroWalkLeftAnimation = new Animation<>(RUNNING_FRAME_DURATION, walkLeftFrames);
-
-        TextureRegion[] walkRightFrames = new TextureRegion[3];
-        for (int i = 0; i < walkRightFrames.length; i++) {
-            walkRightFrames[i] = new TextureRegion(walkLeftFrames[i]);
-            walkRightFrames[i].flip(true, false);
-        }
-        heroWalkRightAnimation = new Animation<>(RUNNING_FRAME_DURATION, walkRightFrames);
-
-        heroJumpLeft = atlas.findRegion("hero");
-        heroJumpRight = new TextureRegion(heroJumpLeft);
-        heroJumpRight.flip(true, false);
-        heroFallLeft = atlas.findRegion("hero2");
-        heroFallRight = new TextureRegion(heroFallLeft);
-        heroFallRight.flip(true, false);
-
-        TextureRegion[] attackLeftFrames = new TextureRegion[3];
-        for (int i = 0; i < attackLeftFrames.length; i++) {
-            attackLeftFrames[i] = atlas.findRegion("hero_attack" + (i + 1));
-        }
-        heroAttackLeftAnimation = new Animation<>(ATTACK_FRAME_DURATION, attackLeftFrames);
-
-        TextureRegion[] attackRightFrames = new TextureRegion[3];
-        for (int i = 0; i < attackRightFrames.length; i++) {
-            attackRightFrames[i] = new TextureRegion(attackLeftFrames[i]);
-            attackRightFrames[i].flip(true, false);
-        }
-        heroAttackRightAnimation = new Animation<>(ATTACK_FRAME_DURATION, attackRightFrames);
-
-    }
 
     private void loadEnemyTextures(TextureAtlas atlas) {
 
@@ -217,32 +219,28 @@ public class WorldRenderer {
         Hero hero = world.getHero();
 
         TextureRegion heroFrame = hero.isFacingLeft() ? heroIdleLeft : heroIdleRight;
-        if (hero.getState().equals(HeroState.WALKING)) {
+        if (hero.getStateMachine().getCurrentState() instanceof HeroMoveState) {
             heroFrame = hero.isFacingLeft() ?
                 heroWalkLeftAnimation.getKeyFrame(hero.getStateTime(), true) :
                 heroWalkRightAnimation.getKeyFrame(hero.getStateTime(), true);
-        } else if (hero.getState().equals(HeroState.JUMPING)) {
+        } else if (hero.getStateMachine().getCurrentState() instanceof HeroJumpState) {
             if (hero.getVelocity().y > 0) {
                 heroFrame = hero.isFacingLeft() ? heroJumpLeft : heroJumpRight;
             } else {
                 heroFrame = hero.isFacingLeft() ? heroFallLeft : heroFallRight;
             }
-        } else if (hero.getState().equals(HeroState.ATTACKING)) {
+        } else if (hero.getStateMachine().getCurrentState() instanceof HeroAttackState) {
             heroFrame = hero.isFacingLeft() ?
                 heroAttackLeftAnimation.getKeyFrame(hero.getStateTime(), false) :
                 heroAttackRightAnimation.getKeyFrame(hero.getStateTime(), false);
-
-            if (heroAttackLeftAnimation.isAnimationFinished(hero.getStateTime())) {
-                hero.setState(HeroState.IDLE);
-            }
         }
 
         spriteBatch.draw(
             heroFrame,
             hero.getPosition().x * ppuX,
             hero.getPosition().y * ppuY,
-            Hero.SIZE * ppuX,
-            Hero.SIZE * ppuY);
+            hero.getSize() * ppuX,
+            hero.getSize() * ppuY);
     }
 
     private void drawHitBar() {
@@ -283,14 +281,13 @@ public class WorldRenderer {
 
 
     private void drawEnemy() {
-        Array<Enemy> enemies = world.getLevel().getEnemies();
+        Array<Enemy> enemies = world.getLevel().getAliveEnemies();
 
         for (Enemy enemy : enemies) {
             if (enemy.isAlive()) {
                 TextureRegion enemyFrame;
 
                 if (enemy instanceof Boss) {
-                    // Это босс — используем его текстуры
                     enemyFrame = enemy.isFacingLeft() ? bossIdleLeft : bossIdleRight;
                 } else {
                     enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
@@ -333,7 +330,7 @@ public class WorldRenderer {
     }
 
     private void drawViewCones() {
-        Array<Enemy> enemies = world.getLevel().getEnemies();
+        Array<Enemy> enemies = world.getLevel().getAliveEnemies();
 
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
@@ -345,7 +342,6 @@ public class WorldRenderer {
 
             Vector2 pos = enemy.getPosition();
             float viewDistance = enemy.getViewDistance();
-            Gdx.app.log("INFO: ", "VIEW DISTANSE: " + enemy.getViewDistance());
             float viewAngle = enemy.getViewAngle();
 
             // Направление взгляда — влево или вправо
@@ -393,7 +389,7 @@ public class WorldRenderer {
         debugRenderer.setColor(new Color(0, 1, 0, 1));
         debugRenderer.rect(heroRect.x, heroRect.y,   heroRect.width, heroRect.height);
 
-        Array<Enemy> enemies = world.getLevel().getEnemies();
+        Array<Enemy> enemies = world.getLevel().getAliveEnemies();
         for (Enemy enemy: enemies) {
             Rectangle enemyRect = enemy.getBounds();
             debugRenderer.setColor(new Color(1, 1, 0, 1));
