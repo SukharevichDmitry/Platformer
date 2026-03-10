@@ -1,13 +1,13 @@
 package com.cursedarchie.platformer.actors.enemies;
 
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.actors.Enemy;
+import com.badlogic.gdx.physics.box2d.World;
 
 public class DefaultEnemy extends Enemy {
 
 
-    public DefaultEnemy(Vector2 pos) {
-        super(pos, 0.5f, 3f);
+    public DefaultEnemy(World world, Vector2 pos) {
+        super(world, pos, 0.5f, 3f);
         this.setMaxAcceleration(50f);
         this.setDamage(1f);
         this.setAttackDuration(0.5f);

@@ -2,22 +2,21 @@ package com.cursedarchie.platformer.actors.hero;
 
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
-import com.cursedarchie.platformer.actors.Enemy;
-import com.cursedarchie.platformer.actors.Hero;
-import com.cursedarchie.platformer.world.World;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.world.GameWorld;
 
 public class HeroPerception {
-    World world;
+    GameWorld gameWorld;
 
-    public HeroPerception(World world) {
-        this.world = world;
+    public HeroPerception(GameWorld gameWorld) {
+        this.gameWorld = gameWorld;
     }
 
     public void checkAttackingEnemies (Hero hero) {
         if (hero.isAttackHandled()) return;
 
         Rectangle attackRect = hero.getAttackRect();
-        Array<Enemy> enemies = world.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
 
         for (Enemy enemy : enemies) {
             if (attackRect.overlaps(enemy.getBounds())) {

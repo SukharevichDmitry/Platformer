@@ -2,7 +2,7 @@ package com.cursedarchie.platformer.actors.enemies.logic.states;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 
 public class ChaseState implements EnemyState {

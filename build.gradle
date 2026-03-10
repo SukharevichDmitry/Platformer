@@ -73,6 +73,7 @@ subprojects {
     implementation "com.badlogicgames.gdx:gdx:1.10.0"
     implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:1.10.0"
     implementation "com.badlogicgames.gdx:gdx-platform:1.10.0:natives-desktop"
+
   }
 }
 

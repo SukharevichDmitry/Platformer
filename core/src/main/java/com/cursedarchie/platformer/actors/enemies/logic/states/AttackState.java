@@ -1,7 +1,7 @@
 package com.cursedarchie.platformer.actors.enemies.logic.states;
 
 import com.badlogic.gdx.Gdx;
-import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 
 public class AttackState implements EnemyState {

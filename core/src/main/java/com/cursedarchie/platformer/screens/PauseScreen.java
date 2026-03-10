@@ -26,14 +26,14 @@ public class PauseScreen implements Screen {
         continueButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                game.setScreen(previousScreen); // вернуться в игру
+                game.continueGame(previousScreen);
             }
         });
 
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                game.showMenu(); // выйти в меню
+                game.goToMenu();
             }
         });
 

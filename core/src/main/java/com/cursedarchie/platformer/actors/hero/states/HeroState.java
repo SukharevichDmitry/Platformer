@@ -1,6 +1,6 @@
-package com.cursedarchie.platformer.actors.hero;
+package com.cursedarchie.platformer.actors.hero.states;
 
-import com.cursedarchie.platformer.actors.Hero;
+import com.cursedarchie.platformer.actors.hero.Hero;
 
 public interface HeroState {
     void enter(Hero hero);

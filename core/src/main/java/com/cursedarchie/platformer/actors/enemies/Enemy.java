@@ -1,21 +1,31 @@
-package com.cursedarchie.platformer.actors;
+package com.cursedarchie.platformer.actors.enemies;
 
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Pool;
+import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyStateMachine;
 import com.cursedarchie.platformer.actors.enemies.logic.states.DeadState;
+import com.cursedarchie.platformer.actors.hero.Hero;
 
-public abstract class Enemy extends Actor<Enemy.EnemyState> {
+public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCombatState> {
 
-     public enum EnemyState{
+    private final Body body;
+
+    public enum EnemyMotionState {
         IDLE,
         PATROL,
         CHASE,
-        ATTACK,
         RETREAT,
         DYING
-     }
+    }
+
+    public enum EnemyCombatState {
+        IDLE,
+        ATTACK
+    }
+
 
     /**
      * Enemy attributes... (open to details)
@@ -37,9 +47,6 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
     private boolean canSeeHero = false;
     private boolean canAttackHero = false;
     private boolean canDealDamage = false;
-
-
-
     private float attackTime = 0f;
     private Vector2 heroLastKnownPos = new Vector2();
 
@@ -52,22 +59,43 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
 
     private final EnemyStateMachine stateMachine;
 
-    public Enemy(Vector2 pos, float size, float maxHealth) {
+    public Enemy(World world, Vector2 pos, float size, float maxHealth) {
         this.size = size;
-        this.position.set(pos);
-        this.bounds.x = pos.x;
-        this.bounds.y = pos.y;
-        this.bounds.width = size;
-        this.bounds.height = size;
-        this.state = EnemyState.IDLE;
-        this.stateTime = 0f;
+        this.motionState = EnemyMotionState.IDLE;
+        this.motionStateTime = 0f;
+        this.combatStateTime = 0f;
         this.health = maxHealth;
         this.facingLeft = true;
         this.alive = true;
         this.stateMachine = new EnemyStateMachine(this);
+
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.type = BodyDef.BodyType.DynamicBody;
+        bodyDef.position.set(pos);
+        this.body = world.createBody(bodyDef);
+
+        PolygonShape shape = new PolygonShape();
+        shape.setAsBox(size / 2f, size / 2f);
+
+        FixtureDef fixtureDef = new FixtureDef();
+        fixtureDef.shape = shape;
+        fixtureDef.density = 1f;
+        fixtureDef.friction = 0.2f;
+        fixtureDef.restitution = 0f;
+
+        this.body.createFixture(fixtureDef);
+        shape.dispose();
     }
 
     /*===========================================GETTERS/SETTERS===================================================*/
+    public Body getBody() {
+        return body;
+    }
+
+    public Vector2 getPosition() {
+        return body.getPosition();
+    }
+
     @Override
     public float getMaxHealth() {
         return maxHealth;
@@ -90,11 +118,10 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
      * @return size. this.bounds.width = this.bounds.height = size
      */
     public float getSize() {
-        return this.size;
+        return size;
     }
     public void setSize(float size) {
         this.size = size;
-        this.getBounds().setSize(size, size);
     }
 
     /**
@@ -161,19 +188,21 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
 
     public Rectangle getAttackRect() {
         Rectangle attackRect = rectPool.obtain();
+        Vector2 position = body.getPosition();
 
         if (this.isFacingLeft()) {
             attackRect.set(
-                this.getBounds().x - this.getBounds().width/2,
-                this.getBounds().y - this.getBounds().height/2,
-                this.getBounds().width,
-                this.getBounds().height);
+                position.x - size,
+                position.y - size,
+                size,
+                size
+            );
         } else {
             attackRect.set(
-                this.getBounds().x + this.getBounds().width/2,
-                this.getBounds().y + this.getBounds().height/2,
-                this.getBounds().width,
-                this.getBounds().height
+                position.x + size,
+                position.y + size,
+                size,
+                size
             );
         }
         return  attackRect;
@@ -228,24 +257,24 @@ public abstract class Enemy extends Actor<Enemy.EnemyState> {
      */
     @Override
     public void takeDamage(float damage) {
-        this.health -= damage;
-        if (this.health <= 0) {
-            this.die();
+        health -= damage;
+        if (health <= 0) {
+            die();
         }
     }
 
     public void moveLeft() {
-        this.setAccelerationX(-this.getMaxAcceleration());
-        this.setFacingLeft(true);
+        body.setLinearVelocity(-maxAcceleration, body.getLinearVelocity().y);
+        setFacingLeft(true);
     }
 
     public void moveRight() {
-        this.setAccelerationX(this.getMaxAcceleration());
-        this.setFacingLeft(false);
+        body.setLinearVelocity(maxAcceleration, body.getLinearVelocity().y);
+        setFacingLeft(false);
     }
 
     public void stopMoving() {
-        this.setAccelerationX(0.0f);
+        body.setLinearVelocity(0f, body.getLinearVelocity().y);
     }
 
     /**

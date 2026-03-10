@@ -7,24 +7,29 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.Body;
+import com.badlogic.gdx.physics.box2d.Fixture;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.utils.Array;
-import com.cursedarchie.platformer.actors.enemies.logic.states.AttackState;
 import com.cursedarchie.platformer.actors.enemies.logic.states.ChaseState;
 import com.cursedarchie.platformer.actors.enemies.logic.states.IdleState;
 import com.cursedarchie.platformer.actors.enemies.logic.states.PatrolState;
-import com.cursedarchie.platformer.actors.hero.states.HeroAttackState;
-import com.cursedarchie.platformer.actors.hero.states.HeroJumpState;
-import com.cursedarchie.platformer.actors.hero.states.HeroMoveState;
+import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
+import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
+import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.enemies.Boss;
-import com.cursedarchie.platformer.actors.Enemy;
-import com.cursedarchie.platformer.actors.Hero;
-import com.cursedarchie.platformer.world.World;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.world.GameWorld;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.Rectangle;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class WorldRenderer {
@@ -34,7 +39,9 @@ public class WorldRenderer {
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.15f;
 
-    private World world;
+    private GameWorld gameWorld;
+    private Hero hero;
+
     private OrthographicCamera cam;
 
     ShapeRenderer debugRenderer = new ShapeRenderer();
@@ -86,9 +93,10 @@ public class WorldRenderer {
         this.debug = debug;
     }
 
-    public WorldRenderer(World world, boolean debug) {
-        Gdx.app.log("World Renderer", "Initializing World Renderer");
-        this.world = world;
+    public WorldRenderer(GameWorld gameWorld, boolean debug) {
+        Gdx.app.log("GameWorld Renderer", "Initializing GameWorld Renderer");
+        this.gameWorld = gameWorld;
+        this.hero = gameWorld.getHero();
         this.cam = new OrthographicCamera(CAMERA_WIDTH, CAMERA_HEIGHT);
         this.cam.position.set(CAMERA_WIDTH / 2f, CAMERA_HEIGHT / 2f, 0);
         this.cam.update();
@@ -199,12 +207,14 @@ public class WorldRenderer {
         if (debug) {
             drawDebug();
             drawCollisionBlocks();
+            drawHeroSensors();
             drawViewCones();
+            drawChainDebug();
         }
     }
 
     private void drawTiles() {
-        for (Tile tile : world.getDrawableTiles((int)CAMERA_WIDTH, (int)CAMERA_HEIGHT)) {
+        for (Tile tile : getDrawableTiles((int)CAMERA_WIDTH, (int)CAMERA_HEIGHT)) {
             spriteBatch.draw(
                 tile.getTextureRegion(),
                 tile.getPosition().x * ppuX,
@@ -216,38 +226,77 @@ public class WorldRenderer {
     }
 
     private void drawHero() {
-        Hero hero = world.getHero();
 
-        TextureRegion heroFrame = hero.isFacingLeft() ? heroIdleLeft : heroIdleRight;
-        if (hero.getStateMachine().getCurrentState() instanceof HeroMoveState) {
-            heroFrame = hero.isFacingLeft() ?
-                heroWalkLeftAnimation.getKeyFrame(hero.getStateTime(), true) :
-                heroWalkRightAnimation.getKeyFrame(hero.getStateTime(), true);
-        } else if (hero.getStateMachine().getCurrentState() instanceof HeroJumpState) {
-            if (hero.getVelocity().y > 0) {
-                heroFrame = hero.isFacingLeft() ? heroJumpLeft : heroJumpRight;
+        TextureRegion heroFrame = this.hero.isFacingLeft() ? heroIdleLeft : heroIdleRight;
+        if (this.hero.getMotionStateMachine().getCurrentState() instanceof MoveState) {
+            heroFrame = this.hero.isFacingLeft() ?
+                heroWalkLeftAnimation.getKeyFrame(this.hero.getMotionStateTime(), true) :
+                heroWalkRightAnimation.getKeyFrame(this.hero.getMotionStateTime(), true);
+        } else if (this.hero.getMotionStateMachine().getCurrentState() instanceof JumpState) {
+            if (this.hero.getBody().getLinearVelocity().y > 0) {
+                heroFrame = this.hero.isFacingLeft() ? heroJumpLeft : heroJumpRight;
             } else {
-                heroFrame = hero.isFacingLeft() ? heroFallLeft : heroFallRight;
+                heroFrame = this.hero.isFacingLeft() ? heroFallLeft : heroFallRight;
             }
-        } else if (hero.getStateMachine().getCurrentState() instanceof HeroAttackState) {
-            heroFrame = hero.isFacingLeft() ?
-                heroAttackLeftAnimation.getKeyFrame(hero.getStateTime(), false) :
-                heroAttackRightAnimation.getKeyFrame(hero.getStateTime(), false);
+        } else if (this.hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
+            heroFrame = this.hero.isFacingLeft() ?
+                heroAttackLeftAnimation.getKeyFrame(this.hero.getCombatStateTime(), false) :
+                heroAttackRightAnimation.getKeyFrame(this.hero.getCombatStateTime(), false);
         }
 
         spriteBatch.draw(
             heroFrame,
-            hero.getPosition().x * ppuX,
-            hero.getPosition().y * ppuY,
-            hero.getSize() * ppuX,
-            hero.getSize() * ppuY);
+            (this.hero.getPosition().x - this.hero.getSize()/2f) * ppuX,
+            (this.hero.getPosition().y - this.hero.getSize()/2f)* ppuY,
+            this.hero.getSize() * ppuX,
+            this.hero.getSize() * ppuY);
+    }
+
+    private void drawHeroSensors() {
+
+        debugRenderer.setProjectionMatrix(cam.combined);
+        debugRenderer.begin(ShapeType.Line);
+
+        for (Fixture fixture : hero.getBody().getFixtureList()) {
+
+            if ("hero_foot".equals(fixture.getUserData()) ||
+                "hero_attack".equals(fixture.getUserData())) {
+
+                if (fixture.isSensor()) {
+                    debugRenderer.setColor(0.5f, 0f, 0f, 1f);
+                } else {
+                    debugRenderer.setColor(Color.RED);
+                }
+
+                if (fixture.getShape() instanceof PolygonShape) {
+                    PolygonShape polygon = (PolygonShape) fixture.getShape();
+
+                    Vector2[] vertices = new Vector2[4];
+                    for (int i = 0; i < 4; i++) vertices[i] = new Vector2();
+
+                    for (int i = 0; i < polygon.getVertexCount(); i++) {
+                        polygon.getVertex(i, vertices[i]);
+
+                        vertices[i].rotateRad(hero.getBody().getAngle());
+                        vertices[i].add(hero.getBody().getPosition());
+                    }
+
+                    for (int i = 0; i < polygon.getVertexCount(); i++) {
+                        Vector2 v1 = vertices[i];
+                        Vector2 v2 = vertices[(i + 1) % polygon.getVertexCount()];
+                        debugRenderer.line(v1.x, v1.y, v2.x, v2.y);
+                    }
+                }
+            }
+        }
+
+        debugRenderer.end();
     }
 
     private void drawHitBar() {
-        Hero hero = world.getHero();
 
-        float maxHealth = hero.getMaxHealth();  // максимальное здоровье героя
-        float currentHealth = hero.getHealth(); // текущее здоровье героя
+        float maxHealth = this.hero.getMaxHealth();  // максимальное здоровье героя
+        float currentHealth = this.hero.getHealth(); // текущее здоровье героя
 
         float healthPercent = currentHealth / maxHealth;
 
@@ -281,7 +330,7 @@ public class WorldRenderer {
 
 
     private void drawEnemy() {
-        Array<Enemy> enemies = world.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
 
         for (Enemy enemy : enemies) {
             if (enemy.isAlive()) {
@@ -291,7 +340,7 @@ public class WorldRenderer {
                     enemyFrame = enemy.isFacingLeft() ? bossIdleLeft : bossIdleRight;
                 } else {
                     enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
-                    if (enemy.getStateMachine().getCurrentState() instanceof AttackState) {
+                    if (enemy.getStateMachine().getCurrentState() instanceof com.cursedarchie.platformer.actors.enemies.logic.states.AttackState) {
                         enemyFrame = enemy.isFacingLeft() ?
                             enemyAttackLeftAnimation.getKeyFrame(enemy.getAttackTime(), false) :
                             enemyAttackRightAnimation.getKeyFrame(enemy.getAttackTime(), false);
@@ -303,14 +352,14 @@ public class WorldRenderer {
                     else if (enemy.getStateMachine().getCurrentState() instanceof ChaseState ||
                         enemy.getStateMachine().getCurrentState() instanceof PatrolState) {
                         enemyFrame = enemy.isFacingLeft() ?
-                            enemyWalkLeftAnimation.getKeyFrame(enemy.getStateTime(), true) :
-                            enemyWalkRightAnimation.getKeyFrame(enemy.getStateTime(), true);
+                            enemyWalkLeftAnimation.getKeyFrame(enemy.getMotionStateTime(), true) :
+                            enemyWalkRightAnimation.getKeyFrame(enemy.getMotionStateTime(), true);
                     }
                     else if (enemy.getStateMachine().getCurrentState() instanceof IdleState) {
                         enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
                     }
                     else if (!enemy.isGrounded()) {
-                        if (enemy.getVelocity().y > 0) {
+                        if (enemy.getBody().getLinearVelocity().y > 0) {
                             enemyFrame = enemy.isFacingLeft() ? enemyJumpLeft : enemyJumpRight;
                         } else {
                             enemyFrame = enemy.isFacingLeft() ? enemyFallLeft : enemyFallRight;
@@ -330,7 +379,7 @@ public class WorldRenderer {
     }
 
     private void drawViewCones() {
-        Array<Enemy> enemies = world.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
 
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
@@ -344,25 +393,20 @@ public class WorldRenderer {
             float viewDistance = enemy.getViewDistance();
             float viewAngle = enemy.getViewAngle();
 
-            // Направление взгляда — влево или вправо
             Vector2 direction = enemy.isFacingLeft() ? new Vector2(-1, 0) : new Vector2(1, 0);
             float baseAngle = direction.angleDeg();
 
-            // Центр обзора — в центре спрайта (если нужно)
             Vector2 center = new Vector2(pos.x + enemy.getSize() / 2f, pos.y + enemy.getSize() / 2f);
 
-            int segments = 20; // число сегментов для дуги
+            int segments = 20;
             float angleStep = viewAngle / segments;
 
-            // Рисуем линии от центра к краям конуса
             Vector2 leftEdge = new Vector2(viewDistance, 0).setAngleDeg(baseAngle - viewAngle / 2f).add(center);
             Vector2 rightEdge = new Vector2(viewDistance, 0).setAngleDeg(baseAngle + viewAngle / 2f).add(center);
 
-            // Линии крайних лучей конуса
             debugRenderer.line(center.x, center.y, leftEdge.x, leftEdge.y);
             debugRenderer.line(center.x, center.y, rightEdge.x, rightEdge.y);
 
-            // Рисуем дугу между левым и правым краем — соединяем сегменты
             Vector2 prevPoint = leftEdge;
             for (int i = 1; i <= segments; i++) {
                 float angle = baseAngle - viewAngle / 2f + i * angleStep;
@@ -378,18 +422,17 @@ public class WorldRenderer {
     private void drawDebug() {
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
-        for (Tile tile : world.getDrawableTiles((int)CAMERA_WIDTH, (int)CAMERA_HEIGHT)) {
+        for (Tile tile : getDrawableTiles((int)CAMERA_WIDTH, (int)CAMERA_HEIGHT)) {
             Rectangle rect = tile.getBounds();
             debugRenderer.setColor(new Color(1, 0, 0, 1));
             debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
         }
 
-        Hero hero = world.getHero();
-        Rectangle heroRect = hero.getBounds();
+        Rectangle heroRect = this.hero.getBounds();
         debugRenderer.setColor(new Color(0, 1, 0, 1));
         debugRenderer.rect(heroRect.x, heroRect.y,   heroRect.width, heroRect.height);
 
-        Array<Enemy> enemies = world.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
         for (Enemy enemy: enemies) {
             Rectangle enemyRect = enemy.getBounds();
             debugRenderer.setColor(new Color(1, 1, 0, 1));
@@ -399,18 +442,79 @@ public class WorldRenderer {
         debugRenderer.end();
     }
 
+    public List<Tile> getDrawableTiles(int width, int height) {
+        int x = (int) this.hero.getPosition().x - width;
+        int y = (int) this.hero.getPosition().y - height;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+
+        int x2 = x + 2 * width;
+        int y2 = y + 2 * height;
+
+        Tile[][] tiles = gameWorld.getTiles();
+        int maxX = tiles.length - 1;
+        int maxY = tiles[0].length - 1;
+
+        if (x2 > maxX) x2 = maxX;
+        if (y2 > maxY) y2 = maxY;
+
+        List<Tile> drawableTiles = new ArrayList<>();
+        for (int col = x; col <= x2; col++) {
+            for (int row = y; row <= y2; row++) {
+                Tile tile = tiles[col][row];
+                if (tile != null) {
+                    drawableTiles.add(tile);
+                }
+            }
+        }
+        return drawableTiles;
+    }
+
     private void drawCollisionBlocks() {
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Filled);
         debugRenderer.setColor(new Color(1, 1, 1, 1));
-        for (Rectangle rect : world.getHeroCollisionRects()) {
+        for (Rectangle rect : this.hero.getCollisionRects()) {
             debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
         }
-        for (Rectangle rect : world.getEnemyCollisionRects()) {
-            debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
+        Array<Enemy> enemies = this.gameWorld.getLevel().getAliveEnemies();
+        for (Enemy enemy : enemies) {
+            for (Rectangle rect : enemy.getCollisionRects()) {
+                debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
+            }
         }
-        debugRenderer.end();
 
+        debugRenderer.end();
     }
 
+    private void drawChainDebug() {
+        debugRenderer.setProjectionMatrix(cam.combined);
+        debugRenderer.begin(ShapeType.Line);
+        debugRenderer.setColor(Color.RED);
+
+        Array<Body> bodies = new Array<>();
+        gameWorld.getWorld().getBodies(bodies);
+
+        for (Body body : bodies) {
+            Object data = body.getUserData();
+            if (!(data instanceof Vector2[])) continue;
+
+            Vector2[] vertices = (Vector2[]) data;
+
+            for (int i = 0; i < vertices.length - 1; i++) {
+                Vector2 v1 = vertices[i];
+                Vector2 v2 = vertices[i + 1];
+                debugRenderer.line(v1.x, v1.y, v2.x, v2.y);
+            }
+
+            // замкнутые цепи
+            if (vertices.length > 1) {
+                Vector2 v1 = vertices[vertices.length - 1];
+                Vector2 v2 = vertices[0];
+                debugRenderer.line(v1.x, v1.y, v2.x, v2.y);
+            }
+        }
+
+        debugRenderer.end();
+    }
 }

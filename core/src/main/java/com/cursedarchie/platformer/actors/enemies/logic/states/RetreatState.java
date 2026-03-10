@@ -1,6 +1,6 @@
 package com.cursedarchie.platformer.actors.enemies.logic.states;
 
-import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
 
 public class RetreatState implements EnemyState {

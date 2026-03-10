@@ -4,33 +4,34 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.actors.Hero;
-import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.physics.PhysicsCategories;
 import com.cursedarchie.platformer.tiles.Tile;
-import com.cursedarchie.platformer.world.World;
+import com.cursedarchie.platformer.world.GameWorld;
 
 public class EnemyPerception {
-    World world;
+    GameWorld gameWorld;
+    private final Vector2 hitPoint = new Vector2();
+    private boolean lineBlocked;
+    private final Vector2 tmp = new Vector2();
+    private final Vector2 dir = new Vector2();
 
-    public EnemyPerception(World world) {
-        this.world = world;
+    public EnemyPerception(GameWorld gameWorld) {
+        this.gameWorld = gameWorld;
     }
 
     public void canSeeHero(Enemy enemy) {
-        Hero hero = world.getHero();
+        Hero hero = gameWorld.getHero();
 
-        Rectangle enemyRect = enemy.getBounds();
-        Rectangle heroRect = hero.getBounds();
-
-        Vector2 enemyCenter = new Vector2(enemyRect.x + enemyRect.width / 2f, enemyRect.y + enemyRect.height / 2f);
-        Vector2 heroCenter = new Vector2(heroRect.x + heroRect.width / 2f, heroRect.y + heroRect.height / 2f);
+        Vector2 enemyCenter = enemy.getBody().getPosition();
+        Vector2 heroCenter = hero.getBody().getPosition();
 
         if (heroCenter.dst(enemyCenter) <= enemy.getViewDistance()) {
-            Vector2 toHero = new Vector2(heroCenter).sub(enemyCenter).nor();
+            tmp.set(heroCenter).sub(enemyCenter).nor();
+            dir.set(enemy.isFacingLeft() ? -1f : 1f, 0f);
 
-            Vector2 enemyDirection = enemy.isFacingLeft() ? new Vector2(-1, 0) : new Vector2(1, 0);
-
-            float dot = toHero.dot(enemyDirection);
+            float dot = tmp.dot(dir);
             float viewCosThreshold = (float) Math.cos(Math.toRadians(enemy.getViewAngle() / 2f));
             if (dot >= viewCosThreshold) {
                 enemy.setCanSeeHero(!isLineBlocked(enemyCenter, heroCenter));
@@ -42,40 +43,39 @@ public class EnemyPerception {
     }
 
     private boolean isLineBlocked(Vector2 from, Vector2 to) {
-        int steps = (int) (from.dst(to) * 10);
-        for (int i = 0; i <= steps; i++) {
-            float t = i / (float) steps;
-            float x = from.x + t * (to.x - from.x);
-            float y = from.y + t * (to.y - from.y);
+        lineBlocked = false;
 
-            int tileX = (int) Math.floor(x);
-            int tileY = (int) Math.floor(y);
+        gameWorld.getWorld().rayCast((fixture, point, normal, fraction) -> {
 
-            if (tileX < 0 || tileY < 0 || tileX >= world.getLevel().getWidth() || tileY >= world.getLevel().getHeight()) {
-                continue;
+            Object userData = fixture.getBody().getUserData();
+
+            if (userData instanceof Hero) {
+                return -1;
             }
 
-            Tile tile = world.getLevel().getTile(tileX, tileY);
-            if (tile != null && tile.isBlockingSight()) {
-                if (Intersector.intersectSegmentRectangle(from, to, tile.getBounds())) {
-                    return true;
-                }
+            if (fixture.getFilterData().categoryBits == PhysicsCategories.WALL) {
+                lineBlocked = true;
+                hitPoint.set(point);
+                return 0;
             }
-        }
-        return false;
+
+            return -1;
+        }, from, to);
+
+        return lineBlocked;
     }
 
     private void updateHeroLastKnownPos(Enemy enemy) {
-        enemy.setHeroLastKnownPos(world.getHero().getPosition());
+        enemy.setHeroLastKnownPos(gameWorld.getHero().getPosition());
     }
 
     public void checkHeroToAttack(Enemy enemy) {
-        Hero hero = world.getHero();
+        Hero hero = gameWorld.getHero();
         enemy.setCanAttackHero(enemy.getAttackRect().overlaps(hero.getBounds()));
     }
 
     public void dealDamage(Enemy enemy) {
-        Hero hero = world.getHero();
+        Hero hero = gameWorld.getHero();
 
         Gdx.app.log("INFO", "DEAL DAMAGE");
         Rectangle attackRect = enemy.getAttackRect();

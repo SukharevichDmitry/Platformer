@@ -2,38 +2,23 @@ package com.cursedarchie.platformer.actors;
 
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.Body;
+import com.badlogic.gdx.utils.Array;
 
-public abstract class Actor<T extends Enum<T>> {
+public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
 
-    /**
-     * Actor's attributes... (open to details)
-     *
-     * @param state actor's state in current time
-     * @param facingLeft indicates the direction the actor is looking at
-     * @param position indicates coordinates of actor
-     * @param bounds indicates square of actor's location (x, y, width, height)
-     * @param acceleration value which change speed
-     * @param velocity speed
-     * @param stateTime time that actor keeps it's state
-     * @param alive indicates is actor alive
-     * @param health value of health
-     * @param damage value of damage that actor can deal
-     */
-    T state;
-    boolean facingLeft;
-    Vector2 position = new Vector2();
-    Rectangle bounds = new Rectangle();
-    Vector2 acceleration = new Vector2();
-    Vector2 velocity = new Vector2();
-    float stateTime;
-    boolean alive;
-    float health;
-    float damage;
+    protected M motionState;
+    protected C combatState;
+    protected boolean facingLeft;
+    protected float motionStateTime;
+    protected float combatStateTime;
+    protected boolean alive;
+    protected float health;
+    protected float damage;
 
+    protected Array<Rectangle> collisionRects = new Array<>();
+    protected Body body;
 
-    /**
-     *  @return This method return true when actor is facing left
-     */
     public boolean isFacingLeft() {
         return facingLeft;
     }
@@ -41,78 +26,51 @@ public abstract class Actor<T extends Enum<T>> {
         this.facingLeft = facingLeft;
     }
 
-    /**
-     * @return This method return position of enemy coordinates (x, y)
-     */
     public Vector2 getPosition() {
-        return position;
-    }
-    public void setPosition(Vector2 position) {
-        this.position.set(position);
-        this.bounds.setX(position.x);
-        this.bounds.setY(position.y);
+        if (body != null) {
+            return body.getPosition();
+        }
+        return new Vector2();
     }
 
-    /**
-     * @return current acceleration
-     */
-    public Vector2 getAcceleration() {
-        return acceleration;
-    }
-    public void setAccelerationX(float ax) {
-        this.acceleration.x = ax;
-    }
-    public void setAccelerationY(float ay) {
-        this.acceleration.y = ay;
-    }
-    public void setAcceleration(Vector2 acceleration) {
-        this.acceleration.set(acceleration);
-    }
-
-    /**
-     * @return current speed
-     */
-    public Vector2 getVelocity() {
-        return velocity;
-    }
-    public void setVelocity(Vector2 velocity) {
-        this.velocity.set(velocity);
-    }
-
-    /**
-     * @return square where actor is located (x, y, width, height)
-     */
     public Rectangle getBounds() {
+        Rectangle bounds = new Rectangle();
+        if (body != null) {
+            Vector2 position = body.getPosition();
+            bounds.x = position.x - bounds.width / 2f;
+            bounds.y = position.y - bounds.height / 2f;
+        }
         return bounds;
     }
-    public void setBounds(Rectangle bounds) {
-        this.bounds.set(bounds);
 
+    public float getMotionStateTime() {
+        return motionStateTime;
     }
-
-    /**
-     * @return time which actor staying in current state
-     */
-    public float getStateTime() {
-        return stateTime;
-    }
-    public void setStateTime(float stateTime) {
-        this.stateTime = stateTime;
+    public void setMotionStateTime(float motionStateTime) {
+        this.motionStateTime = motionStateTime;
     }
 
-    /**
-     * @return current state
-     */
-    public T getState() {
-        return state;
+    public float getCombatStateTime() {
+        return combatStateTime;
     }
-    public void setState(T state) {
-        this.state = state;
+    public void setCombatStateTime(float combatStateTime) {
+        this.combatStateTime = combatStateTime;
     }
 
-    /**
-     * @return true if actor is alive
-     */
+    public M getMotionState() {
+        return motionState;
+    }
+    public void setMotionState(M motionState) {
+        this.motionState = motionState;
+    }
+
+    public C getCombatState() {
+        return combatState;
+    }
+    public void setCombatState(C combatState) {
+        this.combatState = combatState;
+    }
+
     public boolean isAlive() {
         return alive;
     }
@@ -120,19 +78,10 @@ public abstract class Actor<T extends Enum<T>> {
         this.alive = alive;
     }
 
-    /**
-     * @param damage the damage is will take
-     */
     public abstract void takeDamage (float damage);
 
-    /**
-     * @return maximum health of actor
-     */
     public abstract float getMaxHealth();
 
-    /**
-     * @return current actor's health
-     */
     public float getHealth() {
         return health;
     }
@@ -140,9 +89,6 @@ public abstract class Actor<T extends Enum<T>> {
         this.health = health;
     }
 
-    /**
-     * @return current actor's damage
-     */
     public float getDamage() {
         return damage;
     }
@@ -150,14 +96,16 @@ public abstract class Actor<T extends Enum<T>> {
         this.damage = damage;
     }
 
-    /**
-     * @param delta unit of time
-     * @Description: move actor with it velocity
-     */
-    public void update(float delta) {
-        position.add(velocity.cpy().scl(delta));
-        bounds.x = position.x;
-        bounds.y = position.y;
-        stateTime += delta;
+    public void update() {
+        if (body != null) {
+            Vector2 position = body.getPosition();
+            for (Rectangle rect : collisionRects) {
+                rect.setPosition(position.x, position.y);
+            }
+        }
+    }
+
+    public Array<Rectangle> getCollisionRects() {
+        return collisionRects;
     }
 }

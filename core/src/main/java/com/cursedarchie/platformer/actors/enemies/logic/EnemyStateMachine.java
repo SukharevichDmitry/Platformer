@@ -1,6 +1,6 @@
 package com.cursedarchie.platformer.actors.enemies.logic;
 
-import com.cursedarchie.platformer.actors.Enemy;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.logic.states.IdleState;
 
 public class EnemyStateMachine {
@@ -24,7 +24,7 @@ public class EnemyStateMachine {
             currentState.exit(enemy);
         }
         currentState = newState;
-        enemy.setStateTime(0f);
+        enemy.setMotionStateTime(0f);
         currentState.enter(enemy);
     }
 
