@@ -4,9 +4,6 @@ import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
 import com.cursedarchie.platformer.actors.enemies.logic.SimpleEnemyBrain;
-import com.cursedarchie.platformer.actors.enemies.types.Boss;
-import com.cursedarchie.platformer.actors.enemies.types.DefaultEnemy;
-import com.cursedarchie.platformer.actors.enemies.physics.EnemyPerception;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.utils.EnemySpawnData;
 import com.cursedarchie.platformer.world.GameWorld;
@@ -38,6 +35,7 @@ public class EnemyController {
                 break;
             case "boss":
                 enemy = EnemyFactory.createBoss(world, spawn.position);
+                enemy.setBrain(new SimpleEnemyBrain(gameWorld));
                 break;
         }
 

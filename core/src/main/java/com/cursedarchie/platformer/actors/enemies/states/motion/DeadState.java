@@ -11,11 +11,9 @@ public class DeadState implements EnemyState {
     }
 
     @Override
-    public void update (Enemy enemy, float delta) {
+    public void update(Enemy enemy, float delta) {
         enemy.setHealth(0);
         enemy.setDamage(0);
-        enemy.getBody().setTransform(99, 99, 0);
-        enemy.getBody().setLinearVelocity(0, 0);
         enemy.setAlive(false);
     }
 

@@ -59,6 +59,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         this.damage = cfg.damage;
         this.attackDuration = cfg.attackDuration;
         this.velocity = cfg.velocity;
+        this.attackLeft = cfg.attackLeft;
+        this.attackRight = cfg.attackRight;
 
         this.motionStateMachine = new MotionStateMachine(this);
         this.combatStateMachine = new CombatStateMachine(this);
@@ -237,4 +239,5 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     protected void die() {
         motionStateMachine.changeState(new DeadState());
     }
+
 }

@@ -4,6 +4,7 @@ import com.badlogic.gdx.physics.box2d.*;
 import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.hero.machines.CombatStateMachine;
 import com.cursedarchie.platformer.actors.hero.machines.MotionStateMachine;
+import com.cursedarchie.platformer.physics.AttackConfig;
 import com.cursedarchie.platformer.physics.PhysicsTags;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
 
@@ -49,6 +50,8 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         this.attackHandled = false;
         this.damage = 1f;
         this.attackDuration = 0.6f;
+        this.attackLeft = new AttackConfig(0.4f, 0.4f, -0.5f, 0f);
+        this.attackRight = new AttackConfig(0.4f, 0.4f, 0.5f, 0f);
 
         //BODY===================================================================
 

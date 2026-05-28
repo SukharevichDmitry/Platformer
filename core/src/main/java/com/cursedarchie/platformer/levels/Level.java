@@ -12,6 +12,8 @@ import com.cursedarchie.platformer.utils.TileFactory;
 
 public class Level {
 
+    private boolean initialized = false;
+
     private final World world;
     private Tile[][] tiles;
 
@@ -26,6 +28,14 @@ public class Level {
         enemySpawns = new Array<>();
         enemies = new Array<>();
         this.world = world;
+    }
+
+    public boolean isInitialized() {
+        return initialized;
+    }
+
+    public void setInitialized(boolean initialized) {
+        this.initialized = initialized;
     }
 
     public int[][] getTileMap() {

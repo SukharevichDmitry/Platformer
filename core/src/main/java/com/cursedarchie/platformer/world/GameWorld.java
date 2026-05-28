@@ -8,11 +8,15 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.controllers.EnemyController;
 import com.cursedarchie.platformer.controllers.HeroController;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.levels.Level;
 import com.cursedarchie.platformer.physics.GameContactListener;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class GameWorld {
 
@@ -21,6 +25,7 @@ public class GameWorld {
     private final HeroController heroController;
     private final EnemyController enemyController;
     private Level level;
+    private final Map<Integer, Level> levels = new HashMap<>();
     private int currentLevel;
 
     public GameWorld() {
@@ -41,10 +46,36 @@ public class GameWorld {
 
         world.step(delta, 6, 2);
 
+        Array<Enemy> enemies = level.getEnemies();
+
+        for (int i = enemies.size - 1; i >= 0; i--) {
+            Enemy enemy = enemies.get(i);
+
+            if (!enemy.isAlive()) {
+
+                if (enemy.getBody() != null) {
+                    world.destroyBody(enemy.getBody());
+                }
+
+                enemies.removeIndex(i);
+            }
+        }
+
         heroController.update(delta);
         enemyController.update(delta);
 
         hero.getMotionStateMachine().update(delta);
+    }
+
+    private Level getLevel(int index) {
+        if (levels.containsKey(index)) {
+            return levels.get(index);
+        }
+
+        Level level = loadLevel(index);
+        levels.put(index, level);
+
+        return level;
     }
 
     private Level loadLevel(int levelIndex) {
@@ -92,10 +123,17 @@ public class GameWorld {
     }
 
     private void rebuildLevel() {
+
         clearLevelBodies();
-        level = loadLevel(currentLevel);
+
+        level = getLevel(currentLevel);
+
         level.generateTilesAndBodies();
-        level.spawnEnemies(enemyController);
+
+        if (!level.isInitialized()) {
+            level.spawnEnemies(enemyController);
+            level.setInitialized(true);
+        }
     }
 
     private void clearLevelBodies() {

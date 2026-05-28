@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
+import com.cursedarchie.platformer.physics.AttackConfig;
 import com.cursedarchie.platformer.physics.PhysicsTags;
 
 import java.util.HashSet;
@@ -31,6 +32,8 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     protected boolean attackHandled;
     protected boolean leftAttackActive;
     protected boolean rightAttackActive;
+    protected AttackConfig attackLeft;
+    protected AttackConfig attackRight;
 
     protected float motionStateTime;
     protected float combatStateTime;
@@ -168,14 +171,14 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     ) {
 
         attackRightSensor = createAttackSensor(
-            new Vector2(size, 0),
+            attackRight,
             tag,
             category,
             mask
         );
 
         attackLeftSensor = createAttackSensor(
-            new Vector2(-size, 0),
+            attackLeft,
             tag,
             category,
             mask
@@ -183,33 +186,27 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     }
 
     protected Fixture createAttackSensor(
-        Vector2 offset,
+        AttackConfig cfg,
         String tag,
         short category,
         short mask
     ) {
-
         PolygonShape shape = new PolygonShape();
 
-        float attackWidth = size * 0.8f;
-        float attackHeight = size * 0.8f;
-
         shape.setAsBox(
-            attackWidth / 2f,
-            attackHeight / 2f,
-            offset,
+            cfg.width / 2f,
+            cfg.height / 2f,
+            new Vector2(cfg.offsetX, cfg.offsetY),
             0
         );
 
         FixtureDef def = new FixtureDef();
         def.shape = shape;
         def.isSensor = true;
-
         def.filter.categoryBits = category;
         def.filter.maskBits = mask;
 
         Fixture fixture = body.createFixture(def);
-
         fixture.setUserData(tag);
 
         shape.dispose();

@@ -18,7 +18,6 @@ import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.tiles.Tile;
-import com.cursedarchie.platformer.actors.enemies.types.Boss;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
 
@@ -378,32 +377,30 @@ public class WorldRenderer {
             if (enemy.isAlive()) {
                 TextureRegion enemyFrame;
 
-                if (enemy instanceof Boss) {
-                    enemyFrame = enemy.isFacingLeft() ? bossIdleLeft : bossIdleRight;
-                } else {
+
+                enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
+                if (enemy.getCombatStateMachine().getCurrentState() instanceof com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) {
+                    enemyFrame = enemy.isFacingLeft() ?
+                        enemyAttackLeftAnimation.getKeyFrame(enemy.getCombatStateTime(), false) :
+                        enemyAttackRightAnimation.getKeyFrame(enemy.getCombatStateTime(), false);
+                }
+                else if (enemy.getMotionStateMachine().getCurrentState() instanceof ChaseState ||
+                    enemy.getMotionStateMachine().getCurrentState() instanceof PatrolState) {
+                    enemyFrame = enemy.isFacingLeft() ?
+                        enemyWalkLeftAnimation.getKeyFrame(enemy.getMotionStateTime(), true) :
+                        enemyWalkRightAnimation.getKeyFrame(enemy.getMotionStateTime(), true);
+                }
+                else if (enemy.getMotionStateMachine().getCurrentState() instanceof MotionIdleState) {
                     enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
-                    if (enemy.getCombatStateMachine().getCurrentState() instanceof com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) {
-                        enemyFrame = enemy.isFacingLeft() ?
-                            enemyAttackLeftAnimation.getKeyFrame(enemy.getCombatStateTime(), false) :
-                            enemyAttackRightAnimation.getKeyFrame(enemy.getCombatStateTime(), false);
-                    }
-                    else if (enemy.getMotionStateMachine().getCurrentState() instanceof ChaseState ||
-                        enemy.getMotionStateMachine().getCurrentState() instanceof PatrolState) {
-                        enemyFrame = enemy.isFacingLeft() ?
-                            enemyWalkLeftAnimation.getKeyFrame(enemy.getMotionStateTime(), true) :
-                            enemyWalkRightAnimation.getKeyFrame(enemy.getMotionStateTime(), true);
-                    }
-                    else if (enemy.getMotionStateMachine().getCurrentState() instanceof MotionIdleState) {
-                        enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
-                    }
-                    else if (!enemy.isGrounded()) {
-                        if (enemy.getBody().getLinearVelocity().y > 0) {
-                            enemyFrame = enemy.isFacingLeft() ? enemyJumpLeft : enemyJumpRight;
-                        } else {
-                            enemyFrame = enemy.isFacingLeft() ? enemyFallLeft : enemyFallRight;
-                        }
+                }
+                else if (!enemy.isGrounded()) {
+                    if (enemy.getBody().getLinearVelocity().y > 0) {
+                        enemyFrame = enemy.isFacingLeft() ? enemyJumpLeft : enemyJumpRight;
+                    } else {
+                        enemyFrame = enemy.isFacingLeft() ? enemyFallLeft : enemyFallRight;
                     }
                 }
+
 
                 spriteBatch.draw(
                     enemyFrame,
