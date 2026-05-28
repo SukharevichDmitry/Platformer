@@ -1,17 +1,19 @@
 package com.cursedarchie.platformer.actors.enemies;
 
-import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
-import com.badlogic.gdx.utils.Pool;
 import com.cursedarchie.platformer.actors.Actor;
-import com.cursedarchie.platformer.actors.enemies.logic.EnemyStateMachine;
-import com.cursedarchie.platformer.actors.enemies.logic.states.DeadState;
-import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.actors.enemies.logic.EnemyBrain;
+import com.cursedarchie.platformer.actors.enemies.machines.MotionStateMachine;
+import com.cursedarchie.platformer.actors.enemies.states.combat.AttackState;
+import com.cursedarchie.platformer.actors.enemies.states.motion.*;
+import com.cursedarchie.platformer.actors.enemies.machines.CombatStateMachine;
+import com.cursedarchie.platformer.physics.PhysicsTags;
+import com.cursedarchie.platformer.physics.PhysicsCategories;
 
 public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCombatState> {
 
-    private final Body body;
+    /*===========================================PARAMETERS===========================================================*/
 
     public enum EnemyMotionState {
         IDLE,
@@ -26,107 +28,119 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         ATTACK
     }
 
+    public enum Intent {
+        IDLE,
+        PATROL,
+        CHASE
+    }
 
-    /**
-     * Enemy attributes... (open to details)
-     *
-     * @param EnemyState enum of states that enemy can have
-     * @param grounded flag that indicates isn't enemy falling
-     * @param damageDealt flag that indicates is enemy end his attack
-     * @param canSeeHero flag that indicates is enemy can see hero
-     * @param attackTime current time of attack animation
-     */
-    private float size;
-    private float maxHealth;
-    private float attackDuration;
-    private float viewDistance;
-    private float viewAngle;
-    private float maxAcceleration;
-    private boolean grounded = false;
-    private boolean damageDealt = false;
+    private Intent currentIntent = null;
+    private EnemyBrain brain;
     private boolean canSeeHero = false;
     private boolean canAttackHero = false;
-    private boolean canDealDamage = false;
-    private float attackTime = 0f;
+    private boolean attackRequested;
     private Vector2 heroLastKnownPos = new Vector2();
+    protected MotionStateMachine motionStateMachine;
+    protected CombatStateMachine combatStateMachine;
 
-    private final Pool<Rectangle> rectPool = new Pool<Rectangle>() {
-        @Override
-        protected Rectangle newObject() {
-            return new Rectangle();
-        }
-    };
 
-    private final EnemyStateMachine stateMachine;
+    /*===========================================CONSTRUCTOR=======================================================*/
 
-    public Enemy(World world, Vector2 pos, float size, float maxHealth) {
-        this.size = size;
+    public Enemy(World world, Vector2 pos, EnemyConfig cfg) {
+        super();
+
+        //PARAMETERS=============================================================
+
+        this.size = cfg.size;
+        this.maxHealth = cfg.maxHealth;
+        this.viewDistance = cfg.viewDistance;
+        this.viewAngle = cfg.viewAngle;
+        this.health = cfg.maxHealth;
+        this.damage = cfg.damage;
+        this.attackDuration = cfg.attackDuration;
+        this.velocity = cfg.velocity;
+
+        this.motionStateMachine = new MotionStateMachine(this);
+        this.combatStateMachine = new CombatStateMachine(this);
         this.motionState = EnemyMotionState.IDLE;
+        this.combatState = EnemyCombatState.IDLE;
+
         this.motionStateTime = 0f;
         this.combatStateTime = 0f;
-        this.health = maxHealth;
-        this.facingLeft = true;
         this.alive = true;
-        this.stateMachine = new EnemyStateMachine(this);
+        this.facingLeft = true;
+        this.attackHandled = false;
 
-        BodyDef bodyDef = new BodyDef();
-        bodyDef.type = BodyDef.BodyType.DynamicBody;
-        bodyDef.position.set(pos);
-        this.body = world.createBody(bodyDef);
+        //BODY===================================================================
 
-        PolygonShape shape = new PolygonShape();
-        shape.setAsBox(size / 2f, size / 2f);
+        createBody(
+            world,
+            pos,
+            PhysicsCategories.ENEMY,
+            (short)(
+                PhysicsCategories.WALL |
+                PhysicsCategories.HERO |
+                PhysicsCategories.GROUND |
+                PhysicsCategories.ENEMY |
+                PhysicsCategories.HERO_ATTACK |
+                PhysicsCategories.VISION
+            )
+        );
 
-        FixtureDef fixtureDef = new FixtureDef();
-        fixtureDef.shape = shape;
-        fixtureDef.density = 1f;
-        fixtureDef.friction = 0.2f;
-        fixtureDef.restitution = 0f;
+        //FOOT_SENSOR============================================================
 
-        this.body.createFixture(fixtureDef);
-        shape.dispose();
+        createFootSensor(
+            PhysicsCategories.ENEMY,
+            (short)(
+                PhysicsCategories.WALL |
+                PhysicsCategories.GROUND |
+                PhysicsCategories.HERO |
+                PhysicsCategories.ENEMY
+            )
+        );
+
+        //ATTACK_SENSORS=========================================================
+
+        createAttackSensors(
+            PhysicsTags.ENEMY_ATTACK_SENSOR,
+            PhysicsCategories.ENEMY_ATTACK,
+            PhysicsCategories.HERO
+        );
+
+        //VISION=================================================================
+
+        createVisionSensor(
+            viewDistance,
+            PhysicsCategories.VISION,
+            PhysicsCategories.HERO
+        );
+
+        //=======================================================================
     }
 
     /*===========================================GETTERS/SETTERS===================================================*/
-    public Body getBody() {
-        return body;
+
+    public EnemyBrain getBrain() {
+        return brain;
+    }
+    public void setBrain(EnemyBrain brain) {
+        this.brain = brain;
     }
 
-    public Vector2 getPosition() {
-        return body.getPosition();
+    public Intent getCurrentIntent() {
+        return currentIntent;
+    }
+    public void setIntent(Intent newIntent) {
+        this.currentIntent = newIntent;
     }
 
-    @Override
-    public float getMaxHealth() {
-        return maxHealth;
+    public MotionStateMachine getMotionStateMachine() {
+        return motionStateMachine;
     }
-    public void setMaxHealth(float maxHealth) {
-        this.maxHealth = maxHealth;
-    }
-
-    /**
-     * @return This method return true when enemy stay on any block
-     */
-    public boolean isGrounded() {
-        return grounded;
-    }
-    public void setGrounded(boolean grounded) {
-        this.grounded = grounded;
+    public CombatStateMachine getCombatStateMachine() {
+        return combatStateMachine;
     }
 
-    /**
-     * @return size. this.bounds.width = this.bounds.height = size
-     */
-    public float getSize() {
-        return size;
-    }
-    public void setSize(float size) {
-        this.size = size;
-    }
-
-    /**
-     * @return True when enemy can see hero
-     */
     public boolean isCanSeeHero() {
         return canSeeHero;
     }
@@ -134,153 +148,93 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         this.canSeeHero = canSeeHero;
     }
 
-    /**
-     * @return float of Angle of the field of view
-     */
-    public float getViewAngle() {
-        return viewAngle;
-    }
-    public void setViewAngle(float viewAngle) {
-        this.viewAngle = viewAngle;
-    }
-
-    /**
-     * @return the distance of view
-     */
-    public float getViewDistance() {
-        return viewDistance;
-    }
-    public void setViewDistance(float viewDistance) {
-        this.viewDistance = viewDistance;
-    }
-
-    /**
-     * @return the time before causing damage
-     */
-    public float getAttackDuration() {
-        return attackDuration;
-    }
-    public void setAttackDuration(float attackDuration) {
-        this.attackDuration = attackDuration;
-    }
-
-    /**
-     * @return maximum enemy's acceleration
-     */
-    public float getMaxAcceleration() {
-        return maxAcceleration;
-    }
-    public void setMaxAcceleration(float maxAcceleration) {
-        this.maxAcceleration = maxAcceleration;
-    }
-
-    public EnemyStateMachine getStateMachine() {
-        return stateMachine;
-    }
-
     public Vector2 getHeroLastKnownPos() {
         return heroLastKnownPos;
     }
-
     public void setHeroLastKnownPos(Vector2 heroLastKnownPos) {
         this.heroLastKnownPos = heroLastKnownPos;
-    }
-
-    public Rectangle getAttackRect() {
-        Rectangle attackRect = rectPool.obtain();
-        Vector2 position = body.getPosition();
-
-        if (this.isFacingLeft()) {
-            attackRect.set(
-                position.x - size,
-                position.y - size,
-                size,
-                size
-            );
-        } else {
-            attackRect.set(
-                position.x + size,
-                position.y + size,
-                size,
-                size
-            );
-        }
-        return  attackRect;
-    }
-
-    public Pool<Rectangle> getRectPool() {
-        return rectPool;
-    }
-
-    public float getAttackTime() {
-        return attackTime;
-    }
-
-    public void setAttackTime(float attackTime) {
-        this.attackTime = attackTime;
     }
 
     public boolean isCanAttackHero() {
         return canAttackHero;
     }
-
     public void setCanAttackHero(boolean canAttackHero) {
         this.canAttackHero = canAttackHero;
     }
 
-    public void setCanDealDamage(boolean canDealDamage) {
-        this.canDealDamage = canDealDamage;
+
+    /*==============================================COMBAT============================================================*/
+
+    public void requestAttack() {
+        if (combatStateMachine.getCurrentState() instanceof AttackState) return;
+
+        attackRequested = true;
     }
 
-    public boolean isDamageDealt() {
-        return damageDealt;
+    public void clearAttackRequest() {
+        attackRequested = false;
     }
 
-    public void setDamageDealt(boolean damageDealt) {
-        this.damageDealt = damageDealt;
-    }
+    public void processCombatRequests() {
 
-    /*============================================================================================================*/
-
-    /**
-     * @return true if hero so nearby to deal damage
-     */
-    public boolean isCanDealDamage() {
-        return canDealDamage;
-    }
-    public void markDamageDealt() {
-        damageDealt = true;
-    }
-
-    /**
-     * @param damage the damage is will take
-     */
-    @Override
-    public void takeDamage(float damage) {
-        health -= damage;
-        if (health <= 0) {
-            die();
+        if (!attackRequested) {
+            return;
         }
+
+        if (combatStateMachine.getCurrentState() instanceof AttackState) {
+            return;
+        }
+
+        attackRequested = false;
+        combatStateMachine.changeState(new AttackState());
     }
+
+
+    /*============================================CONTROLLERS=========================================================*/
 
     public void moveLeft() {
-        body.setLinearVelocity(-maxAcceleration, body.getLinearVelocity().y);
-        setFacingLeft(true);
+        moveHorizontal(-1);
     }
 
     public void moveRight() {
-        body.setLinearVelocity(maxAcceleration, body.getLinearVelocity().y);
-        setFacingLeft(false);
+        moveHorizontal(1);
+    }
+    public void moveStop() {
+        moveHorizontal(0);
     }
 
-    public void stopMoving() {
-        body.setLinearVelocity(0f, body.getLinearVelocity().y);
+    public void moveHorizontal(float dir) {
+
+        Vector2 v = body.getLinearVelocity();
+
+        body.setLinearVelocity(
+            dir * velocity,
+            v.y
+        );
+
+        if (dir != 0) {
+            facingLeft = dir < 0;
+        }
     }
 
-    /**
-     * @Description: dying logic. Starts DeadState. Do not call another States in Enemy class!
-     */
-    public void die() {
-        stateMachine.changeState(new DeadState());
+    @Override
+    public void update(float delta) {
+        if (body != null) {
+            syncCollisionRects();
+        }
+        if (brain != null) {
+            brain.think(this, null, delta);
+        }
+
+        motionStateMachine.applyIntent(currentIntent);
+        motionStateMachine.update(delta);
+
+        processCombatRequests();
+        combatStateMachine.update(delta);
+    }
+
+    @Override
+    protected void die() {
+        motionStateMachine.changeState(new DeadState());
     }
 }

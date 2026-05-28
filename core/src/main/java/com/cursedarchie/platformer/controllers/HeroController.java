@@ -1,12 +1,10 @@
 package com.cursedarchie.platformer.controllers;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.actors.hero.HeroPerception;
 import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
-import com.cursedarchie.platformer.actors.hero.states.motion.IdleState;
+import com.cursedarchie.platformer.actors.hero.states.motion.MotionIdleState;
 import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.actors.hero.Hero;
@@ -22,12 +20,9 @@ public class HeroController implements InputProcessor {
         LEFT, RIGHT, JUMP, ATTACK
     }
 
-    private static final float MOVE_SPEED = 5f;
-    private static final float JUMP_FORCE = 2f;
     private final GameWorld gameWorld;
     private final Hero hero;
     private boolean attackKeyWasPressed = false;
-    private final HeroPerception perception;
     private final Map<Keys, Boolean> keys = new HashMap<>();
     {
         keys.put(Keys.LEFT, false);
@@ -39,7 +34,6 @@ public class HeroController implements InputProcessor {
     public HeroController(GameWorld gameWorld) {
         this.gameWorld = gameWorld;
         this.hero = gameWorld.getHero();
-        this.perception = new HeroPerception(gameWorld);
     }
 
     @Override
@@ -112,20 +106,12 @@ public class HeroController implements InputProcessor {
             return;
         }
 
-        keys.put(Keys.LEFT, Gdx.input.isKeyPressed(Input.Keys.LEFT));
-        keys.put(Keys.RIGHT, Gdx.input.isKeyPressed(Input.Keys.RIGHT));
-        keys.put(Keys.JUMP, Gdx.input.isKeyPressed(Input.Keys.SPACE));
-        keys.put(Keys.ATTACK, Gdx.input.isKeyPressed(Input.Keys.X));
-
         processInput();
 
         checkPositionForLevelChange();
         checkHeroPositionForDeathFall();
 
-        hero.update();
-        perceptionLogic(hero);
-        hero.getMotionStateMachine().update(delta);
-        hero.getCombatStateMachine().update(delta);
+        hero.update(delta);
     }
 
     private void checkPositionForLevelChange() {
@@ -153,42 +139,40 @@ public class HeroController implements InputProcessor {
     }
 
     private void handleMovementInput() {
-        Vector2 velocity = hero.getBody().getLinearVelocity();
         float moveX = 0;
+        boolean leftKey = keys.get(Keys.LEFT);
+        boolean rightKey = keys.get(Keys.RIGHT);
+        boolean jumpKey = keys.get(Keys.JUMP);
+        boolean isJumpState = hero.getMotionStateMachine().getCurrentState() instanceof JumpState;
 
-        if (keys.get(Keys.LEFT)) {
-            moveX = -MOVE_SPEED;
+        if (leftKey) {
+            moveX = -hero.getVelocity();
             hero.setFacingLeft(true);
-
-            if (!(hero.getMotionStateMachine().getCurrentState() instanceof JumpState)) {
-                hero.getMotionStateMachine().changeState(new MoveState());
-            }
-        } else if (keys.get(Keys.RIGHT)) {
-            moveX = MOVE_SPEED;
+        }
+        if (rightKey) {
+            moveX = hero.getVelocity();
             hero.setFacingLeft(false);
-
-            if (!(hero.getMotionStateMachine().getCurrentState() instanceof JumpState)) {
-                hero.getMotionStateMachine().changeState(new MoveState());
-            }
-        } else {
-            if (hero.isGrounded()) {
-                hero.getMotionStateMachine().changeState(new IdleState());
-            }
         }
 
-        hero.getBody().setLinearVelocity(moveX, velocity.y);
+        hero.getBody().setLinearVelocity(moveX, hero.getBody().getLinearVelocity().y);
 
-        if (keys.get(Keys.JUMP) && hero.isGrounded()) {
+        if (jumpKey && hero.isGrounded()) {
             hero.getBody().applyLinearImpulse(
-                new Vector2(0, JUMP_FORCE),
+                new Vector2(0, hero.getJumpForce()),
                 hero.getBody().getWorldCenter(),
                 true
             );
-            hero.setGrounded(false);
             hero.getMotionStateMachine().changeState(new JumpState());
         }
-    }
 
+        if (!isJumpState) {
+            if (moveX != 0) {
+                hero.getMotionStateMachine().changeState(new MoveState());
+            } else {
+                hero.getMotionStateMachine().changeState(new MotionIdleState());
+            }
+        }
+    }
     private void handleCombatInput() {
         if (keys.get(Keys.ATTACK)) {
             if (!attackKeyWasPressed) {
@@ -198,9 +182,5 @@ public class HeroController implements InputProcessor {
         } else {
             attackKeyWasPressed = false;
         }
-    }
-
-    private void perceptionLogic(Hero hero) {
-        perception.checkAttackingEnemies(hero);
     }
 }

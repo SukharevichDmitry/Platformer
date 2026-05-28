@@ -1,8 +1,8 @@
-package com.cursedarchie.platformer.actors.enemies.logic.states;
+package com.cursedarchie.platformer.actors.enemies.states.motion;
 
 import com.badlogic.gdx.Gdx;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
-import com.cursedarchie.platformer.actors.enemies.logic.EnemyState;
+import com.cursedarchie.platformer.actors.enemies.states.EnemyState;
 
 public class PatrolState implements EnemyState {
     @Override

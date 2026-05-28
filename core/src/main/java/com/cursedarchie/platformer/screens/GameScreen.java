@@ -3,7 +3,7 @@
     import com.badlogic.gdx.Input.Keys;
     import com.badlogic.gdx.graphics.GL20;
     import com.cursedarchie.platformer.Main;
-    import com.cursedarchie.platformer.utils.WorldRenderer;
+    import com.cursedarchie.platformer.world.WorldRenderer;
     import com.cursedarchie.platformer.world.GameWorld;
 
     public class GameScreen implements Screen {

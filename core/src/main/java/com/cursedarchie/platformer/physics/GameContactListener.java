@@ -1,18 +1,9 @@
 package com.cursedarchie.platformer.physics;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.physics.box2d.*;
-import com.cursedarchie.platformer.actors.enemies.Enemy;
-import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.actors.Actor;
 
 public class GameContactListener implements ContactListener {
-
-    private final Hero hero;
-    private int footContacts = 0;
-
-    public GameContactListener(Hero hero) {
-        this.hero = hero;
-    }
 
     @Override
     public void beginContact(Contact contact) {
@@ -25,53 +16,115 @@ public class GameContactListener implements ContactListener {
     }
 
     private void handleContact(Contact contact, boolean begin) {
+
         Fixture fixtureA = contact.getFixtureA();
         Fixture fixtureB = contact.getFixtureB();
+        handleFootSensor(fixtureA, fixtureB, begin);
+        handleVision(fixtureA, fixtureB, begin);
 
-        //FOOT_SENSOR=================================================================================
-        if (isHeroFoot(fixtureA) || isHeroFoot(fixtureB)) {
+        handleAttack(fixtureA, fixtureB, PhysicsTags.HERO_ATTACK_SENSOR, begin);
+        handleAttack(fixtureA, fixtureB, PhysicsTags.ENEMY_ATTACK_SENSOR, begin);
 
-            Fixture other = isHeroFoot(fixtureA) ? fixtureB : fixtureA;
-            System.out.println("Hero foot contact with: " + other.getUserData() + " begin: " + begin);
+    }
 
-            if (other.getUserData() != null && other.getUserData().equals("level")) {
-                if (begin) {
-                    footContacts++;
-                } else {
-                    footContacts--;
-                    if (footContacts < 0) footContacts = 0;
-                }
-                hero.setGrounded(footContacts > 0);
+    private void handleFootSensor(Fixture a, Fixture b, boolean begin) {
+
+        Fixture foot = findFixture(a, b, PhysicsTags.FOOT_SENSOR);
+
+        if (foot == null) return;
+
+        Fixture other = foot == a ? b : a;
+
+        Object actorData = foot.getBody().getUserData();
+
+        if (!(actorData instanceof Actor)) return;
+
+        Actor actor = (Actor) actorData;
+
+        Object otherData = other.getBody().getUserData();
+
+        boolean isGround =
+            "level".equals(other.getBody().getUserData());
+
+        boolean isActor =
+            otherData instanceof Actor;
+
+        if (isGround || isActor) {
+
+            int contacts = actor.getFootContacts();
+
+            if (begin) {
+                contacts++;
+            } else {
+                contacts--;
             }
-        }
 
-        //ATTACK_SENSOR===============================================================================
+            if (contacts < 0) contacts = 0;
 
-        if (begin && (isHeroAttack(fixtureA) || isHeroAttack(fixtureB))) {
-            Fixture other = isHeroAttack(fixtureA) ? fixtureB : fixtureA;
-
-            Object data = other.getBody().getUserData();
-
-            if (data instanceof Enemy) {
-                Enemy enemy = (Enemy) data;
-
-                if (!hero.isAttackHandled()) {
-                    enemy.takeDamage(hero.getDamage());
-
-                    hero.setAttackHandled(true);
-
-                    Gdx.app.log("HERO", "Hero hit enemy!");
-                }
-            }
+            actor.setFootContacts(contacts);
+            actor.setGrounded(contacts > 0);
         }
     }
 
-    private boolean isHeroFoot(Fixture fixture) {
-        return fixture.getUserData() != null && fixture.getUserData().equals("hero_foot");
+    private void handleVision(Fixture a, Fixture b, boolean begin) {
+
+        Fixture vision = findFixture(a, b, PhysicsTags.VISION_SENSOR);
+
+        if (vision == null) return;
+
+        Fixture other = (vision == a) ? b : a;
+
+        Object ownerObj = vision.getBody().getUserData();
+        Object targetObj = other.getBody().getUserData();
+
+        if (!(ownerObj instanceof Actor)) return;
+        if (!(targetObj instanceof Actor)) return;
+
+        Actor owner = (Actor) ownerObj;
+        Actor target = (Actor) targetObj;
+
+        if (begin) {
+            owner.addVisibleActor(target);
+            System.out.println("[ENEMY] ADD " + target);
+        } else {
+            owner.removeVisibleActor(target);
+            System.out.println("[ENEMY] REMOVE " + target);
+        }
     }
 
-    private boolean isHeroAttack(Fixture fixture) {
-        return "hero_attack".equals(fixture.getUserData());
+    private void handleAttack(Fixture a, Fixture b, String tag, boolean begin) {
+
+        Fixture attack = findFixture(a, b, tag);
+        if (attack == null) return;
+
+        Fixture other = (attack == a) ? b : a;
+
+        if (other.isSensor()) return;
+
+        Object attackerObj = attack.getBody().getUserData();
+        Object targetObj = other.getBody().getUserData();
+
+        if (!(attackerObj instanceof Actor)) return;
+        if (!(targetObj instanceof Actor)) return;
+
+        Actor attacker = (Actor) attackerObj;
+        Actor target = (Actor) targetObj;
+
+        if (begin) {
+            attacker.addAttackTarget(target);
+            System.out.println("[ENEMY] ADD " + target);
+        } else {
+            attacker.removeAttackTarget(target);
+            System.out.println("[ENEMY] REMOVE " + target);
+        }
+    }
+
+    private Fixture findFixture(Fixture a, Fixture b, String tag) {
+
+        if (tag.equals(a.getUserData())) return a;
+        if (tag.equals(b.getUserData())) return b;
+
+        return null;
     }
 
     @Override

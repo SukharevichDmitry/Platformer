@@ -6,15 +6,13 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.cursedarchie.platformer.controllers.EnemyController;
 import com.cursedarchie.platformer.controllers.HeroController;
-import com.cursedarchie.platformer.physics.GameContactListener;
-import com.cursedarchie.platformer.physics.PhysicsCategories;
-import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.levels.Level;
-import com.cursedarchie.platformer.utils.*;
+import com.cursedarchie.platformer.physics.GameContactListener;
 
 public class GameWorld {
 
@@ -24,14 +22,13 @@ public class GameWorld {
     private final EnemyController enemyController;
     private Level level;
     private int currentLevel;
-    private Tile[][] tiles;
 
     public GameWorld() {
         this.world = new World(new Vector2(0, -10), true);
         this.currentLevel = 0;
         this.level = loadLevel(currentLevel);
         this.hero = new Hero(new Vector2(5, 5), world);
-        world.setContactListener(new GameContactListener(hero));
+        world.setContactListener(new GameContactListener());
 
         this.heroController = new HeroController(this);
         this.enemyController = new EnemyController(this);
@@ -81,7 +78,12 @@ public class GameWorld {
         });
 
         try {
-            return json.fromJson(Level.class, file);
+            Level level = new Level(world);
+
+            JsonValue jsonData = new JsonReader().parse(file);
+            json.readFields(level, jsonData);
+
+            return level;
         } catch (Exception e) {
             System.err.println("Error while loading level: " + path);
             e.printStackTrace();
@@ -92,8 +94,8 @@ public class GameWorld {
     private void rebuildLevel() {
         clearLevelBodies();
         level = loadLevel(currentLevel);
-        generateTilesAndBodies(level);
-        spawnEnemies(level);
+        level.generateTilesAndBodies();
+        level.spawnEnemies(enemyController);
     }
 
     private void clearLevelBodies() {
@@ -105,131 +107,6 @@ public class GameWorld {
                 body.getUserData().equals("level")) {
                 world.destroyBody(body);
             }
-        }
-    }
-
-    private void generateTilesAndBodies(Level level) {
-        int[][] map = level.getTileMap();
-        int height = level.getHeight();
-        int width = level.getWidth();
-
-        tiles = new Tile[width][height];
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                Tile tile = TileFactory.create(map[y][x], new Vector2(x, height - y - 1));
-                tiles[x][height - y - 1] = tile;
-            }
-        }
-
-        createEdgeBodyForLevel(level);
-    }
-
-    private void createEdgeBodyForLevel(Level level) {
-        int[][] map = level.getTileMap();
-        int width = level.getWidth();
-        int height = level.getHeight();
-        float tileSize = 1f;
-
-        // -------------------------
-        // 1. Горизонтальные верхние грани
-        // -------------------------
-        for (int y = 0; y < height; y++) {
-            int startX = -1;
-            for (int x = 0; x <= width; x++) {
-                boolean isTile = (x < width) && (map[y][x] != 0);
-
-                if (isTile && startX == -1) startX = x;
-                if ((!isTile || x == width) && startX != -1) {
-                    int endX = (x == width) ? width - 1 : x - 1;
-
-                    Vector2[] topEdge = new Vector2[]{
-                        new Vector2(startX * tileSize, (height - y) * tileSize),
-                        new Vector2((endX + 1) * tileSize, (height - y) * tileSize)
-                    };
-                    createChainShape(topEdge);
-
-                    startX = -1;
-                }
-            }
-        }
-
-        // -------------------------
-        // 2. Вертикальные боковые грани
-        // -------------------------
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                if (map[y][x] == 0) continue;
-
-                float leftX = x * tileSize;
-                float rightX = (x + 1) * tileSize;
-                float topY = (height - y) * tileSize;
-                float bottomY = (height - y - 1) * tileSize;
-
-                if (x == 0 || map[y][x - 1] == 0) {
-                    createChainShape(new Vector2[]{
-                        new Vector2(leftX, bottomY),
-                        new Vector2(leftX, topY)
-                    });
-                }
-
-                if (x == width - 1 || map[y][x + 1] == 0) {
-                    createChainShape(new Vector2[]{
-                        new Vector2(rightX, bottomY),
-                        new Vector2(rightX, topY)
-                    });
-                }
-            }
-        }
-
-        // -------------------------
-        // 3. Нижние грани
-        // -------------------------
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                if (map[y][x] == 0) continue;
-
-                boolean noTileBelow = (y == height - 1) || (map[y + 1][x] == 0);
-
-                if (noTileBelow) {
-                    float leftX = x * tileSize;
-                    float rightX = (x + 1) * tileSize;
-                    float bottomY = (height - y - 1) * tileSize;
-
-                    Vector2[] bottomEdge = new Vector2[]{
-                        new Vector2(leftX, bottomY),
-                        new Vector2(rightX, bottomY)
-                    };
-                    createChainShape(bottomEdge);
-                }
-            }
-        }
-    }
-
-    private void createChainShape(Vector2[] vertices) {
-        ChainShape chain = new ChainShape();
-        chain.createChain(vertices);
-
-        BodyDef bodyDef = new BodyDef();
-        bodyDef.type = BodyDef.BodyType.StaticBody;
-        Body body = world.createBody(bodyDef);
-
-        FixtureDef fixtureDef = new FixtureDef();
-        fixtureDef.shape = chain;
-        fixtureDef.friction = 0.8f;
-        fixtureDef.filter.categoryBits = PhysicsCategories.WALL;
-        fixtureDef.filter.maskBits = PhysicsCategories.HERO | PhysicsCategories.ENEMY;
-
-        Fixture fixture = body.createFixture(fixtureDef);
-        fixture.setUserData("level");
-        body.setUserData("level");
-
-        chain.dispose();
-    }
-
-    private void spawnEnemies(Level level) {
-        for (EnemySpawnData spawn: level.getEnemySpawns()) {
-            enemyController.spawnEnemy(spawn, world);
         }
     }
 
@@ -266,12 +143,5 @@ public class GameWorld {
     }
     public EnemyController getEnemyController() {
         return enemyController;
-    }
-    public Tile getTile(int x, int y) {
-        if (x < 0 || y < 0 || x >= tiles.length || y >= tiles[0].length) return null;
-        return tiles[x][y];
-    }
-    public Tile[][] getTiles() {
-        return tiles;
     }
 }

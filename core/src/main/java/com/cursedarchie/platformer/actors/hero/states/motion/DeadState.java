@@ -8,7 +8,6 @@ public class DeadState implements HeroState {
     @Override
     public void enter(Hero hero) {
         Gdx.app.log("HERO", "Started Dying");
-        hero.setMotionState(Hero.HeroMotionState.DIE);
     }
 
     @Override

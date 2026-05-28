@@ -8,11 +8,10 @@ import com.badlogic.gdx.math.Vector2;
 
 public abstract class Tile {
 
-    public float SIZE;
-    TextureAtlas atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
-
-    Vector2  position = new Vector2();
-    Rectangle  bounds = new Rectangle();
+    protected float SIZE;
+    protected TextureAtlas atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
+    protected Vector2  position;
+    protected Rectangle  bounds = new Rectangle();
     private boolean isBlockingSight = true;
 
 

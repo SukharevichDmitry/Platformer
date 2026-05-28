@@ -1,4 +1,4 @@
-package com.cursedarchie.platformer.actors.enemies.logic;
+package com.cursedarchie.platformer.actors.enemies.states;
 
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 

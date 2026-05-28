@@ -2,7 +2,7 @@ package com.cursedarchie.platformer.actors.hero.machines;
 
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
-import com.cursedarchie.platformer.actors.hero.states.motion.IdleState;
+import com.cursedarchie.platformer.actors.hero.states.motion.MotionIdleState;
 
 
 public class MotionStateMachine {
@@ -11,7 +11,7 @@ public class MotionStateMachine {
 
     public MotionStateMachine(Hero hero) {
         this.hero = hero;
-        this.currentMotionState = new IdleState();
+        this.currentMotionState = new MotionIdleState();
         this.currentMotionState.enter(hero);
     }
 

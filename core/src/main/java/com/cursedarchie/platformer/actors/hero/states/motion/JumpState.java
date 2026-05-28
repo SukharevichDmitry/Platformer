@@ -6,13 +6,9 @@ import com.cursedarchie.platformer.actors.hero.states.HeroState;
 
 public class JumpState implements HeroState {
 
-    private long jumpStartTime;
-
     @Override
     public void enter(Hero hero) {
         Gdx.app.log("STATE", "JUMP");
-        hero.setMotionState(Hero.HeroMotionState.JUMP);
-        hero.setMotionStateTime(0f);
     }
 
     @Override
@@ -21,7 +17,7 @@ public class JumpState implements HeroState {
             if (Math.abs(hero.getBody().getLinearVelocity().x) > 0.1f) {
                 hero.getMotionStateMachine().changeState(new MoveState());
             } else {
-                hero.getMotionStateMachine().changeState(new IdleState());
+                hero.getMotionStateMachine().changeState(new MotionIdleState());
             }
         }
     }

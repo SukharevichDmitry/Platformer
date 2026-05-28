@@ -1,13 +1,10 @@
-package com.cursedarchie.platformer.actors.enemies.logic;
+package com.cursedarchie.platformer.actors.enemies.physics;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.math.Intersector;
-import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
-import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.world.GameWorld;
 
 public class EnemyPerception {
@@ -21,31 +18,48 @@ public class EnemyPerception {
         this.gameWorld = gameWorld;
     }
 
-    public void canSeeHero(Enemy enemy) {
-        Hero hero = gameWorld.getHero();
+    public void lookForHero(Enemy enemy) {
+        boolean canSeeHero = false;
 
         Vector2 enemyCenter = enemy.getBody().getPosition();
-        Vector2 heroCenter = hero.getBody().getPosition();
+        for (Actor actor : enemy.getVisibleActors()) {
+            Vector2 heroCenter = actor.getBody().getPosition();
 
-        if (heroCenter.dst(enemyCenter) <= enemy.getViewDistance()) {
             tmp.set(heroCenter).sub(enemyCenter).nor();
             dir.set(enemy.isFacingLeft() ? -1f : 1f, 0f);
 
             float dot = tmp.dot(dir);
-            float viewCosThreshold = (float) Math.cos(Math.toRadians(enemy.getViewAngle() / 2f));
-            if (dot >= viewCosThreshold) {
-                enemy.setCanSeeHero(!isLineBlocked(enemyCenter, heroCenter));
-                updateHeroLastKnownPos(enemy);
-            } else {
-                enemy.setCanSeeHero(false);
+
+            float viewCosThreshold =
+                (float)Math.cos(
+                    Math.toRadians(enemy.getViewAngle() / 2f)
+                );
+
+            if (dot < viewCosThreshold) {
+                continue;
+            }
+
+            boolean blocked =
+                isLineBlocked(enemyCenter, heroCenter);
+
+            if (!blocked && actor instanceof Hero) {
+                canSeeHero = true;
+                updateHeroLastKnownPos(enemy, actor);
+                break;
             }
         }
+
+        enemy.setCanSeeHero(canSeeHero);
     }
 
     private boolean isLineBlocked(Vector2 from, Vector2 to) {
         lineBlocked = false;
 
         gameWorld.getWorld().rayCast((fixture, point, normal, fraction) -> {
+
+            if (fixture.isSensor()) {
+                return -1;
+            }
 
             Object userData = fixture.getBody().getUserData();
 
@@ -65,25 +79,13 @@ public class EnemyPerception {
         return lineBlocked;
     }
 
-    private void updateHeroLastKnownPos(Enemy enemy) {
-        enemy.setHeroLastKnownPos(gameWorld.getHero().getPosition());
+    private void updateHeroLastKnownPos(Enemy enemy, Actor hero) {
+        enemy.setHeroLastKnownPos(hero.getPosition());
     }
 
-    public void checkHeroToAttack(Enemy enemy) {
-        Hero hero = gameWorld.getHero();
-        enemy.setCanAttackHero(enemy.getAttackRect().overlaps(hero.getBounds()));
-    }
-
-    public void dealDamage(Enemy enemy) {
-        Hero hero = gameWorld.getHero();
-
-        Gdx.app.log("INFO", "DEAL DAMAGE");
-        Rectangle attackRect = enemy.getAttackRect();
-
-        if (attackRect.overlaps(hero.getBounds())) {
-            hero.takeDamage(enemy.getDamage());
-            enemy.markDamageDealt();
-            enemy.getRectPool().free(attackRect);
-        }
+    public void prepareToAttack(Enemy enemy) {
+        enemy.setCanAttackHero(
+            !enemy.getAttackTargets().isEmpty()
+        );
     }
 }

@@ -1,8 +1,8 @@
 package com.cursedarchie.platformer.utils;
 
 import com.badlogic.gdx.math.Vector2;
-import com.cursedarchie.platformer.tiles.DefaultBlock;
-import com.cursedarchie.platformer.tiles.HalfOfBlock;
+import com.cursedarchie.platformer.tiles.types.DefaultBlock;
+import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
 import com.cursedarchie.platformer.tiles.Tile;
 
 public class TileFactory {

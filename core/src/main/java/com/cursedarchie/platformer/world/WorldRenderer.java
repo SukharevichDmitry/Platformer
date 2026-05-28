@@ -1,4 +1,4 @@
-package com.cursedarchie.platformer.utils;
+package com.cursedarchie.platformer.world;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
@@ -11,17 +11,16 @@ import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.utils.Array;
-import com.cursedarchie.platformer.actors.enemies.logic.states.ChaseState;
-import com.cursedarchie.platformer.actors.enemies.logic.states.IdleState;
-import com.cursedarchie.platformer.actors.enemies.logic.states.PatrolState;
+import com.cursedarchie.platformer.actors.enemies.states.motion.ChaseState;
+import com.cursedarchie.platformer.actors.enemies.states.motion.MotionIdleState;
+import com.cursedarchie.platformer.actors.enemies.states.motion.PatrolState;
 import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.tiles.Tile;
-import com.cursedarchie.platformer.actors.enemies.Boss;
+import com.cursedarchie.platformer.actors.enemies.types.Boss;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
-import com.cursedarchie.platformer.world.GameWorld;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -39,10 +38,10 @@ public class WorldRenderer {
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.15f;
 
-    private GameWorld gameWorld;
-    private Hero hero;
+    private final GameWorld gameWorld;
+    private final Hero hero;
 
-    private OrthographicCamera cam;
+    private final OrthographicCamera cam;
 
     ShapeRenderer debugRenderer = new ShapeRenderer();
 
@@ -73,8 +72,8 @@ public class WorldRenderer {
     private TextureRegion bossIdleLeft;
     private TextureRegion bossIdleRight;
 
-    private SpriteBatch spriteBatch;
-    private boolean debug = false;
+    private final SpriteBatch spriteBatch;
+    private final boolean debug;
     private int width;
     private int height;
     private float ppuX;	// pixels per unit on the X axis
@@ -85,12 +84,6 @@ public class WorldRenderer {
         this.height = h;
         ppuX = (float)width / CAMERA_WIDTH;
         ppuY = (float)height / CAMERA_HEIGHT;
-    }
-    public boolean isDebug() {
-        return debug;
-    }
-    public void setDebug(boolean debug) {
-        this.debug = debug;
     }
 
     public WorldRenderer(GameWorld gameWorld, boolean debug) {
@@ -208,6 +201,7 @@ public class WorldRenderer {
             drawDebug();
             drawCollisionBlocks();
             drawHeroSensors();
+            drawEnemySensors();
             drawViewCones();
             drawChainDebug();
         }
@@ -293,6 +287,54 @@ public class WorldRenderer {
         debugRenderer.end();
     }
 
+    private void drawEnemySensors() {
+
+        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
+
+        debugRenderer.setProjectionMatrix(cam.combined);
+        debugRenderer.begin(ShapeType.Line);
+
+        for (Enemy enemy : enemies) {
+            for (Fixture fixture : enemy.getBody().getFixtureList()) {
+
+                if ("enemy_foot".equals(fixture.getUserData()) ||
+                    "enemy_attack".equals(fixture.getUserData())) {
+
+                    if (fixture.isSensor()) {
+                        debugRenderer.setColor(1, 1, 0, 1f);
+                    } else {
+                        debugRenderer.setColor(Color.RED);
+                    }
+
+                    if (fixture.getShape() instanceof PolygonShape) {
+                        PolygonShape polygon = (PolygonShape) fixture.getShape();
+
+                        Vector2[] vertices = new Vector2[polygon.getVertexCount()];
+                        for (int i = 0; i < vertices.length; i++) {
+                            vertices[i] = new Vector2();
+                        }
+
+                        for (int i = 0; i < polygon.getVertexCount(); i++) {
+                            polygon.getVertex(i, vertices[i]);
+
+                            // ВАЖНО: здесь должен быть enemy, а не hero
+                            vertices[i].rotateRad(enemy.getBody().getAngle());
+                            vertices[i].add(enemy.getBody().getPosition());
+                        }
+
+                        for (int i = 0; i < polygon.getVertexCount(); i++) {
+                            Vector2 v1 = vertices[i];
+                            Vector2 v2 = vertices[(i + 1) % polygon.getVertexCount()];
+                            debugRenderer.line(v1.x, v1.y, v2.x, v2.y);
+                        }
+                    }
+                }
+            }
+        }
+
+        debugRenderer.end();
+    }
+
     private void drawHitBar() {
 
         float maxHealth = this.hero.getMaxHealth();  // максимальное здоровье героя
@@ -340,22 +382,18 @@ public class WorldRenderer {
                     enemyFrame = enemy.isFacingLeft() ? bossIdleLeft : bossIdleRight;
                 } else {
                     enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
-                    if (enemy.getStateMachine().getCurrentState() instanceof com.cursedarchie.platformer.actors.enemies.logic.states.AttackState) {
+                    if (enemy.getCombatStateMachine().getCurrentState() instanceof com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) {
                         enemyFrame = enemy.isFacingLeft() ?
-                            enemyAttackLeftAnimation.getKeyFrame(enemy.getAttackTime(), false) :
-                            enemyAttackRightAnimation.getKeyFrame(enemy.getAttackTime(), false);
-
-                        if (enemyAttackLeftAnimation.isAnimationFinished(enemy.getAttackTime())) {
-                            enemy.getStateMachine().changeState(new IdleState());
-                        }
+                            enemyAttackLeftAnimation.getKeyFrame(enemy.getCombatStateTime(), false) :
+                            enemyAttackRightAnimation.getKeyFrame(enemy.getCombatStateTime(), false);
                     }
-                    else if (enemy.getStateMachine().getCurrentState() instanceof ChaseState ||
-                        enemy.getStateMachine().getCurrentState() instanceof PatrolState) {
+                    else if (enemy.getMotionStateMachine().getCurrentState() instanceof ChaseState ||
+                        enemy.getMotionStateMachine().getCurrentState() instanceof PatrolState) {
                         enemyFrame = enemy.isFacingLeft() ?
                             enemyWalkLeftAnimation.getKeyFrame(enemy.getMotionStateTime(), true) :
                             enemyWalkRightAnimation.getKeyFrame(enemy.getMotionStateTime(), true);
                     }
-                    else if (enemy.getStateMachine().getCurrentState() instanceof IdleState) {
+                    else if (enemy.getMotionStateMachine().getCurrentState() instanceof MotionIdleState) {
                         enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
                     }
                     else if (!enemy.isGrounded()) {
@@ -369,8 +407,8 @@ public class WorldRenderer {
 
                 spriteBatch.draw(
                     enemyFrame,
-                    enemy.getPosition().x * ppuX,
-                    enemy.getPosition().y * ppuY,
+                    (enemy.getPosition().x - enemy.getSize()/2f) * ppuX,
+                    (enemy.getPosition().y - enemy.getSize()/2f) * ppuY,
                     enemy.getSize() * ppuX,
                     enemy.getSize() * ppuY
                 );
@@ -396,8 +434,7 @@ public class WorldRenderer {
             Vector2 direction = enemy.isFacingLeft() ? new Vector2(-1, 0) : new Vector2(1, 0);
             float baseAngle = direction.angleDeg();
 
-            Vector2 center = new Vector2(pos.x + enemy.getSize() / 2f, pos.y + enemy.getSize() / 2f);
-
+            Vector2 center = new Vector2(pos.x, pos.y);
             int segments = 20;
             float angleStep = viewAngle / segments;
 
@@ -434,9 +471,14 @@ public class WorldRenderer {
 
         Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
         for (Enemy enemy: enemies) {
-            Rectangle enemyRect = enemy.getBounds();
-            debugRenderer.setColor(new Color(1, 1, 0, 1));
-            debugRenderer.rect(enemyRect.x, enemyRect.y, enemyRect.width, enemyRect.height);
+            debugRenderer.setColor(Color.YELLOW);
+
+            debugRenderer.rect(
+                enemy.getPosition().x - enemy.getSize() / 2f,
+                enemy.getPosition().y - enemy.getSize() / 2f,
+                enemy.getSize(),
+                enemy.getSize()
+            );
         }
 
         debugRenderer.end();
@@ -451,7 +493,7 @@ public class WorldRenderer {
         int x2 = x + 2 * width;
         int y2 = y + 2 * height;
 
-        Tile[][] tiles = gameWorld.getTiles();
+        Tile[][] tiles = gameWorld.getLevel().getTiles();
         int maxX = tiles.length - 1;
         int maxY = tiles[0].length - 1;
 

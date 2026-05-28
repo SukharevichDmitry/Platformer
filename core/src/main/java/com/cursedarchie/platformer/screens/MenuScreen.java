@@ -13,8 +13,8 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.cursedarchie.platformer.Main;
 
 public class MenuScreen implements Screen {
-    private Stage stage;
-    private Skin skin;
+    private final Stage stage;
+    private final Skin skin;
 
     public MenuScreen(Main game) {
 

@@ -1,15 +1,11 @@
 package com.cursedarchie.platformer.actors.hero.states.motion;
 
-import com.badlogic.gdx.Gdx;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
 
-public class IdleState implements HeroState {
+public class MotionIdleState implements HeroState {
     @Override
     public void enter(Hero hero) {
-        Gdx.app.log("STATE", "IDLE");
-        hero.setMotionState(Hero.HeroMotionState.IDLE);
-        hero.setMotionStateTime(0f);
     }
 
     @Override

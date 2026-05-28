@@ -13,8 +13,8 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.cursedarchie.platformer.Main;
 
 public class PauseScreen implements Screen {
-    private Stage stage;
-    private Skin skin;
+    private final Stage stage;
+    private final Skin skin;
 
     public PauseScreen(Main game, Screen previousScreen) {
         stage = new Stage(new ScreenViewport());
