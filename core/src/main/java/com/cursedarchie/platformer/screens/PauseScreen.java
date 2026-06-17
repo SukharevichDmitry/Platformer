@@ -13,8 +13,8 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.cursedarchie.platformer.Main;
 
 public class PauseScreen implements Screen {
-    private Stage stage;
-    private Skin skin;
+    private final Stage stage;
+    private final Skin skin;
 
     public PauseScreen(Main game, Screen previousScreen) {
         stage = new Stage(new ScreenViewport());
@@ -26,14 +26,14 @@ public class PauseScreen implements Screen {
         continueButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                game.setScreen(previousScreen); // вернуться в игру
+                game.continueGame(previousScreen);
             }
         });
 
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                game.showMenu(); // выйти в меню
+                game.goToMenu();
             }
         });
 

@@ -1,0 +1,48 @@
+  {
+    "location": "start",
+    "id": 2,
+
+    "coord": {
+      "x": 20,
+      "y": 0
+    },
+
+    "width": 10,
+    "height": 7,
+
+    "tileRows": [
+      "##########",
+      "          ",
+      "          ",
+      "          ",
+      "          ",
+      "    ###   ",
+      "##########"
+    ],
+
+    "enemySpawns": [
+      {
+        "type": "default",
+        "position": {
+          "x": 7,
+          "y": 2
+        }
+      },
+      {
+        "type": "boss",
+        "position": {
+          "x": 7,
+          "y": 2
+        }
+      }
+    ],
+
+    "neighbors": {
+      "left": 1
+    },
+
+    "locationExit": {
+      "location": "forest",
+      "id": 0
+    }
+  }
