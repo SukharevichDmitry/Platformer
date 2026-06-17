@@ -288,7 +288,7 @@ public class WorldRenderer {
 
     private void drawEnemySensors() {
 
-        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getAliveEnemies();
 
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
@@ -371,7 +371,7 @@ public class WorldRenderer {
 
 
     private void drawEnemy() {
-        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getAliveEnemies();
 
         for (Enemy enemy : enemies) {
             if (enemy.isAlive()) {
@@ -414,7 +414,7 @@ public class WorldRenderer {
     }
 
     private void drawViewCones() {
-        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getAliveEnemies();
 
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
@@ -466,7 +466,7 @@ public class WorldRenderer {
         debugRenderer.setColor(new Color(0, 1, 0, 1));
         debugRenderer.rect(heroRect.x, heroRect.y,   heroRect.width, heroRect.height);
 
-        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getAliveEnemies();
         for (Enemy enemy: enemies) {
             debugRenderer.setColor(Color.YELLOW);
 
@@ -490,7 +490,7 @@ public class WorldRenderer {
         int x2 = x + 2 * width;
         int y2 = y + 2 * height;
 
-        Tile[][] tiles = gameWorld.getLevel().getTiles();
+        Tile[][] tiles = gameWorld.getRoomInstance().getTiles();
         int maxX = tiles.length - 1;
         int maxY = tiles[0].length - 1;
 
@@ -516,7 +516,7 @@ public class WorldRenderer {
         for (Rectangle rect : this.hero.getCollisionRects()) {
             debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
         }
-        Array<Enemy> enemies = this.gameWorld.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = this.gameWorld.getAliveEnemies();
         for (Enemy enemy : enemies) {
             for (Rectangle rect : enemy.getCollisionRects()) {
                 debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);

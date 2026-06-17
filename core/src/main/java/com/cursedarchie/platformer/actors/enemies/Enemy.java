@@ -42,7 +42,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private Vector2 heroLastKnownPos = new Vector2();
     protected MotionStateMachine motionStateMachine;
     protected CombatStateMachine combatStateMachine;
-
+    private boolean active = true;
+    private int roomId;
 
     /*===========================================CONSTRUCTOR=======================================================*/
 
@@ -164,6 +165,12 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         this.canAttackHero = canAttackHero;
     }
 
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+    public boolean isActive() {
+        return active;
+    }
 
     /*==============================================COMBAT============================================================*/
 
@@ -221,6 +228,10 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
     @Override
     public void update(float delta) {
+        if (!active) {
+            return;
+        }
+
         if (body != null) {
             syncCollisionRects();
         }

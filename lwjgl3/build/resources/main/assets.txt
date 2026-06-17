@@ -23,10 +23,11 @@ hero1.png
 hero2.png
 hero3.png
 icons/boss_icon.png
-levels/level1.json
-levels/level2.json
-levels/level3.json
-levels/level4.json
-levels/level5.json
+levels/forest/0.json
+levels/forest/index.json
+levels/start/0.json
+levels/start/1.json
+levels/start/2.json
+levels/start/index.json
 libgdx.png
 palette.aseprite

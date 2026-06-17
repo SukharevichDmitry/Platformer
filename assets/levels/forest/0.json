@@ -1,0 +1,31 @@
+{
+  "location": "forest",
+  "id": 0,
+
+  "coord": {
+    "x": 0,
+    "y": 10
+  },
+
+  "width": 10,
+  "height": 7,
+
+  "tileRows": [
+    "##########",
+    "    #     ",
+    "    #     ",
+    "    ##    ",
+    "          ",
+    "          ",
+    "##########"
+  ],
+
+  "enemySpawns": [],
+
+  "neighbors": {},
+
+  "locationEntry": {
+    "location": "start",
+    "id": 2
+  }
+}

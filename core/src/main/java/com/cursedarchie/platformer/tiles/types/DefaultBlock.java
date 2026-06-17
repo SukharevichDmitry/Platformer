@@ -6,6 +6,7 @@ import com.cursedarchie.platformer.tiles.Tile;
 
 public class DefaultBlock extends Tile {
 
+    private static final TextureRegion TEXTURE = ATLAS.findRegion("block");
 
     public DefaultBlock(Vector2 pos) {
         super(pos);
@@ -16,7 +17,7 @@ public class DefaultBlock extends Tile {
 
     @Override
     public TextureRegion getTextureRegion() {
-        return new TextureRegion(atlas.findRegion("block"));
+        return TEXTURE;
     }
 
 }

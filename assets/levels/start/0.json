@@ -1,0 +1,43 @@
+  {
+    "location": "start",
+    "id": 0,
+
+    "coord": {
+      "x": 0,
+      "y": 0
+    },
+
+    "width": 10,
+    "height": 7,
+
+    "tileRows": [
+      "##########",
+      "#         ",
+      "#  #      ",
+      "# ####    ",
+      "#         ",
+      "#         ",
+      "##########"
+    ],
+
+    "enemySpawns": [
+      {
+        "type": "default",
+        "position": {
+          "x": 7,
+          "y": 2
+        }
+      },
+      {
+        "type": "boss",
+        "position": {
+          "x": 7,
+          "y": 2
+        }
+      }
+    ],
+
+    "neighbors": {
+      "right": 1
+    }
+  }

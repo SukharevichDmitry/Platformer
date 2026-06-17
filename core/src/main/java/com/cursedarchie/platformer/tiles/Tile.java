@@ -8,8 +8,12 @@ import com.badlogic.gdx.math.Vector2;
 
 public abstract class Tile {
 
+    protected static final TextureAtlas ATLAS =
+        new TextureAtlas(
+            Gdx.files.internal("atlases/game.atlas")
+        );
+
     protected float SIZE;
-    protected TextureAtlas atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
     protected Vector2  position;
     protected Rectangle  bounds = new Rectangle();
     private boolean isBlockingSight = true;
@@ -36,6 +40,9 @@ public abstract class Tile {
         return SIZE;
     }
 
+    public boolean isSolid() {
+        return true;
+    }
 
     public boolean isBlockingSight() {
         return isBlockingSight;

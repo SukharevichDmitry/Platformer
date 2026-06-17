@@ -118,8 +118,8 @@ public class HeroController implements InputProcessor {
         float heroLeft = hero.getPosition().x - hero.getSize() / 2f;
         float heroRight = hero.getPosition().x + hero.getSize() / 2f;
 
-        float width = gameWorld.getLevel().getWidth();
-        float height = gameWorld.getLevel().getHeight();
+        float width = gameWorld.getRoomInstance().getWidth();
+        float height = gameWorld.getRoomInstance().getHeight();
 
         if (heroRight < hero.getSize() / 2f) {
             gameWorld.goToPreviousLevel();

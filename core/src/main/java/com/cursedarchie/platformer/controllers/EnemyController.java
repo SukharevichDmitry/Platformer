@@ -5,7 +5,7 @@ import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
 import com.cursedarchie.platformer.actors.enemies.logic.SimpleEnemyBrain;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
-import com.cursedarchie.platformer.utils.EnemySpawnData;
+import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
 import com.cursedarchie.platformer.world.GameWorld;
 
 public class EnemyController {
@@ -18,7 +18,7 @@ public class EnemyController {
 
     public void update(float delta) {
 
-        Array<Enemy> enemies = gameWorld.getLevel().getAliveEnemies();
+        Array<Enemy> enemies = gameWorld.getAliveEnemies();
         for (Enemy enemy : enemies) {
             if (!enemy.isAlive()) continue;
 
@@ -40,7 +40,7 @@ public class EnemyController {
         }
 
         if (enemy != null) {
-            gameWorld.getLevel().addEnemy(enemy);
+            gameWorld.addEnemy(enemy);
         }
     }
 }
