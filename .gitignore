@@ -29,3 +29,6 @@ core/build/
 lwjgl3/build/
 
 Platformer/*
+
+# Local snapshots kept before development work.
+backups/

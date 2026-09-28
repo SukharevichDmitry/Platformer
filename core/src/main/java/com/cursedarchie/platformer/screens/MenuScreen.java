@@ -19,7 +19,7 @@ public class MenuScreen implements Screen {
     public MenuScreen(Main game) {
 
         stage = new Stage(new ScreenViewport());
-        skin = new Skin(Gdx.files.internal("uiskin.json"));
+        skin = UiSkin.create();
 
         TextButton startButton = new TextButton("START", skin);
         TextButton exitButton = new TextButton("EXIT", skin);

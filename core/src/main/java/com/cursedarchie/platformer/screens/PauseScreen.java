@@ -18,7 +18,7 @@ public class PauseScreen implements Screen {
 
     public PauseScreen(Main game, Screen previousScreen) {
         stage = new Stage(new ScreenViewport());
-        skin = new Skin(Gdx.files.internal("uiskin.json"));
+        skin = UiSkin.create();
 
         TextButton continueButton = new TextButton("Continue", skin);
         TextButton exitButton = new TextButton("To Menu", skin);
@@ -27,6 +27,7 @@ public class PauseScreen implements Screen {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 game.continueGame(previousScreen);
+                Gdx.app.postRunnable(() -> dispose());
             }
         });
 
@@ -34,6 +35,7 @@ public class PauseScreen implements Screen {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 game.goToMenu();
+                Gdx.app.postRunnable(() -> dispose());
             }
         });
 
@@ -68,4 +70,3 @@ public class PauseScreen implements Screen {
     @Override public void hide() { }
     @Override public void dispose() { stage.dispose(); skin.dispose(); }
 }
-

@@ -46,9 +46,23 @@ def os = System.properties['os.name'].toLowerCase()
 
 run {
   workingDir = rootProject.file('assets').path
-  setIgnoreExitValue(true)
 
   if (os.contains('mac')) jvmArgs += "-XstartOnFirstThread"
+}
+
+// Exercise the extracted release with only its JAR and the smoke harness on the classpath.
+tasks.register('extractSmokeDistribution', Sync) {
+  dependsOn 'distZip'
+  from { zipTree(tasks.distZip.archiveFile.get().asFile) }
+  into layout.buildDirectory.dir('smoke-distribution')
+}
+tasks.register('packagedSmokeTest', JavaExec) {
+  dependsOn 'testClasses', 'extractSmokeDistribution'
+  mainClass = 'com.cursedarchie.platformer.lwjgl3.PackagedSmokeTest'
+  classpath = files(sourceSets.test.output.classesDirs,
+    layout.buildDirectory.file("smoke-distribution/${project.name}-${project.version}/lib/${appName}-${projectVersion}.jar"))
+  workingDir = layout.buildDirectory.dir('smoke-distribution')
+  if (os.contains('mac')) jvmArgs '-XstartOnFirstThread'
 }
 
 jar {
@@ -136,4 +150,3 @@ startScripts.classpath = project.tasks.jar.outputs.files
 if(enableGraalNative == 'true') {
   apply from: file("nativeimage.gradle")
 }
-
