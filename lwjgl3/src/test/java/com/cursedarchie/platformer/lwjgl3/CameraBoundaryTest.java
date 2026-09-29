@@ -21,7 +21,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         CameraBoundaryTest test = new CameraBoundaryTest();
         new Lwjgl3Application(test, config);
         if (!test.passed) throw new AssertionError("Camera boundary test did not complete");
-        System.out.println("CAMERA BOUNDARY PASSED: start and forest stop one block past both edges");
+        System.out.println("CAMERA BOUNDARY PASSED: start and forest stop one block past all four edges");
     }
 
     @Override public void create() {
@@ -34,6 +34,9 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         checkLeftEdge("start", 0);
         checkLeftEdge("forest", 0);
         checkLeftEdge("start", 0);
+        checkVerticalEdges("start");
+        checkVerticalEdges("forest");
+        checkVerticalEdges("start");
         passed = true;
         Gdx.app.exit();
     }
@@ -85,6 +88,37 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         float actualRight = renderer.getVisibleRightEdge();
         if (Math.abs(actualRight - expectedRight) > 0.001f)
             throw new AssertionError(location + " right edge: expected " + expectedRight + ", got " + actualRight);
+    }
+
+    private void checkVerticalEdges(String location) {
+        world.changeLocation(location, 0);
+        float bottom = Float.POSITIVE_INFINITY;
+        float top = Float.NEGATIVE_INFINITY;
+        for (RoomInstance room : world.getLocation().getRooms()) {
+            bottom = Math.min(bottom, room.getWorldY());
+            top = Math.max(top, room.getWorldY() + room.getHeight());
+        }
+        float middle = (bottom + top) / 2f;
+        moveHeroVertically(middle);
+        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), middle - 3.5f, "following");
+        moveHeroVertically(bottom + 0.1f);
+        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), bottom - 1f, "bottom");
+        moveHeroVertically(bottom - 3f);
+        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), bottom - 1f, "past bottom");
+        moveHeroVertically(top - 0.1f);
+        assertVerticalEdge(location, renderer.getVisibleTopEdge(), top + 1f, "top");
+        moveHeroVertically(top + 3f);
+        assertVerticalEdge(location, renderer.getVisibleTopEdge(), top + 1f, "past top");
+    }
+
+    private void moveHeroVertically(float y) {
+        world.getHero().getBody().setTransform(5, y, 0);
+        renderer.render();
+    }
+
+    private void assertVerticalEdge(String location, float actual, float expected, String edge) {
+        if (Math.abs(actual - expected) > 0.001f)
+            throw new AssertionError(location + " " + edge + ": expected " + expected + ", got " + actual);
     }
 
     @Override public void dispose() {

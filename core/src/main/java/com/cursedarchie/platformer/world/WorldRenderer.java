@@ -36,7 +36,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     private static final float CAMERA_WIDTH = 10f;
     private static final float CAMERA_HEIGHT = 7f;
-    private static final float HORIZONTAL_EDGE_MARGIN = 1f;
+    private static final float EDGE_MARGIN = 1f;
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.15f;
 
@@ -219,27 +219,40 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         Vector2 heroPos = hero.getPosition();
         float levelLeft = Float.POSITIVE_INFINITY;
         float levelRight = Float.NEGATIVE_INFINITY;
+        float levelBottom = Float.POSITIVE_INFINITY;
+        float levelTop = Float.NEGATIVE_INFINITY;
         for (RoomInstance room : gameWorld.getLocation().getRooms()) {
             levelLeft = Math.min(levelLeft, room.getWorldX());
             levelRight = Math.max(levelRight, room.getWorldX() + room.getWidth());
+            levelBottom = Math.min(levelBottom, room.getWorldY());
+            levelTop = Math.max(levelTop, room.getWorldY() + room.getHeight());
         }
         float cameraX = heroPos.x;
+        float cameraY = heroPos.y;
         if (levelRight != Float.NEGATIVE_INFINITY) {
-            float halfView = cam.viewportWidth * cam.zoom / 2f;
-            float minX = levelLeft - HORIZONTAL_EDGE_MARGIN + halfView;
-            float maxX = levelRight + HORIZONTAL_EDGE_MARGIN - halfView;
-            cameraX = minX <= maxX
-                ? Math.max(minX, Math.min(cameraX, maxX))
-                : (minX + maxX) / 2f;
+            float halfWidth = cam.viewportWidth * cam.zoom / 2f;
+            float halfHeight = cam.viewportHeight * cam.zoom / 2f;
+            cameraX = clampCamera(heroPos.x,
+                levelLeft - EDGE_MARGIN + halfWidth,
+                levelRight + EDGE_MARGIN - halfWidth);
+            cameraY = clampCamera(heroPos.y,
+                levelBottom - EDGE_MARGIN + halfHeight,
+                levelTop + EDGE_MARGIN - halfHeight);
         }
 
         cam.position.set(
             cameraX,
-            heroPos.y,
+            cameraY,
             0
         );
 
         cam.update();
+    }
+
+    private static float clampCamera(float target, float min, float max) {
+        return min <= max
+            ? Math.max(min, Math.min(target, max))
+            : (min + max) / 2f;
     }
 
     public float getVisibleRightEdge() {
@@ -248,6 +261,14 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     public float getVisibleLeftEdge() {
         return cam.position.x - cam.viewportWidth * cam.zoom / 2f;
+    }
+
+    public float getVisibleTopEdge() {
+        return cam.position.y + cam.viewportHeight * cam.zoom / 2f;
+    }
+
+    public float getVisibleBottomEdge() {
+        return cam.position.y - cam.viewportHeight * cam.zoom / 2f;
     }
 
     private void drawTiles() {

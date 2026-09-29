@@ -38,7 +38,7 @@ To return from the forest, move left through its open edge. You reappear inside
 `start` room 2, clear of the exit that leads back to the forest. The packaged
 smoke test checks both border crossings repeatedly.
 
-The camera follows the hero until either side of the view reaches one
+The camera follows the hero until any side of the view reaches one
 world block past the outermost room in the current location. Run
 `./gradlew.bat lwjgl3:cameraBoundaryTest` to check the limit in both `start`
 and `forest`; it also checks that ordinary following continues between the edges.
