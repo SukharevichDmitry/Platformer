@@ -33,7 +33,7 @@ public final class PackagedSmokeTest extends Main {
         PackagedSmokeTest test = new PackagedSmokeTest();
         new Lwjgl3Application(test, config);
         if (!test.complete) throw new AssertionError("Smoke test ended before completion");
-        System.out.println("PACKAGED SMOKE PASSED: menu, start, pause, continue, menu, restart, exit");
+        System.out.println("PACKAGED SMOKE PASSED: repeated start/forest border travel, menu, pause, restart, death, exit");
     }
 
     @Override public void render() {
@@ -49,6 +49,7 @@ public final class PackagedSmokeTest extends Main {
                 break;
             case 2:
                 exerciseTransitions(((GameScreen) getScreen()).getGameWorld());
+                exerciseBorderTravel(((GameScreen) getScreen()).getGameWorld());
                 if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Gameplay texture count grew");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                 expect(PauseScreen.class);
@@ -127,6 +128,30 @@ public final class PackagedSmokeTest extends Main {
             world.getWorld().getBodyCount() != bodies || world.getEnemies().size != enemies ||
             bodies != 1 + world.getLocation().getRooms().size() + enemies) {
             throw new AssertionError("Location resources did not return to baseline: " + name);
+        }
+    }
+
+    private void exerciseBorderTravel(GameWorld world) {
+        for (int i = 0; i < 20; i++) {
+            world.changeLocation("start", 2);
+            float right = world.getCurrentRoom().getWorldX() + world.getCurrentRoom().getWidth();
+            float y = world.getCurrentRoom().getWorldY() + 2;
+            world.getHero().getBody().setTransform(right - 0.1f, y, 0);
+            world.update(1f / 60f);
+            assertLocation(world, "forest", 2, 0);
+
+            float left = world.getCurrentRoom().getWorldX();
+            y = world.getCurrentRoom().getWorldY() + 2;
+            world.getHero().getBody().setTransform(left + 0.1f, y, 0);
+            world.update(1f / 60f);
+            assertLocation(world, "start", 6, 2);
+            if (world.getCurrentRoom().getRoomId() != 2 ||
+                world.getHero().getBody().getPosition().x >=
+                    world.getCurrentRoom().getWorldX() + world.getCurrentRoom().getWidth() - 0.2f) {
+                throw new AssertionError("Return spawn is in the wrong room or retriggers the forest exit");
+            }
+            world.update(1f / 60f);
+            assertLocation(world, "start", 6, 2);
         }
     }
 

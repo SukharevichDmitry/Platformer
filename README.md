@@ -34,6 +34,9 @@ For a visible check, launch the extracted build, repeat those actions, and
 resize both menu and pause screens. Location transitions now unload old room
 and enemy bodies before activating the destination. The game screen disposes
 its Box2D world, atlas, sprite batch and shape renderer when the run ends.
+To return from the forest, move left through its open edge. You reappear inside
+`start` room 2, clear of the exit that leads back to the forest. The packaged
+smoke test checks both border crossings repeatedly.
 
 Before week 1 changes, a source snapshot, working/index patches and Git index
 copy were saved in the ignored `backups/` directory. Keep that directory when

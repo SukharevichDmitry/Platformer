@@ -107,6 +107,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public void changeLocation(String locationName, int roomId) {
+        changeLocation(locationName, roomId, false);
+    }
+
+    private void changeLocation(String locationName, int roomId, boolean enterFromRight) {
         if (disposed) throw new IllegalStateException("GameWorld has been disposed");
         if (world.isLocked()) throw new IllegalStateException("Cannot change location during a physics step");
         LocationInstance nextLocation = roomManager.loadLocation(locationName);
@@ -122,7 +126,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
         buildLocation();
         Vector2 spawn = new Vector2(
-            currentRoom.getWorldX() + 1,
+            currentRoom.getWorldX() + (enterFromRight ? currentRoom.getWidth() - 1.5f : 1f),
             currentRoom.getWorldY() + 2
         );
 
@@ -145,14 +149,17 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private void checkRoomExit() {
         if (currentRoom == null) return;
 
-        LocationTransition exit = currentRoom.getLocationExit();
-        if (exit == null) return;
-
         Vector2 pos = hero.getBody().getPosition();
-        float roomRightEdge = currentRoom.getWorldX() + currentRoom.getWidth();
         float buffer = 0.2f;
-        if (pos.x >= roomRightEdge - buffer) {
-            changeLocation(exit.location, exit.id);
+        LocationTransition rightExit = currentRoom.getLocationExit();
+        if (rightExit != null && pos.x >= currentRoom.getWorldX() + currentRoom.getWidth() - buffer) {
+            changeLocation(rightExit.location, rightExit.id, false);
+            return;
+        }
+
+        LocationTransition leftExit = currentRoom.getLocationEntry();
+        if (leftExit != null && pos.x <= currentRoom.getWorldX() + buffer) {
+            changeLocation(leftExit.location, leftExit.id, true);
         }
     }
 
