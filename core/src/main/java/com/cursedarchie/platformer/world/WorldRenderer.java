@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.Fixture;
@@ -17,6 +18,7 @@ import com.cursedarchie.platformer.actors.enemies.states.motion.PatrolState;
 import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
+import com.cursedarchie.platformer.levels.RoomInstance;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
@@ -75,22 +77,19 @@ public class WorldRenderer {
     private final boolean debug;
     private int width;
     private int height;
-    private float ppuX;	// pixels per unit on the X axis
-    private float ppuY;	// pixels per unit on the Y axis
 
     public void setSize (int w, int h) {
         this.width = w;
         this.height = h;
-        ppuX = (float)width / CAMERA_WIDTH;
-        ppuY = (float)height / CAMERA_HEIGHT;
     }
 
     public WorldRenderer(GameWorld gameWorld, boolean debug) {
         Gdx.app.log("GameWorld Renderer", "Initializing GameWorld Renderer");
         this.gameWorld = gameWorld;
         this.hero = gameWorld.getHero();
+        Vector2 heroPos = hero.getPosition();
         this.cam = new OrthographicCamera(CAMERA_WIDTH, CAMERA_HEIGHT);
-        this.cam.position.set(CAMERA_WIDTH / 2f, CAMERA_HEIGHT / 2f, 0);
+        this.cam.position.set(heroPos.x, heroPos.y, 0);
         this.cam.update();
         this.debug = debug;
         spriteBatch = new SpriteBatch();
@@ -190,31 +189,71 @@ public class WorldRenderer {
     }
 
     public void render() {
+        updateCamera();
+
+        spriteBatch.setProjectionMatrix(cam.combined);
+
         spriteBatch.begin();
             drawTiles();
             drawHero();
             drawEnemy();
         spriteBatch.end();
-        drawHitBar();
+
         if (debug) {
             drawDebug();
-            drawCollisionBlocks();
             drawHeroSensors();
             drawEnemySensors();
             drawViewCones();
             drawChainDebug();
         }
+
+        drawHitBar();
+    }
+
+    private void updateCamera() {
+
+        Vector2 heroPos = hero.getPosition();
+
+        cam.position.set(
+            heroPos.x,
+            heroPos.y,
+            0
+        );
+
+        cam.update();
     }
 
     private void drawTiles() {
-        for (Tile tile : getDrawableTiles((int)CAMERA_WIDTH, (int)CAMERA_HEIGHT)) {
-            spriteBatch.draw(
-                tile.getTextureRegion(),
-                tile.getPosition().x * ppuX,
-                tile.getPosition().y * ppuY,
-                tile.getSize() * ppuX,
-                tile.getSize() * ppuY
-            );
+
+        for (RoomInstance room : gameWorld.getLocation().getRooms()) {
+
+            if (!isRoomVisible(room)) continue;
+
+            Tile[][] tiles = room.getTiles();
+
+            float roomX = room.getWorldX();
+            float roomY = room.getWorldY();
+
+            for (int x = 0; x < tiles.length; x++) {
+                for (int y = 0; y < tiles[x].length; y++) {
+
+                    Tile tile = tiles[x][y];
+                    if (tile == null) continue;
+
+                    Vector2 local = tile.getPosition();
+
+                    float worldX = roomX + local.x;
+                    float worldY = roomY + local.y;
+
+                    spriteBatch.draw(
+                        tile.getTextureRegion(),
+                        worldX,
+                        worldY,
+                        tile.getSize(),
+                        tile.getSize()
+                    );
+                }
+            }
         }
     }
 
@@ -239,10 +278,11 @@ public class WorldRenderer {
 
         spriteBatch.draw(
             heroFrame,
-            (this.hero.getPosition().x - this.hero.getSize()/2f) * ppuX,
-            (this.hero.getPosition().y - this.hero.getSize()/2f)* ppuY,
-            this.hero.getSize() * ppuX,
-            this.hero.getSize() * ppuY);
+            (this.hero.getPosition().x - this.hero.getSize()/2f),
+            (this.hero.getPosition().y - this.hero.getSize()/2f),
+            this.hero.getSize(),
+            this.hero.getSize()
+        );
     }
 
     private void drawHeroSensors() {
@@ -336,36 +376,31 @@ public class WorldRenderer {
 
     private void drawHitBar() {
 
-        float maxHealth = this.hero.getMaxHealth();  // максимальное здоровье героя
-        float currentHealth = this.hero.getHealth(); // текущее здоровье героя
-
+        float maxHealth = hero.getMaxHealth();
+        float currentHealth = hero.getHealth();
         float healthPercent = currentHealth / maxHealth;
 
-        // Размеры полоски
-        float barWidth = 200;  // ширина полоски в пикселях
-        float barHeight = 20;  // высота полоски в пикселях
+        float barWidth = 200;
+        float barHeight = 20;
 
-        // Позиция полоски — отступы от верхнего левого угла окна
         float marginLeft = 20;
         float marginTop = 20;
 
-        // Высота экрана в пикселях - нужно учесть, что y=0 в ShapeRenderer — внизу,
-        // поэтому позицию по Y считаем от низа:
-        float y = height - marginTop - barHeight;
         float x = marginLeft;
+        float y = height - marginTop - barHeight;
 
-        debugRenderer.setProjectionMatrix(spriteBatch.getProjectionMatrix());  // Используем проекцию SpriteBatch — пиксели экрана
+        debugRenderer.setProjectionMatrix(new Matrix4().setToOrtho2D(0, 0, width, height));
+
         debugRenderer.begin(ShapeType.Filled);
 
-        // Рисуем фон полоски (серый)
         debugRenderer.setColor(Color.DARK_GRAY);
         debugRenderer.rect(x, y, barWidth, barHeight);
 
-        // Рисуем текущий уровень здоровья (зелёный)
         debugRenderer.setColor(Color.GREEN);
         debugRenderer.rect(x, y, barWidth * healthPercent, barHeight);
 
         debugRenderer.end();
+        debugRenderer.setProjectionMatrix(cam.combined);
     }
 
 
@@ -404,10 +439,10 @@ public class WorldRenderer {
 
                 spriteBatch.draw(
                     enemyFrame,
-                    (enemy.getPosition().x - enemy.getSize()/2f) * ppuX,
-                    (enemy.getPosition().y - enemy.getSize()/2f) * ppuY,
-                    enemy.getSize() * ppuX,
-                    enemy.getSize() * ppuY
+                    (enemy.getPosition().x - enemy.getSize()/2f),
+                    (enemy.getPosition().y - enemy.getSize()/2f),
+                    enemy.getSize(),
+                    enemy.getSize()
                 );
             }
         }
@@ -456,74 +491,68 @@ public class WorldRenderer {
     private void drawDebug() {
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
-        for (Tile tile : getDrawableTiles((int)CAMERA_WIDTH, (int)CAMERA_HEIGHT)) {
-            Rectangle rect = tile.getBounds();
-            debugRenderer.setColor(new Color(1, 0, 0, 1));
-            debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
-        }
 
-        Rectangle heroRect = this.hero.getBounds();
-        debugRenderer.setColor(new Color(0, 1, 0, 1));
-        debugRenderer.rect(heroRect.x, heroRect.y,   heroRect.width, heroRect.height);
+        for (RoomInstance room : gameWorld.getLocation().getRooms()) {
 
-        Array<Enemy> enemies = gameWorld.getAliveEnemies();
-        for (Enemy enemy: enemies) {
-            debugRenderer.setColor(Color.YELLOW);
+            float roomX = room.getWorldX();
+            float roomY = room.getWorldY();
 
-            debugRenderer.rect(
-                enemy.getPosition().x - enemy.getSize() / 2f,
-                enemy.getPosition().y - enemy.getSize() / 2f,
-                enemy.getSize(),
-                enemy.getSize()
-            );
-        }
+            Tile[][] tiles = room.getTiles();
 
-        debugRenderer.end();
-    }
+            for (int x = 0; x < tiles.length; x++) {
+                for (int y = 0; y < tiles[x].length; y++) {
 
-    public List<Tile> getDrawableTiles(int width, int height) {
-        int x = (int) this.hero.getPosition().x - width;
-        int y = (int) this.hero.getPosition().y - height;
-        if (x < 0) x = 0;
-        if (y < 0) y = 0;
+                    Tile tile = tiles[x][y];
+                    if (tile == null) continue;
 
-        int x2 = x + 2 * width;
-        int y2 = y + 2 * height;
+                    Vector2 local = tile.getPosition();
 
-        Tile[][] tiles = gameWorld.getRoomInstance().getTiles();
-        int maxX = tiles.length - 1;
-        int maxY = tiles[0].length - 1;
+                    float worldX = roomX + local.x;
+                    float worldY = roomY + local.y;
 
-        if (x2 > maxX) x2 = maxX;
-        if (y2 > maxY) y2 = maxY;
+                    if (!inDebugRange(worldX, worldY)) continue;
 
-        List<Tile> drawableTiles = new ArrayList<>();
-        for (int col = x; col <= x2; col++) {
-            for (int row = y; row <= y2; row++) {
-                Tile tile = tiles[col][row];
-                if (tile != null) {
-                    drawableTiles.add(tile);
+                    debugRenderer.rect(
+                        worldX,
+                        worldY,
+                        tile.getSize(),
+                        tile.getSize()
+                    );
                 }
             }
         }
-        return drawableTiles;
-    }
-
-    private void drawCollisionBlocks() {
-        debugRenderer.setProjectionMatrix(cam.combined);
-        debugRenderer.begin(ShapeType.Filled);
-        debugRenderer.setColor(new Color(1, 1, 1, 1));
-        for (Rectangle rect : this.hero.getCollisionRects()) {
-            debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
-        }
-        Array<Enemy> enemies = this.gameWorld.getAliveEnemies();
-        for (Enemy enemy : enemies) {
-            for (Rectangle rect : enemy.getCollisionRects()) {
-                debugRenderer.rect(rect.x, rect.y, rect.width, rect.height);
-            }
-        }
 
         debugRenderer.end();
+    }
+
+    private boolean inDebugRange(float x, float y) {
+        Vector2 hp = hero.getPosition();
+
+        float dx = hp.x - x;
+        float dy = hp.y - y;
+
+        return dx * dx + dy * dy <= 9f;
+    }
+
+    private boolean isRoomVisible(RoomInstance room) {
+
+        float left =
+            cam.position.x - cam.viewportWidth;
+
+        float right =
+            cam.position.x + cam.viewportWidth;
+
+        float bottom =
+            cam.position.y - cam.viewportHeight;
+
+        float top =
+            cam.position.y + cam.viewportHeight;
+
+        return
+            room.getWorldX() < right &&
+                room.getWorldX() + room.getWidth() > left &&
+                room.getWorldY() < top &&
+                room.getWorldY() + room.getHeight() > bottom;
     }
 
     private void drawChainDebug() {
@@ -534,11 +563,19 @@ public class WorldRenderer {
         Array<Body> bodies = new Array<>();
         gameWorld.getWorld().getBodies(bodies);
 
+        Vector2 center = new Vector2();
+
         for (Body body : bodies) {
             Object data = body.getUserData();
             if (!(data instanceof Vector2[])) continue;
 
             Vector2[] vertices = (Vector2[]) data;
+
+            center.set(0, 0);
+            for (Vector2 v : vertices) center.add(v);
+            center.scl(1f / vertices.length);
+
+            if (!inDebugRange(center.x, center.y)) continue;
 
             for (int i = 0; i < vertices.length - 1; i++) {
                 Vector2 v1 = vertices[i];

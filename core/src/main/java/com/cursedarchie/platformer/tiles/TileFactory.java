@@ -6,10 +6,10 @@ import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
 
 public class TileFactory {
 
-    public static Tile create(char c, Vector2 pos) {
+    public static Tile create(char c, Vector2 worldPos) {
         switch (c) {
-            case '#': return new DefaultBlock(pos);
-            case '_': return new HalfOfBlock(pos);
+            case '#': return new DefaultBlock(worldPos);
+            case '_': return new HalfOfBlock(worldPos);
             default: return null;
         }
     }

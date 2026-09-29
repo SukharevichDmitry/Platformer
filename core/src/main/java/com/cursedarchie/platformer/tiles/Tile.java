@@ -19,10 +19,10 @@ public abstract class Tile {
     private boolean isBlockingSight = true;
 
 
-    public Tile(Vector2 pos) {
-        this.position = pos;
-        this.bounds.setX(pos.x);
-        this.bounds.setY(pos.y);
+    public Tile(Vector2 localPos) {
+        this.position = localPos;
+        this.bounds.setX(localPos.x);
+        this.bounds.setY(localPos.y);
         this.bounds.width = SIZE;
         this.bounds.height = SIZE;
     }

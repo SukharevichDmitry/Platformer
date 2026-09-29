@@ -23,21 +23,21 @@ public class GameWorld {
     private final HeroController heroController;
 
     private final RoomManager roomManager = new RoomManager();
-    private String currentLocation;
+    private String currentLocationName;
+    private LocationInstance location;
     private int currentRoomId;
-    private RoomInstance roomInstance;
-    Map<String, RoomState> roomStates = new HashMap<>();
-
+    private RoomInstance currentRoom;
+    Map<Integer, RoomState> roomStates = new HashMap<>();
     private final Array<Enemy> enemies = new Array<>();
     private final EnemyController enemyController;
 
 
     public GameWorld() {
         this.world = new World(new Vector2(0, -10), true);
-        this.currentLocation = "start";
+        this.currentLocationName = "start";
         this.currentRoomId = 0;
-
-        this.roomInstance = roomManager.getRoom(currentLocation, currentRoomId);
+        location = roomManager.loadLocation(currentLocationName);
+        currentRoom = location.getRoom(currentRoomId);
 
         this.hero = new Hero(new Vector2(5, 5), world);
         world.setContactListener(new GameContactListener());
@@ -45,7 +45,7 @@ public class GameWorld {
         this.heroController = new HeroController(this);
         this.enemyController = new EnemyController(this);
 
-        rebuildLevel();
+        rebuildLocation();
     }
 
     public void update(float delta) {
@@ -66,71 +66,75 @@ public class GameWorld {
             }
         }
 
+        updateCurrentRoom();
+        checkRoomExit();
+
         heroController.update(delta);
         enemyController.update(delta);
 
         hero.getMotionStateMachine().update(delta);
     }
 
-    private void rebuildLevel() {
+
+
+    private void rebuildLocation() {
         clearLevelBodies();
 
-        roomInstance = roomManager.getRoom(
-            currentLocation,
-            currentRoomId
-        );
+        for (RoomInstance room : location.getRooms()) {
+            room.buildBodies(world);
+        }
 
-        roomInstance.buildBodies(world);
         spawnEnemies();
     }
 
     private void clearLevelBodies() {
-        if (roomInstance != null) {
-            roomInstance.getRuntime().destroy(world);
+        for (RoomInstance room : location.getRooms()) {
+            if (room != null) {
+                room.getRuntime().destroy(world);
+            }
         }
     }
 
-    public void goToNextLevel() {
-        Integer nextRoom = roomInstance.getRightNeighbor();
+    public void changeLocation(String locationName, int roomId) {
+        currentLocationName = locationName;
+        location = roomManager.loadLocation(locationName);
+        roomStates.clear();
+        currentRoomId = roomId;
+        currentRoom = location.getRoom(roomId);
 
-        if (nextRoom == null) {
-            LocationTransition exit = roomInstance.getLocationExit();
+        rebuildLocation();
+        Vector2 spawn = new Vector2(
+            currentRoom.getWorldX() + 1,
+            currentRoom.getWorldY() + 2
+        );
 
-            if (exit == null) {
-                return;
-            }
-
-            currentLocation = exit.location;
-            nextRoom = exit.id;
-        }
-
-        currentRoomId = nextRoom;
-
-        rebuildLevel();
-
-        hero.getBody().setTransform(hero.getSize() / 2f, hero.getPosition().y, 0);
+        hero.getBody().setTransform(spawn, 0);
     }
 
-    public void goToPreviousLevel() {
-        Integer nextRoom = roomInstance.getLeftNeighbor();
+    private void updateCurrentRoom() {
+        Vector2 heroPos = hero.getBody().getPosition();
 
-        if (nextRoom == null) {
-            LocationTransition entry = roomInstance.getLocationEntry();
-
-            if (entry == null) {
+        for (RoomInstance room : location.getRooms()) {
+            if (room.contains(heroPos)) {
+                currentRoomId = room.getRoomId();
+                currentRoom = room;
                 return;
             }
-
-            currentLocation = entry.location;
-            nextRoom = entry.id;
         }
+    }
 
-        currentRoomId = nextRoom;
+    private void checkRoomExit() {
+        if (currentRoom == null) return;
 
-        rebuildLevel();
+        LocationTransition exit = currentRoom.getLocationExit();
+        if (exit == null) return;
 
-        float width = roomInstance.getWidth();
-        hero.getBody().setTransform( width - hero.getSize() / 2f, hero.getPosition().y, 0);
+        Vector2 pos = hero.getBody().getPosition();
+        float roomRightEdge = currentRoom.getWorldX() + currentRoom.getWidth();
+        float buffer = 0.2f;
+        if (pos.x >= roomRightEdge - buffer) {
+            changeLocation(exit.location, exit.id);
+        }
     }
 
     public void addEnemy(Enemy enemy) {
@@ -138,16 +142,43 @@ public class GameWorld {
     }
 
     public void spawnEnemies() {
-        if (roomInstance.isEnemiesSpawned()) {
-            return;
-        }
 
-        Array<EnemySpawnData> spawnData = roomInstance.getSpawns();
-        for (EnemySpawnData spawn: spawnData) {
-            enemyController.spawnEnemy(spawn, world);
-        }
+        for (RoomInstance room :
+            location.getRooms()) {
 
-        roomInstance.setEnemiesSpawned(true);
+            RoomState state =
+                getRoomState(
+                    room.getRoomId()
+                );
+
+            if (state.isEnemiesSpawned()) {
+                continue;
+            }
+
+            for (EnemySpawnData spawn :
+                room.getSpawns()) {
+
+                Vector2 pos =
+                    room.localToWorld(
+                        spawn.position
+                    );
+
+                enemyController.spawnEnemy(
+                    spawn,
+                    pos,
+                    world
+                );
+            }
+
+            state.setEnemiesSpawned(true);
+        }
+    }
+
+    private RoomState getRoomState(int roomId) {
+        return roomStates.computeIfAbsent(
+            roomId,
+            id -> new RoomState()
+        );
     }
 
     public Array<Enemy> getEnemies() {
@@ -163,8 +194,11 @@ public class GameWorld {
     public Hero getHero() {
         return hero;
     }
-    public RoomInstance getRoomInstance() {
-        return roomInstance;
+    public LocationInstance getLocation() {
+        return location;
+    }
+    public RoomInstance getCurrentRoom() {
+        return currentRoom;
     }
     public World getWorld() {
         return world;

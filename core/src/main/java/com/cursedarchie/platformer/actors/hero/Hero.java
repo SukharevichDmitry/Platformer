@@ -103,10 +103,6 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
 
     @Override
     public void update(float delta) {
-        if (body != null) {
-            syncCollisionRects();
-        }
-
         motionStateMachine.update(delta);
         combatStateMachine.update(delta);
     }

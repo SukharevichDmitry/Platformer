@@ -1,5 +1,6 @@
 package com.cursedarchie.platformer.controllers;
 
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
@@ -26,15 +27,15 @@ public class EnemyController {
         }
     }
 
-    public void spawnEnemy(EnemySpawnData spawn, World world) {
+    public void spawnEnemy(EnemySpawnData spawn, Vector2 worldPos, World world) {
         Enemy enemy = null;
         switch (spawn.type) {
             case "default":
-                enemy = EnemyFactory.createDefaultEnemy(world, spawn.position);
+                enemy = EnemyFactory.createDefaultEnemy(world, worldPos);
                 enemy.setBrain(new SimpleEnemyBrain(gameWorld));
                 break;
             case "boss":
-                enemy = EnemyFactory.createBoss(world, spawn.position);
+                enemy = EnemyFactory.createBoss(world, worldPos);
                 enemy.setBrain(new SimpleEnemyBrain(gameWorld));
                 break;
         }

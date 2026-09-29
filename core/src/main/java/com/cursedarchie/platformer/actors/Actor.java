@@ -47,7 +47,6 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     protected float damage;
     protected float attackDuration;
 
-    protected Array<Rectangle> collisionRects = new Array<>();
     protected Pool<Rectangle> rectPool = new Pool<Rectangle>() {
         @Override
         protected Rectangle newObject() {
@@ -432,18 +431,8 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
         }
     }
 
-    protected void syncCollisionRects() {
-        Vector2 position = body.getPosition();
-        for (Rectangle rect : collisionRects) {
-            rect.setPosition(position.x, position.y);
-        }
-    }
 
     protected abstract void die();
 
     protected abstract void update(float delta);
-
-    public Array<Rectangle> getCollisionRects() {
-        return collisionRects;
-    }
 }

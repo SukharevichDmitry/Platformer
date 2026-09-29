@@ -232,9 +232,6 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             return;
         }
 
-        if (body != null) {
-            syncCollisionRects();
-        }
         if (brain != null) {
             brain.think(this, null, delta);
         }

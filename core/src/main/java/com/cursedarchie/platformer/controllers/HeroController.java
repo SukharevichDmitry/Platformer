@@ -108,25 +108,12 @@ public class HeroController implements InputProcessor {
 
         processInput();
 
-        checkPositionForLevelChange();
         checkHeroPositionForDeathFall();
 
         hero.update(delta);
     }
 
-    private void checkPositionForLevelChange() {
-        float heroLeft = hero.getPosition().x - hero.getSize() / 2f;
-        float heroRight = hero.getPosition().x + hero.getSize() / 2f;
 
-        float width = gameWorld.getRoomInstance().getWidth();
-        float height = gameWorld.getRoomInstance().getHeight();
-
-        if (heroRight < hero.getSize() / 2f) {
-            gameWorld.goToPreviousLevel();
-        } else if (heroLeft > width - hero.getSize() / 2f) {
-            gameWorld.goToNextLevel();
-        }
-    }
     private void checkHeroPositionForDeathFall() {
         if ((hero.getPosition().y + hero.getBounds().height) < 0) {
             hero.setAlive(false);

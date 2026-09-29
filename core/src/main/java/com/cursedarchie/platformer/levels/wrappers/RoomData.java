@@ -7,10 +7,11 @@ public class RoomData {
     public String location;
     public int id;
 
-    public RoomCoord coord;
-
     public int width;
     public int height;
+
+    public float worldX;
+    public float worldY;
 
     public String[] tileRows;
 
