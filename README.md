@@ -43,6 +43,23 @@ world block past the outermost room in the current location. Run
 `./gradlew.bat lwjgl3:cameraBoundaryTest` to check the limit in both `start`
 and `forest`; it also checks that ordinary following continues between the edges.
 
+## Simulation and room checks
+
+Gameplay advances in fixed 1/60-second steps, with at most six steps processed
+after a long frame. The hero motion and combat machines each advance once per
+step. Room JSON is validated before any room tiles or physics are built.
+
+```powershell
+./gradlew.bat core:check
+./gradlew.bat lwjgl3:simulationRegressionTest
+```
+
+`core:check` validates the authored rooms and checks malformed fixtures for
+useful file, row and neighbor errors. The simulation test uses the packaged
+game and a hidden graphics window to check split frames, a capped stall, and
+held movement state timing. The GitHub Actions validation workflow runs both
+checks on Ubuntu with a virtual display.
+
 Before week 1 changes, a source snapshot, working/index patches and Git index
 copy were saved in the ignored `backups/` directory. Keep that directory when
 cleaning build outputs. Existing gameplay edits are separate from the week 1

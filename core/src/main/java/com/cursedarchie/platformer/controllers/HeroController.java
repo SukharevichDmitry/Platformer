@@ -143,13 +143,14 @@ public class HeroController implements InputProcessor {
 
         hero.getBody().setLinearVelocity(moveX, hero.getBody().getLinearVelocity().y);
 
-        if (jumpKey && hero.isGrounded()) {
+        if (jumpKey && hero.isGrounded() && !isJumpState) {
             hero.getBody().applyLinearImpulse(
                 new Vector2(0, hero.getJumpForce()),
                 hero.getBody().getWorldCenter(),
                 true
             );
             hero.getMotionStateMachine().changeState(new JumpState());
+            return;
         }
 
         if (!isJumpState) {

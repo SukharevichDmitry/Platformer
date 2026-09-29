@@ -18,6 +18,7 @@ public class MotionStateMachine {
 
     public void update(float delta) {
         if (currentMotionState != null) {
+            enemy.setMotionStateTime(enemy.getMotionStateTime() + delta);
             currentMotionState.update(enemy, delta);
         }
     }

@@ -17,11 +17,13 @@ public class MotionStateMachine {
 
     public void update(float delta) {
         if (currentMotionState != null) {
+            hero.setMotionStateTime(hero.getMotionStateTime() + delta);
             currentMotionState.update(hero, delta);
         }
     }
 
     public void changeState (HeroState newState) {
+        if (currentMotionState != null && currentMotionState.getClass() == newState.getClass()) return;
         if (currentMotionState != null) {
             currentMotionState.exit(hero);
         }

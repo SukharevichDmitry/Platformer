@@ -16,6 +16,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class GameWorld implements com.badlogic.gdx.utils.Disposable {
+    public static final float FIXED_STEP = 1f / 60f;
+    private static final int MAX_STEPS_PER_FRAME = 6;
 
     private final World world;
 
@@ -31,6 +33,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private final Array<Enemy> enemies = new Array<>();
     private final EnemyController enemyController;
     private boolean disposed;
+    private float accumulator;
 
 
     public GameWorld() {
@@ -50,8 +53,14 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public void update(float delta) {
-        delta = Math.min(delta, 1f/30f);
+        if (delta <= 0f || Float.isNaN(delta)) return;
+        accumulator = Math.min(accumulator + delta, FIXED_STEP * MAX_STEPS_PER_FRAME);
+        int steps = (int) (accumulator / FIXED_STEP);
+        accumulator -= steps * FIXED_STEP;
+        for (int i = 0; i < steps; i++) simulateStep(FIXED_STEP);
+    }
 
+    private void simulateStep(float delta) {
         removeDeadEnemies();
         world.step(delta, 6, 2);
 
@@ -61,7 +70,6 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         heroController.update(delta);
         enemyController.update(delta);
 
-        hero.getMotionStateMachine().update(delta);
         removeDeadEnemies();
     }
 

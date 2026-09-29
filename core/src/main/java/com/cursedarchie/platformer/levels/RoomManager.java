@@ -17,9 +17,9 @@ public class RoomManager {
 
     public LocationInstance loadLocation(String location) {
 
-        cache.clear();
-
         FileHandle baseDir = Gdx.files.internal("levels/" + location);
+        RoomValidator.validateLocation(baseDir);
+        cache.clear();
 
         FileHandle indexFile = baseDir.child("index.json");
         JsonValue index = jsonReader.parse(indexFile);

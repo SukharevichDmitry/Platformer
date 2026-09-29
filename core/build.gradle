@@ -9,3 +9,13 @@ dependencies {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }
 }
+
+tasks.register('validateRooms', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.RoomValidationCheck'
+  args rootProject.file('assets').path, layout.buildDirectory.dir('validation-fixtures').get().asFile.path
+}
+tasks.named('check') {
+  dependsOn 'validateRooms'
+}
