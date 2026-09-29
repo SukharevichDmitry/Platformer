@@ -21,7 +21,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         CameraBoundaryTest test = new CameraBoundaryTest();
         new Lwjgl3Application(test, config);
         if (!test.passed) throw new AssertionError("Camera boundary test did not complete");
-        System.out.println("CAMERA BOUNDARY PASSED: start and forest stop one block past the right edge");
+        System.out.println("CAMERA BOUNDARY PASSED: start and forest stop one block past both edges");
     }
 
     @Override public void create() {
@@ -31,6 +31,9 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         checkRightEdge("start", 2);
         checkRightEdge("forest", 0);
         checkRightEdge("start", 2);
+        checkLeftEdge("start", 0);
+        checkLeftEdge("forest", 0);
+        checkLeftEdge("start", 0);
         passed = true;
         Gdx.app.exit();
     }
@@ -42,9 +45,9 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
             levelRight = Math.max(levelRight, room.getWorldX() + room.getWidth());
         }
         float roomLeft = world.getCurrentRoom().getWorldX();
-        world.getHero().getBody().setTransform(roomLeft + 2f, 2, 0);
+        world.getHero().getBody().setTransform(roomLeft + 5f, 2, 0);
         renderer.render();
-        if (Math.abs(renderer.getVisibleRightEdge() - (roomLeft + 7f)) > 0.001f) {
+        if (Math.abs(renderer.getVisibleRightEdge() - (roomLeft + 10f)) > 0.001f) {
             throw new AssertionError(location + " camera stopped following before the boundary");
         }
         world.getHero().getBody().setTransform(levelRight - 0.1f, 2, 0);
@@ -53,6 +56,29 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         world.getHero().getBody().setTransform(levelRight + 3f, 2, 0);
         renderer.render();
         assertRightEdge(location, levelRight + 1f);
+    }
+
+    private void checkLeftEdge(String location, int roomId) {
+        world.changeLocation(location, roomId);
+        float levelLeft = Float.POSITIVE_INFINITY;
+        for (RoomInstance room : world.getLocation().getRooms()) {
+            levelLeft = Math.min(levelLeft, room.getWorldX());
+        }
+        world.getHero().getBody().setTransform(levelLeft + 5f, 2, 0);
+        renderer.render();
+        assertLeftEdge(location, levelLeft);
+        world.getHero().getBody().setTransform(levelLeft + 0.1f, 2, 0);
+        renderer.render();
+        assertLeftEdge(location, levelLeft - 1f);
+        world.getHero().getBody().setTransform(levelLeft - 3f, 2, 0);
+        renderer.render();
+        assertLeftEdge(location, levelLeft - 1f);
+    }
+
+    private void assertLeftEdge(String location, float expectedLeft) {
+        float actualLeft = renderer.getVisibleLeftEdge();
+        if (Math.abs(actualLeft - expectedLeft) > 0.001f)
+            throw new AssertionError(location + " left edge: expected " + expectedLeft + ", got " + actualLeft);
     }
 
     private void assertRightEdge(String location, float expectedRight) {
