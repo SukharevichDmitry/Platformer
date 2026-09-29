@@ -5,6 +5,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Group;
@@ -14,12 +15,15 @@ import com.cursedarchie.platformer.Main;
 import com.cursedarchie.platformer.screens.GameScreen;
 import com.cursedarchie.platformer.screens.MenuScreen;
 import com.cursedarchie.platformer.screens.PauseScreen;
+import com.cursedarchie.platformer.world.GameWorld;
 
 /** Integration check using real GL, native libraries, packaged assets and UI input. */
 public final class PackagedSmokeTest extends Main {
     private int frames;
     private Screen firstGame;
+    private GameScreen deathGame;
     private boolean complete;
+    private int menuTextures;
 
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
@@ -38,11 +42,14 @@ public final class PackagedSmokeTest extends Main {
         switch (frames / 20) {
             case 1:
                 expect(MenuScreen.class);
+                menuTextures = Texture.getNumManagedTextures();
                 click("START");
                 expect(GameScreen.class);
                 firstGame = getScreen();
                 break;
             case 2:
+                exerciseTransitions(((GameScreen) getScreen()).getGameWorld());
+                if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Gameplay texture count grew");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                 expect(PauseScreen.class);
                 break;
@@ -60,11 +67,14 @@ public final class PackagedSmokeTest extends Main {
                 expect(MenuScreen.class);
                 break;
             case 6:
+                if (!((GameScreen) firstGame).isDisposed()) throw new AssertionError("Old game was not disposed");
+                if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Menu texture count grew");
                 click("START");
                 expect(GameScreen.class);
                 if (getScreen() == firstGame) throw new AssertionError("Restart reused the game");
                 break;
             case 7:
+                if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Restart texture count grew");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                 expect(PauseScreen.class);
                 break;
@@ -73,10 +83,50 @@ public final class PackagedSmokeTest extends Main {
                 expect(MenuScreen.class);
                 break;
             case 9:
+                click("START");
+                expect(GameScreen.class);
+                deathGame = (GameScreen) getScreen();
+                deathGame.getGameWorld().getHero().takeDamage(10000);
+                break;
+            case 10:
+                expect(MenuScreen.class);
+                if (!deathGame.isDisposed()) throw new AssertionError("Dead game was not disposed");
+                if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Death leaked textures");
                 click("EXIT");
                 complete = true;
                 break;
             default: throw new AssertionError("Smoke test timed out");
+        }
+    }
+
+    private void exerciseTransitions(GameWorld world) {
+        int startBodies = world.getWorld().getBodyCount();
+        int startEnemies = world.getEnemies().size;
+        int forestBodies = -1;
+        int forestEnemies = -1;
+        for (int i = 0; i < 20; i++) {
+            world.changeLocation("forest", 0);
+            if (forestBodies < 0) {
+                forestBodies = world.getWorld().getBodyCount();
+                forestEnemies = world.getEnemies().size;
+            }
+            assertLocation(world, "forest", forestBodies, forestEnemies);
+            world.changeLocation("start", 0);
+            assertLocation(world, "start", startBodies, startEnemies);
+        }
+        try {
+            world.changeLocation("forest", 99);
+            throw new AssertionError("Missing room was accepted");
+        } catch (IllegalArgumentException expected) {
+            assertLocation(world, "start", startBodies, startEnemies);
+        }
+    }
+
+    private void assertLocation(GameWorld world, String name, int bodies, int enemies) {
+        if (!name.equals(world.getLocation().getLocation()) ||
+            world.getWorld().getBodyCount() != bodies || world.getEnemies().size != enemies ||
+            bodies != 1 + world.getLocation().getRooms().size() + enemies) {
+            throw new AssertionError("Location resources did not return to baseline: " + name);
         }
     }
 

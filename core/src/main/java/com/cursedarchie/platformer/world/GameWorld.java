@@ -15,7 +15,7 @@ import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
 import java.util.HashMap;
 import java.util.Map;
 
-public class GameWorld {
+public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private final World world;
 
@@ -30,6 +30,7 @@ public class GameWorld {
     Map<Integer, RoomState> roomStates = new HashMap<>();
     private final Array<Enemy> enemies = new Array<>();
     private final EnemyController enemyController;
+    private boolean disposed;
 
 
     public GameWorld() {
@@ -45,26 +46,14 @@ public class GameWorld {
         this.heroController = new HeroController(this);
         this.enemyController = new EnemyController(this);
 
-        rebuildLocation();
+        buildLocation();
     }
 
     public void update(float delta) {
         delta = Math.min(delta, 1f/30f);
 
+        removeDeadEnemies();
         world.step(delta, 6, 2);
-
-        for (int i = enemies.size - 1; i >= 0; i--) {
-            Enemy enemy = enemies.get(i);
-
-            if (!enemy.isAlive()) {
-
-                if (enemy.getBody() != null) {
-                    world.destroyBody(enemy.getBody());
-                }
-
-                enemies.removeIndex(i);
-            }
-        }
 
         updateCurrentRoom();
         checkRoomExit();
@@ -73,42 +62,72 @@ public class GameWorld {
         enemyController.update(delta);
 
         hero.getMotionStateMachine().update(delta);
+        removeDeadEnemies();
     }
 
-
-
-    private void rebuildLocation() {
-        clearLevelBodies();
-
-        for (RoomInstance room : location.getRooms()) {
-            room.buildBodies(world);
-        }
-
-        spawnEnemies();
-    }
-
-    private void clearLevelBodies() {
-        for (RoomInstance room : location.getRooms()) {
-            if (room != null) {
-                room.getRuntime().destroy(world);
+    private void removeDeadEnemies() {
+        for (int i = enemies.size - 1; i >= 0; i--) {
+            Enemy enemy = enemies.get(i);
+            if (!enemy.isAlive()) {
+                forgetEnemy(enemy);
+                world.destroyBody(enemy.getBody());
+                enemies.removeIndex(i);
             }
         }
     }
 
+    private void forgetEnemy(Enemy enemy) {
+        hero.removeAttackTarget(enemy);
+        hero.removeVisibleActor(enemy);
+        for (int i = 0; i < enemies.size; i++) {
+            Enemy other = enemies.get(i);
+            other.removeAttackTarget(enemy);
+            other.removeVisibleActor(enemy);
+        }
+    }
+
+
+    private void buildLocation() {
+        for (RoomInstance room : location.getRooms()) {
+            room.buildBodies(world);
+        }
+        spawnEnemies();
+    }
+
+    private void unloadLocation() {
+        for (int i = enemies.size - 1; i >= 0; i--) {
+            Enemy enemy = enemies.get(i);
+            forgetEnemy(enemy);
+            world.destroyBody(enemy.getBody());
+        }
+        enemies.clear();
+        for (RoomInstance room : location.getRooms()) {
+            room.getRuntime().destroy(world);
+        }
+    }
+
     public void changeLocation(String locationName, int roomId) {
+        if (disposed) throw new IllegalStateException("GameWorld has been disposed");
+        if (world.isLocked()) throw new IllegalStateException("Cannot change location during a physics step");
+        LocationInstance nextLocation = roomManager.loadLocation(locationName);
+        RoomInstance nextRoom = nextLocation.getRoom(roomId);
+        if (nextRoom == null) throw new IllegalArgumentException("Missing room " + roomId + " in " + locationName);
+
+        unloadLocation();
         currentLocationName = locationName;
-        location = roomManager.loadLocation(locationName);
+        location = nextLocation;
         roomStates.clear();
         currentRoomId = roomId;
-        currentRoom = location.getRoom(roomId);
+        currentRoom = nextRoom;
 
-        rebuildLocation();
+        buildLocation();
         Vector2 spawn = new Vector2(
             currentRoom.getWorldX() + 1,
             currentRoom.getWorldY() + 2
         );
 
         hero.getBody().setTransform(spawn, 0);
+        hero.getBody().setLinearVelocity(0, 0);
     }
 
     private void updateCurrentRoom() {
@@ -208,5 +227,14 @@ public class GameWorld {
     }
     public EnemyController getEnemyController() {
         return enemyController;
+    }
+
+    @Override
+    public void dispose() {
+        if (disposed) return;
+        disposed = true;
+        unloadLocation();
+        roomStates.clear();
+        world.dispose();
     }
 }

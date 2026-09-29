@@ -27,10 +27,13 @@ so a working graphics driver/display is required. It renders the menu and
 gameplay, clicks START, presses Escape, clicks Continue, returns to the menu,
 starts a fresh game, and clicks EXIT. Failures produce a nonzero exit status.
 It uses only the extracted release JAR and the test harness on its classpath.
+It also crosses between the `start` and `forest` locations 20 times, checks
+room/enemy body counts and texture counts, then checks disposal after a death.
 
 For a visible check, launch the extracted build, repeat those actions, and
-resize both menu and pause screens. Full world/resource disposal and repeated
-location travel remain the roadmap's week 2 work.
+resize both menu and pause screens. Location transitions now unload old room
+and enemy bodies before activating the destination. The game screen disposes
+its Box2D world, atlas, sprite batch and shape renderer when the run ends.
 
 Before week 1 changes, a source snapshot, working/index patches and Git index
 copy were saved in the ignored `backups/` directory. Keep that directory when

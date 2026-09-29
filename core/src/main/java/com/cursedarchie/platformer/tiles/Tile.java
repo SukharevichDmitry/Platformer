@@ -1,17 +1,9 @@
 package com.cursedarchie.platformer.tiles;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.graphics.g2d.TextureAtlas;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 
 public abstract class Tile {
-
-    protected static final TextureAtlas ATLAS =
-        new TextureAtlas(
-            Gdx.files.internal("atlases/game.atlas")
-        );
 
     protected float SIZE;
     protected Vector2  position;
@@ -51,5 +43,4 @@ public abstract class Tile {
         isBlockingSight = blockingSight;
     }
 
-    public abstract TextureRegion getTextureRegion();
 }

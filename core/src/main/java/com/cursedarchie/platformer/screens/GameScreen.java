@@ -11,6 +11,7 @@
         private final GameWorld gameWorld;
         private final WorldRenderer renderer;
         private final Main game;
+        private boolean disposed;
 
         public GameScreen(Main game) {
             Gdx.app.log("GameScreen", "Initializing Game Screen");
@@ -47,7 +48,6 @@
 
             if (!gameWorld.getHero().isAlive()) {
                 Gdx.app.log("INFO", "HERO DEAD");
-                dispose();
                 game.goToMenu();
             }
 
@@ -70,6 +70,14 @@
         public void resume() {
         }
         @Override
-        public void dispose() {}
+        public void dispose() {
+            if (disposed) return;
+            disposed = true;
+            renderer.dispose();
+            gameWorld.dispose();
+        }
+
+        public boolean isDisposed() { return disposed; }
+        public GameWorld getGameWorld() { return gameWorld; }
 
     }

@@ -32,7 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 
-public class WorldRenderer {
+public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     private static final float CAMERA_WIDTH = 10f;
     private static final float CAMERA_HEIGHT = 7f;
@@ -44,7 +44,9 @@ public class WorldRenderer {
 
     private final OrthographicCamera cam;
 
-    ShapeRenderer debugRenderer = new ShapeRenderer();
+    private final ShapeRenderer debugRenderer = new ShapeRenderer();
+    private final TextureAtlas atlas;
+    private final TextureRegion blockTexture;
 
     private TextureRegion heroIdleLeft;
     private TextureRegion heroIdleRight;
@@ -93,11 +95,12 @@ public class WorldRenderer {
         this.cam.update();
         this.debug = debug;
         spriteBatch = new SpriteBatch();
+        atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
+        blockTexture = atlas.findRegion("block");
         loadTextures();
     }
 
     private void loadTextures() {
-        TextureAtlas atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
         loadHeroTextures(atlas);
         loadEnemyTextures(atlas);
     }
@@ -246,7 +249,7 @@ public class WorldRenderer {
                     float worldY = roomY + local.y;
 
                     spriteBatch.draw(
-                        tile.getTextureRegion(),
+                        blockTexture,
                         worldX,
                         worldY,
                         tile.getSize(),
@@ -592,5 +595,11 @@ public class WorldRenderer {
         }
 
         debugRenderer.end();
+    }
+    @Override
+    public void dispose() {
+        spriteBatch.dispose();
+        debugRenderer.dispose();
+        atlas.dispose();
     }
 }
