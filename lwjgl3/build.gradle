@@ -64,6 +64,17 @@ tasks.register('packagedSmokeTest', JavaExec) {
   workingDir = layout.buildDirectory.dir('smoke-distribution')
   if (os.contains('mac')) jvmArgs '-XstartOnFirstThread'
 }
+tasks.register('cameraBoundaryTest', JavaExec) {
+  dependsOn 'testClasses', 'extractSmokeDistribution'
+  mainClass = 'com.cursedarchie.platformer.lwjgl3.CameraBoundaryTest'
+  classpath = files(sourceSets.test.output.classesDirs,
+    layout.buildDirectory.file("smoke-distribution/${project.name}-${project.version}/lib/${appName}-${projectVersion}.jar"))
+  workingDir = layout.buildDirectory.dir('smoke-distribution')
+  if (os.contains('mac')) jvmArgs '-XstartOnFirstThread'
+}
+tasks.named('packagedSmokeTest') {
+  dependsOn 'cameraBoundaryTest'
+}
 
 jar {
 // sets the name of the .jar file this produces to the name of the game or app, with the version after.

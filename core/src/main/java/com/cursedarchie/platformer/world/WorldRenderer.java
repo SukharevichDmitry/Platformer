@@ -36,6 +36,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     private static final float CAMERA_WIDTH = 10f;
     private static final float CAMERA_HEIGHT = 7f;
+    private static final float RIGHT_EDGE_MARGIN = 1f;
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.15f;
 
@@ -216,14 +217,27 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private void updateCamera() {
 
         Vector2 heroPos = hero.getPosition();
+        float levelRight = Float.NEGATIVE_INFINITY;
+        for (RoomInstance room : gameWorld.getLocation().getRooms()) {
+            levelRight = Math.max(levelRight, room.getWorldX() + room.getWidth());
+        }
+        float cameraX = heroPos.x;
+        if (levelRight != Float.NEGATIVE_INFINITY) {
+            cameraX = Math.min(cameraX,
+                levelRight + RIGHT_EDGE_MARGIN - cam.viewportWidth * cam.zoom / 2f);
+        }
 
         cam.position.set(
-            heroPos.x,
+            cameraX,
             heroPos.y,
             0
         );
 
         cam.update();
+    }
+
+    public float getVisibleRightEdge() {
+        return cam.position.x + cam.viewportWidth * cam.zoom / 2f;
     }
 
     private void drawTiles() {
