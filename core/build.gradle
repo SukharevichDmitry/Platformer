@@ -16,6 +16,48 @@ tasks.register('validateRooms', JavaExec) {
   mainClass = 'com.cursedarchie.platformer.levels.RoomValidationCheck'
   args rootProject.file('assets').path, layout.buildDirectory.dir('validation-fixtures').get().asFile.path
 }
+tasks.register('validateGenerationProfiles', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.GenerationProfileCheck'
+  args rootProject.file('assets').path, layout.buildDirectory.dir('validation-fixtures').get().asFile.path
+}
+tasks.register('validateRoomTemplates', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.RoomTemplateCatalogCheck'
+  args rootProject.file('assets').path, layout.buildDirectory.dir('validation-fixtures').get().asFile.path
+}
+tasks.register('validateRoomGraphs', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.RoomGraphGenerationCheck'
+  args rootProject.file('assets').path
+}
+tasks.register('validateRoomLayouts', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.RoomLayoutPlacementCheck'
+  args rootProject.file('assets').path, layout.buildDirectory.dir('validation-fixtures').get().asFile.path
+}
+tasks.register('validateRoomTiles', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.RoomTileGenerationCheck'
+  args rootProject.file('assets').path
+}
+tasks.register('validateRoomEncounters', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.RoomEncounterGenerationCheck'
+  args rootProject.file('assets').path
+}
 tasks.named('check') {
   dependsOn 'validateRooms'
+  dependsOn 'validateGenerationProfiles'
+  dependsOn 'validateRoomTemplates'
+  dependsOn 'validateRoomGraphs'
+  dependsOn 'validateRoomLayouts'
+  dependsOn 'validateRoomTiles'
+  dependsOn 'validateRoomEncounters'
 }

@@ -17,6 +17,7 @@ import java.util.Map;
 
 public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public static final float FIXED_STEP = 1f / 60f;
+    public static final float GRAVITY = 10f;
     private static final int MAX_STEPS_PER_FRAME = 6;
 
     private final World world;
@@ -37,7 +38,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
 
     public GameWorld() {
-        this.world = new World(new Vector2(0, -10), true);
+        this.world = new World(new Vector2(0, -GRAVITY), true);
         this.currentLocationName = "start";
         this.currentRoomId = 0;
         location = roomManager.loadLocation(currentLocationName);

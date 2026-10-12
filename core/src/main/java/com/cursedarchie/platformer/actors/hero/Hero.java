@@ -9,6 +9,9 @@ import com.cursedarchie.platformer.physics.PhysicsTags;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
 
 public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
+    public static final float BODY_SIZE = 0.5f;
+    public static final float WALK_SPEED = 5f;
+    public static final float JUMP_IMPULSE = 1f;
 
     /*===========================================PARAMETERS===========================================================*/
 
@@ -40,11 +43,11 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         this.combatState = HeroCombatState.IDLE;
         this.motionStateTime = 0f;
         this.combatStateTime = 0f;
-        this.size = 0.5f;
+        this.size = BODY_SIZE;
         this.maxHealth = 3;
         this.health = maxHealth;
-        this.velocity = 5f;
-        this.jumpForce = 1f;
+        this.velocity = WALK_SPEED;
+        this.jumpForce = JUMP_IMPULSE;
         this.alive = true;
         this.facingLeft = false;
         this.attackHandled = false;

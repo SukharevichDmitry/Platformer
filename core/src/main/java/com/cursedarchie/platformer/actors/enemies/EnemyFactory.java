@@ -7,11 +7,35 @@ import com.cursedarchie.platformer.actors.enemies.types.DefaultEnemy;
 import com.cursedarchie.platformer.physics.AttackConfig;
 
 public class EnemyFactory {
+    public static final class Definition {
+        public final String id;
+        public final float bodySize;
+        public final int difficultyCost;
+
+        private Definition(String id, float bodySize, int difficultyCost) {
+            this.id = id;
+            this.bodySize = bodySize;
+            this.difficultyCost = difficultyCost;
+        }
+    }
+
+    private static final Definition DEFAULT = new Definition("default", 0.5f, 1);
+    private static final Definition BOSS = new Definition("boss", 1.5f, 3);
+
+    public static Definition definition(String type) {
+        if (DEFAULT.id.equals(type)) return DEFAULT;
+        if (BOSS.id.equals(type)) return BOSS;
+        throw new IllegalArgumentException("Unsupported enemy type: " + type);
+    }
+
+    public static boolean supportsType(String type) {
+        return DEFAULT.id.equals(type) || BOSS.id.equals(type);
+    }
 
     public static Enemy createDefaultEnemy(World world, Vector2 pos) {
 
         EnemyConfig cfg = new EnemyConfig();
-        cfg.size = 0.5f;
+        cfg.size = DEFAULT.bodySize;
         cfg.maxHealth = 3f;
 
         cfg.viewDistance = 5f;
@@ -31,7 +55,7 @@ public class EnemyFactory {
     public static Enemy createBoss(World world, Vector2 pos) {
 
         EnemyConfig cfg = new EnemyConfig();
-        cfg.size = 1.5f;
+        cfg.size = BOSS.bodySize;
         cfg.maxHealth = 8f;
 
         cfg.viewDistance = 4f;
