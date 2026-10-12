@@ -12,6 +12,7 @@ public class LocationInstance {
         new HashMap<>();
     private Long generationSeed;
     private int entryRoomId;
+    private GeneratedRunSave generatedRun;
 
     public LocationInstance(String location) {
         this.location = location;
@@ -24,9 +25,11 @@ public class LocationInstance {
     public boolean isGenerated() { return generationSeed != null; }
     public Long getGenerationSeed() { return generationSeed; }
     public int getEntryRoomId() { return entryRoomId; }
+    public GeneratedRunSave getGeneratedRun() { return generatedRun; }
 
-    void setGeneration(long seed, int entryRoomId) {
-        this.generationSeed = seed;
+    void setGeneration(GeneratedRunSave save, int entryRoomId) {
+        this.generatedRun = save;
+        this.generationSeed = save.seed;
         this.entryRoomId = entryRoomId;
     }
 

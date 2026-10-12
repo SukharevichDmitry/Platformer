@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "locationId": "ruins",
   "returnTransition": {"location": "forest", "id": 0},
   "roomCount": {"min": 5, "max": 10},

@@ -20,3 +20,4 @@ jobs:
       - run: bash ./gradlew :core:check --no-daemon
       - run: xvfb-run -a bash ./gradlew :lwjgl3:simulationRegressionTest --no-daemon
       - run: xvfb-run -a bash ./gradlew :lwjgl3:generatedLocationTest --no-daemon
+      - run: xvfb-run -a bash ./gradlew :lwjgl3:generatedRunPersistenceTest --no-daemon

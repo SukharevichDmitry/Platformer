@@ -44,6 +44,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     protected CombatStateMachine combatStateMachine;
     private boolean active = true;
     private int roomId;
+    private String persistentSpawnId;
 
     /*===========================================CONSTRUCTOR=======================================================*/
 
@@ -171,6 +172,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isActive() {
         return active;
     }
+    public String getPersistentSpawnId() { return persistentSpawnId; }
+    public void setPersistentSpawnId(String value) { persistentSpawnId = value; }
 
     /*==============================================COMBAT============================================================*/
 

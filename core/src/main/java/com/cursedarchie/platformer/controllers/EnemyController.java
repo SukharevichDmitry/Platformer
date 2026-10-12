@@ -27,7 +27,7 @@ public class EnemyController {
         }
     }
 
-    public void spawnEnemy(EnemySpawnData spawn, Vector2 worldPos, World world) {
+    public Enemy spawnEnemy(EnemySpawnData spawn, Vector2 worldPos, World world) {
         Enemy enemy = null;
         switch (spawn.type) {
             case "default":
@@ -43,5 +43,6 @@ public class EnemyController {
         if (enemy != null) {
             gameWorld.addEnemy(enemy);
         }
+        return enemy;
     }
 }

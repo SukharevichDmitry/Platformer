@@ -68,6 +68,12 @@ spawns, allowed enemy types, difficulty limits, walkable terrain, and clear
 entries and story space. Run `./gradlew.bat lwjgl3:generatedLocationTest` to
 check packaged border travel and repeated room and enemy cleanup.
 
+Generated ruins persist through the platform's libGDX Preferences storage. The
+save includes its profile version, seed, graph and layout signatures, narrative
+room choices, and defeated enemy spawn IDs. Run
+`./gradlew.bat lwjgl3:generatedRunPersistenceTest` to verify that a complete
+game-world reload restores the same rooms, exits, choices, and defeated enemies.
+
 Before week 1 changes, a source snapshot, working/index patches and Git index
 copy were saved in the ignored `backups/` directory. Keep that directory when
 cleaning build outputs. Existing gameplay edits are separate from the week 1

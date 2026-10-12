@@ -1,5 +1,6 @@
 package com.cursedarchie.platformer.world;
 
+import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Array;
@@ -40,6 +41,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public GameWorld() { this(new RoomManager()); }
 
     public GameWorld(long seed) { this(new RoomManager(seed)); }
+
+    public GameWorld(long seed, Preferences preferences) {
+        this(new RoomManager(seed, preferences));
+    }
 
     private GameWorld(RoomManager roomManager) {
         this.roomManager = roomManager;
@@ -83,10 +88,20 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         for (int i = enemies.size - 1; i >= 0; i--) {
             Enemy enemy = enemies.get(i);
             if (!enemy.isAlive()) {
+                rememberDefeatedEnemy(enemy);
                 forgetEnemy(enemy);
                 world.destroyBody(enemy.getBody());
                 enemies.removeIndex(i);
             }
+        }
+    }
+
+    private void rememberDefeatedEnemy(Enemy enemy) {
+        if (!location.isGenerated() || enemy.getPersistentSpawnId() == null) return;
+        GeneratedRunSave run = location.getGeneratedRun();
+        if (!run.defeatedSpawnIds.contains(enemy.getPersistentSpawnId(), false)) {
+            run.defeatedSpawnIds.add(enemy.getPersistentSpawnId());
+            roomManager.saveGeneratedRun(location);
         }
     }
 
@@ -196,19 +211,23 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 continue;
             }
 
-            for (EnemySpawnData spawn :
-                room.getSpawns()) {
+            for (int spawnIndex = 0; spawnIndex < room.getSpawns().size; spawnIndex++) {
+                EnemySpawnData spawn = room.getSpawns().get(spawnIndex);
+                String persistentId = room.getRoomId() + ":" + spawnIndex;
+                if (location.isGenerated() &&
+                    location.getGeneratedRun().defeatedSpawnIds.contains(persistentId, false)) continue;
 
                 Vector2 pos =
                     room.localToWorld(
                         spawn.position
                     );
 
-                enemyController.spawnEnemy(
+                Enemy enemy = enemyController.spawnEnemy(
                     spawn,
                     pos,
                     world
                 );
+                if (enemy != null && location.isGenerated()) enemy.setPersistentSpawnId(persistentId);
             }
 
             state.setEnemiesSpawned(true);

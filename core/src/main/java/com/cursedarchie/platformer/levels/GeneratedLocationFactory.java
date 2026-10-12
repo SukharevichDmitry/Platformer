@@ -2,6 +2,7 @@ package com.cursedarchie.platformer.levels;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
 import com.cursedarchie.platformer.levels.wrappers.LocationTransition;
 import com.cursedarchie.platformer.levels.wrappers.Neighbors;
@@ -12,7 +13,8 @@ import java.util.List;
 
 /** Converts validated procedural data to the same room model as authored locations. */
 final class GeneratedLocationFactory {
-    LocationInstance load(FileHandle profileFile, FileHandle templateFile, long requestedSeed) {
+    LocationInstance load(FileHandle profileFile, FileHandle templateFile, long requestedSeed,
+                          GeneratedRunSave restored) {
         GenerationProfile profile = GenerationProfile.load(profileFile);
         RoomTemplateCatalog catalog = RoomTemplateCatalog.load(templateFile, profile);
         FileHandle returnRoom = profileFile.parent().parent().child("levels")
@@ -20,20 +22,22 @@ final class GeneratedLocationFactory {
         if (!returnRoom.exists())
             throw new IllegalArgumentException(profileFile.path() + ": returnTransition references missing " +
                 profile.returnLocation + "/" + profile.returnRoomId);
+        long seed = restored == null ? requestedSeed : restored.seed;
         try {
-            return generate(profile, catalog, requestedSeed);
+            return generate(profile, catalog, seed, restored);
         } catch (IllegalArgumentException primary) {
-            if (requestedSeed == 0) throw primary;
+            if (restored != null || seed == 0) throw primary;
             try {
-                return generate(profile, catalog, 0L);
+                return generate(profile, catalog, 0L, null);
             } catch (IllegalArgumentException fallback) {
-                throw new IllegalArgumentException("Generation failed for seed " + requestedSeed +
+                throw new IllegalArgumentException("Generation failed for seed " + seed +
                     " and validated fallback seed 0: " + fallback.getMessage(), fallback);
             }
         }
     }
 
-    private LocationInstance generate(GenerationProfile profile, RoomTemplateCatalog catalog, long seed) {
+    private LocationInstance generate(GenerationProfile profile, RoomTemplateCatalog catalog, long seed,
+                                      GeneratedRunSave restored) {
         GeneratedRoomGraph graph = new RoomGraphGenerator().generate(profile, catalog, seed);
         PlacedRoomGraph layout = new RoomLayoutPlacer().place(graph, catalog, profile);
         GeneratedRoomTiles tiles = new RoomTileGenerator().generate(layout, catalog);
@@ -46,6 +50,7 @@ final class GeneratedLocationFactory {
         tiles = openExteriorEntry(tiles, entryRoomId);
         RoomRouteReachability.validate(tiles);
         GeneratedRoomEncounters encounters = new RoomEncounterGenerator().generate(tiles, catalog, profile);
+        GeneratedRunSave run = describeRun(profile, catalog, graph, layout, restored);
 
         LocationInstance location = new LocationInstance(profile.locationId);
         for (PlacedRoomGraph.PlacedRoom placed : layout.rooms) {
@@ -79,8 +84,33 @@ final class GeneratedLocationFactory {
             room.buildTiles();
             location.addRoom(room);
         }
-        location.setGeneration(seed, entryRoomId);
+        location.setGeneration(run, entryRoomId);
         return location;
+    }
+
+    private GeneratedRunSave describeRun(GenerationProfile profile, RoomTemplateCatalog catalog,
+                                         GeneratedRoomGraph graph, PlacedRoomGraph layout,
+                                         GeneratedRunSave restored) {
+        GeneratedRunSave run = restored == null ? new GeneratedRunSave() : restored;
+        Array<String> narratives = new Array<>();
+        for (GeneratedRoomGraph.RoomNode node : graph.rooms) {
+            RoomTemplateCatalog.RoomTemplate template = catalog.templates.get(node.templateId);
+            if (template.narrativeEventId != null)
+                narratives.add(node.id + ":" + template.id + ":" + template.narrativeEventId);
+        }
+        String topology = graph.topologySignature();
+        String placement = layout.placementSignature();
+        if (restored != null && (!topology.equals(restored.topologySignature) ||
+            !placement.equals(restored.placementSignature) || !narratives.equals(restored.narrativeChoices)))
+            throw new IllegalArgumentException("Saved generated run does not match profile version " + profile.version);
+        run.profileVersion = profile.version;
+        run.locationId = profile.locationId;
+        run.seed = graph.seed;
+        run.topologySignature = topology;
+        run.placementSignature = placement;
+        run.narrativeChoices = narratives;
+        if (run.defeatedSpawnIds == null) run.defeatedSpawnIds = new Array<>();
+        return run;
     }
 
     private GeneratedRoomTiles openExteriorEntry(GeneratedRoomTiles tiles, int entryRoomId) {

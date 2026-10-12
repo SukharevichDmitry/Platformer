@@ -13,6 +13,7 @@ import java.util.Set;
 
 /** Validated constraints for a future seeded location generator. */
 public final class GenerationProfile {
+    public final int version;
     public static final class IntRange {
         public final int min;
         public final int max;
@@ -57,10 +58,11 @@ public final class GenerationProfile {
     public final Set<String> allowedEnemyTypes;
     public final List<RoomPattern> roomPatterns;
 
-    private GenerationProfile(String locationId, String returnLocation, int returnRoomId,
+    private GenerationProfile(int version, String locationId, String returnLocation, int returnRoomId,
                               IntRange roomCount, int difficultyBudget,
                               Set<String> allowedEnemyTypes,
                               List<RoomPattern> roomPatterns) {
+        this.version = version;
         this.locationId = locationId;
         this.returnLocation = returnLocation;
         this.returnRoomId = returnRoomId;
@@ -82,6 +84,9 @@ public final class GenerationProfile {
         }
         if (!root.isObject()) throw invalid(file, "root must be an object");
 
+        int version = integer(root.get("version"), file, "version");
+        if (version < 1 || version > 1_000_000)
+            throw invalid(file, "version must be between 1 and 1000000");
         String locationId = identifier(root.get("locationId"), file, "locationId");
         JsonValue transition = root.get("returnTransition");
         if (transition == null || !transition.isObject())
@@ -130,7 +135,7 @@ public final class GenerationProfile {
         }
         if (minimumRooms > roomCount.max || maximumRooms < roomCount.min)
             throw invalid(file, "roomQuota totals cannot satisfy roomCount");
-        return new GenerationProfile(locationId, returnLocation, returnRoomId,
+        return new GenerationProfile(version, locationId, returnLocation, returnRoomId,
             roomCount, difficultyBudget, enemyTypes, parsed);
     }
 

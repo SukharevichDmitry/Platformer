@@ -1,6 +1,7 @@
 package com.cursedarchie.platformer.levels;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
@@ -13,21 +14,45 @@ public class RoomManager {
     private final Map<Integer, RoomData> cache = new HashMap<>();
     private final Map<String, LocationInstance> generatedLocations = new HashMap<>();
     private final long runSeed;
+    private final GeneratedRunStore runStore;
     private String loadedLocation;
 
     private final JsonReader jsonReader = new JsonReader();
 
-    public RoomManager() { this(new Random().nextLong()); }
+    public RoomManager() {
+        this(new Random().nextLong(),
+            new GeneratedRunStore(Gdx.app.getPreferences("com.cursedarchie.platformer.generated-run")));
+    }
 
-    public RoomManager(long runSeed) { this.runSeed = runSeed; }
+    public RoomManager(long runSeed) { this(runSeed, new GeneratedRunStore(null)); }
+
+    public RoomManager(long runSeed, Preferences preferences) {
+        this(runSeed, new GeneratedRunStore(preferences));
+    }
+
+    private RoomManager(long runSeed, GeneratedRunStore runStore) {
+        this.runSeed = runSeed;
+        this.runStore = runStore;
+    }
 
     public LocationInstance loadLocation(String location) {
         FileHandle profile = Gdx.files.internal("generation/" + location + ".json");
         if (profile.exists()) {
             LocationInstance existing = generatedLocations.get(location);
             if (existing != null) return existing;
-            LocationInstance generated = new GeneratedLocationFactory().load(profile,
-                Gdx.files.internal("generation/" + location + ".templates.json"), runSeed);
+            GenerationProfile generationProfile = GenerationProfile.load(profile);
+            GeneratedRunSave restored = runStore.load(location, generationProfile.version);
+            LocationInstance generated;
+            try {
+                generated = new GeneratedLocationFactory().load(profile,
+                    Gdx.files.internal("generation/" + location + ".templates.json"), runSeed, restored);
+            } catch (IllegalArgumentException invalidSave) {
+                if (restored == null) throw invalidSave;
+                runStore.remove(location);
+                generated = new GeneratedLocationFactory().load(profile,
+                    Gdx.files.internal("generation/" + location + ".templates.json"), runSeed, null);
+            }
+            runStore.save(generated.getGeneratedRun());
             generatedLocations.put(location, generated);
             loadedLocation = location;
             return generated;
@@ -72,6 +97,10 @@ public class RoomManager {
 
         loadedLocation = location;
         return locationInstance;
+    }
+
+    public void saveGeneratedRun(LocationInstance location) {
+        if (location != null && location.isGenerated()) runStore.save(location.getGeneratedRun());
     }
 
     private void buildRoomLayout(LocationInstance location) {
