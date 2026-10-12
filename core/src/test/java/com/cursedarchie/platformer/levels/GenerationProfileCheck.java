@@ -38,6 +38,10 @@ public final class GenerationProfileCheck {
         fixture.writeString(valid.replace("\"difficultyBudget\": 4", "\"difficultyBudget\": 0"), false);
         expectError(fixture, "difficultyBudget cannot satisfy enemySpawns");
 
+        fixture.writeString(valid.replace("\"returnTransition\": {\"location\": \"forest\", \"id\": 0}",
+            "\"returnTransition\": {\"location\": \"ruins\", \"id\": 0}"), false);
+        expectError(fixture, "returnTransition");
+
         fixture.writeString(valid.replace("\"min\": 2, \"max\": 7", "\"min\": 11, \"max\": 11"), false);
         expectError(fixture, "roomQuota totals cannot satisfy roomCount");
 

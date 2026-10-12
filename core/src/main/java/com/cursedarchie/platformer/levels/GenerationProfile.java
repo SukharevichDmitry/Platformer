@@ -50,15 +50,20 @@ public final class GenerationProfile {
     }
 
     public final String locationId;
+    public final String returnLocation;
+    public final int returnRoomId;
     public final IntRange roomCount;
     public final int difficultyBudget;
     public final Set<String> allowedEnemyTypes;
     public final List<RoomPattern> roomPatterns;
 
-    private GenerationProfile(String locationId, IntRange roomCount, int difficultyBudget,
+    private GenerationProfile(String locationId, String returnLocation, int returnRoomId,
+                              IntRange roomCount, int difficultyBudget,
                               Set<String> allowedEnemyTypes,
                               List<RoomPattern> roomPatterns) {
         this.locationId = locationId;
+        this.returnLocation = returnLocation;
+        this.returnRoomId = returnRoomId;
         this.roomCount = roomCount;
         this.difficultyBudget = difficultyBudget;
         this.allowedEnemyTypes = Collections.unmodifiableSet(allowedEnemyTypes);
@@ -78,6 +83,13 @@ public final class GenerationProfile {
         if (!root.isObject()) throw invalid(file, "root must be an object");
 
         String locationId = identifier(root.get("locationId"), file, "locationId");
+        JsonValue transition = root.get("returnTransition");
+        if (transition == null || !transition.isObject())
+            throw invalid(file, "returnTransition must be an object");
+        String returnLocation = identifier(transition.get("location"), file, "returnTransition.location");
+        int returnRoomId = integer(transition.get("id"), file, "returnTransition.id");
+        if (returnRoomId < 0 || returnRoomId >= 256 || returnLocation.equals(locationId))
+            throw invalid(file, "returnTransition must target an authored room outside this location");
         IntRange roomCount = range(root.get("roomCount"), file, "roomCount", 1, 64);
         int difficultyBudget = budget(root.get("difficultyBudget"), file, "difficultyBudget");
         Set<String> enemyTypes = enemyTypes(root.get("allowedEnemyTypes"), file,
@@ -118,7 +130,8 @@ public final class GenerationProfile {
         }
         if (minimumRooms > roomCount.max || maximumRooms < roomCount.min)
             throw invalid(file, "roomQuota totals cannot satisfy roomCount");
-        return new GenerationProfile(locationId, roomCount, difficultyBudget, enemyTypes, parsed);
+        return new GenerationProfile(locationId, returnLocation, returnRoomId,
+            roomCount, difficultyBudget, enemyTypes, parsed);
     }
 
     private static int budget(JsonValue value, FileHandle file, String field) {

@@ -11,11 +11,27 @@ import java.util.*;
 public class RoomManager {
 
     private final Map<Integer, RoomData> cache = new HashMap<>();
+    private final Map<String, LocationInstance> generatedLocations = new HashMap<>();
+    private final long runSeed;
     private String loadedLocation;
 
     private final JsonReader jsonReader = new JsonReader();
 
+    public RoomManager() { this(new Random().nextLong()); }
+
+    public RoomManager(long runSeed) { this.runSeed = runSeed; }
+
     public LocationInstance loadLocation(String location) {
+        FileHandle profile = Gdx.files.internal("generation/" + location + ".json");
+        if (profile.exists()) {
+            LocationInstance existing = generatedLocations.get(location);
+            if (existing != null) return existing;
+            LocationInstance generated = new GeneratedLocationFactory().load(profile,
+                Gdx.files.internal("generation/" + location + ".templates.json"), runSeed);
+            generatedLocations.put(location, generated);
+            loadedLocation = location;
+            return generated;
+        }
 
         FileHandle baseDir = Gdx.files.internal("levels/" + location);
         RoomValidator.validateLocation(baseDir);

@@ -1,5 +1,6 @@
 {
   "locationId": "ruins",
+  "returnTransition": {"location": "forest", "id": 0},
   "roomCount": {"min": 5, "max": 10},
   "difficultyBudget": 12,
   "allowedEnemyTypes": ["default", "boss"],

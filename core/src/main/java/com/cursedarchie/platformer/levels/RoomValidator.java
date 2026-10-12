@@ -116,6 +116,14 @@ public final class RoomValidator {
             throw invalid(file, field + ".location has an invalid name");
         int id = integer(transition.get("id"), file, field + ".id");
         if (id < 0 || id >= MAX_ROOMS) throw invalid(file, field + ".id is out of range");
+        FileHandle generatedProfile = directory.parent().parent().child("generation").child(location + ".json");
+        if (generatedProfile.exists()) {
+            GenerationProfile profile = GenerationProfile.load(generatedProfile);
+            RoomTemplateCatalog.load(generatedProfile.parent().child(location + ".templates.json"), profile);
+            if (!profile.locationId.equals(location) || id != 0)
+                throw invalid(file, field + " must target generated location " + location + " entry 0");
+            return;
+        }
         FileHandle target = directory.parent().child(location);
         Set<Integer> targetIds = location.equals(directory.name()) ? ownIds : readRoomIds(target.child("index.json"));
         if (!targetIds.contains(id) || !target.child(id + ".json").exists())

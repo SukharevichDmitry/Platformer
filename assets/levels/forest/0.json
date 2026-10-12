@@ -22,5 +22,9 @@
   "locationEntry": {
     "location": "start",
     "id": 2
+  },
+  "locationExit": {
+    "location": "ruins",
+    "id": 0
   }
 }

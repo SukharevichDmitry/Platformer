@@ -60,12 +60,13 @@ game and a hidden graphics window to check split frames, a capped stall, and
 held movement state timing. The GitHub Actions validation workflow runs both
 checks on Ubuntu with a virtual display.
 
-The procedural ruins pipeline currently generates a seeded graph, room layout,
-tile rows, and encounter spawn data. Run `./gradlew.bat core:validateRoomEncounters`
-to check 1,000 seeds for stable spawns, allowed enemy types, difficulty limits,
-walkable terrain, and clear entries and story space. Generated locations are not
-loaded into gameplay yet; that is the next milestone in
-`PROCEDURAL_WORLD_GENERATION_PLAN.md`.
+The procedural ruins pipeline generates a seeded graph, room layout, tile rows,
+and encounter spawn data. Walk right through forest to enter ruins; walk left
+through its outermost room to return. The layout is generated once per game run.
+Run `./gradlew.bat core:validateRoomEncounters` to check 1,000 seeds for stable
+spawns, allowed enemy types, difficulty limits, walkable terrain, and clear
+entries and story space. Run `./gradlew.bat lwjgl3:generatedLocationTest` to
+check packaged border travel and repeated room and enemy cleanup.
 
 Before week 1 changes, a source snapshot, working/index patches and Git index
 copy were saved in the ignored `backups/` directory. Keep that directory when

@@ -25,7 +25,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private final Hero hero;
     private final HeroController heroController;
 
-    private final RoomManager roomManager = new RoomManager();
+    private final RoomManager roomManager;
     private String currentLocationName;
     private LocationInstance location;
     private int currentRoomId;
@@ -37,7 +37,12 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private float accumulator;
 
 
-    public GameWorld() {
+    public GameWorld() { this(new RoomManager()); }
+
+    public GameWorld(long seed) { this(new RoomManager(seed)); }
+
+    private GameWorld(RoomManager roomManager) {
+        this.roomManager = roomManager;
         this.world = new World(new Vector2(0, -GRAVITY), true);
         this.currentLocationName = "start";
         this.currentRoomId = 0;
@@ -123,14 +128,15 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         if (disposed) throw new IllegalStateException("GameWorld has been disposed");
         if (world.isLocked()) throw new IllegalStateException("Cannot change location during a physics step");
         LocationInstance nextLocation = roomManager.loadLocation(locationName);
-        RoomInstance nextRoom = nextLocation.getRoom(roomId);
+        RoomInstance nextRoom = nextLocation.getRoom(nextLocation.isGenerated() && roomId == 0 ?
+            nextLocation.getEntryRoomId() : roomId);
         if (nextRoom == null) throw new IllegalArgumentException("Missing room " + roomId + " in " + locationName);
 
         unloadLocation();
         currentLocationName = locationName;
         location = nextLocation;
         roomStates.clear();
-        currentRoomId = roomId;
+        currentRoomId = nextRoom.getRoomId();
         currentRoom = nextRoom;
 
         buildLocation();
