@@ -52,6 +52,17 @@ tasks.register('validateRoomEncounters', JavaExec) {
   mainClass = 'com.cursedarchie.platformer.levels.RoomEncounterGenerationCheck'
   args rootProject.file('assets').path
 }
+tasks.register('qualityGateGeneratedWorld', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.GenerationQualityCheck'
+  def firstSeed = providers.gradleProperty('generationSeed').getOrElse('0')
+  def seedCount = providers.gradleProperty('generationSeed').isPresent() ? '1' :
+    providers.gradleProperty('generationSeedCount').getOrElse('5000')
+  args rootProject.file('assets').path,
+    layout.buildDirectory.file('reports/generation/ruins.json').get().asFile.path,
+    firstSeed, seedCount
+}
 tasks.named('check') {
   dependsOn 'validateRooms'
   dependsOn 'validateGenerationProfiles'
@@ -60,4 +71,5 @@ tasks.named('check') {
   dependsOn 'validateRoomLayouts'
   dependsOn 'validateRoomTiles'
   dependsOn 'validateRoomEncounters'
+  dependsOn 'qualityGateGeneratedWorld'
 }

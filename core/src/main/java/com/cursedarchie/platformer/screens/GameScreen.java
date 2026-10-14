@@ -5,11 +5,13 @@
     import com.cursedarchie.platformer.Main;
     import com.cursedarchie.platformer.world.WorldRenderer;
     import com.cursedarchie.platformer.world.GameWorld;
+    import com.cursedarchie.platformer.world.GenerationSeedOverlay;
 
     public class GameScreen implements Screen {
 
         private final GameWorld gameWorld;
         private final WorldRenderer renderer;
+        private final GenerationSeedOverlay seedOverlay;
         private final Main game;
         private boolean disposed;
 
@@ -18,6 +20,7 @@
             this.game = game;
             gameWorld = new GameWorld();
             renderer = new WorldRenderer(gameWorld, true);
+            seedOverlay = new GenerationSeedOverlay(gameWorld);
         }
 
         @Override
@@ -45,6 +48,7 @@
 
             gameWorld.update(delta);
             renderer.render();
+            seedOverlay.render();
 
             if (!gameWorld.getHero().isAlive()) {
                 Gdx.app.log("INFO", "HERO DEAD");
@@ -56,6 +60,7 @@
         @Override
         public void resize(int width, int height) {
             renderer.setSize(width, height);
+            seedOverlay.resize(width, height);
         }
 
         @Override
@@ -74,6 +79,7 @@
             if (disposed) return;
             disposed = true;
             renderer.dispose();
+            seedOverlay.dispose();
             gameWorld.dispose();
         }
 
