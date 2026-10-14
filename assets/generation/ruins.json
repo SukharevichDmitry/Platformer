@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "status": "production",
   "locationId": "ruins",
   "returnTransition": {"location": "forest", "id": 0},
   "roomCount": {"min": 5, "max": 10},
@@ -20,7 +21,7 @@
     {
       "id": "arena",
       "form": "platforms",
-      "weight": 2,
+      "weight": 3,
       "width": {"min": 13, "max": 16},
       "height": {"min": 8, "max": 10},
       "roomQuota": {"min": 2, "max": 5},
@@ -28,5 +29,11 @@
       "difficultyBudget": 4,
       "allowedEnemyTypes": ["default", "boss"]
     }
-  ]
+  ],
+  "tuningTargets": {
+    "averageRooms": {"min": 7, "max": 8},
+    "averageEnemies": {"min": 4, "max": 6},
+    "combatRoomPercent": {"min": 30, "max": 50},
+    "optionalBranchPercent": {"min": 40, "max": 60}
+  }
 }

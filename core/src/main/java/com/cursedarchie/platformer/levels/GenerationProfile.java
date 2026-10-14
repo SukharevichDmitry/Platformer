@@ -14,6 +14,20 @@ import java.util.Set;
 /** Validated constraints for a future seeded location generator. */
 public final class GenerationProfile {
     public final int version;
+    public static final class TuningTargets {
+        public final IntRange averageRooms;
+        public final IntRange averageEnemies;
+        public final IntRange combatRoomPercent;
+        public final IntRange optionalBranchPercent;
+
+        private TuningTargets(IntRange averageRooms, IntRange averageEnemies,
+                              IntRange combatRoomPercent, IntRange optionalBranchPercent) {
+            this.averageRooms = averageRooms;
+            this.averageEnemies = averageEnemies;
+            this.combatRoomPercent = combatRoomPercent;
+            this.optionalBranchPercent = optionalBranchPercent;
+        }
+    }
     public static final class IntRange {
         public final int min;
         public final int max;
@@ -51,25 +65,30 @@ public final class GenerationProfile {
     }
 
     public final String locationId;
+    public final String status;
     public final String returnLocation;
     public final int returnRoomId;
     public final IntRange roomCount;
     public final int difficultyBudget;
     public final Set<String> allowedEnemyTypes;
     public final List<RoomPattern> roomPatterns;
+    public final TuningTargets tuningTargets;
 
-    private GenerationProfile(int version, String locationId, String returnLocation, int returnRoomId,
+    private GenerationProfile(int version, String locationId, String status,
+                              String returnLocation, int returnRoomId,
                               IntRange roomCount, int difficultyBudget,
                               Set<String> allowedEnemyTypes,
-                              List<RoomPattern> roomPatterns) {
+                              List<RoomPattern> roomPatterns, TuningTargets tuningTargets) {
         this.version = version;
         this.locationId = locationId;
+        this.status = status;
         this.returnLocation = returnLocation;
         this.returnRoomId = returnRoomId;
         this.roomCount = roomCount;
         this.difficultyBudget = difficultyBudget;
         this.allowedEnemyTypes = Collections.unmodifiableSet(allowedEnemyTypes);
         this.roomPatterns = Collections.unmodifiableList(roomPatterns);
+        this.tuningTargets = tuningTargets;
     }
 
     public static GenerationProfile load(FileHandle file) {
@@ -88,6 +107,9 @@ public final class GenerationProfile {
         if (version < 1 || version > 1_000_000)
             throw invalid(file, "version must be between 1 and 1000000");
         String locationId = identifier(root.get("locationId"), file, "locationId");
+        String status = string(root.get("status"), file, "status");
+        if (!status.equals("draft") && !status.equals("production"))
+            throw invalid(file, "status must be draft or production");
         JsonValue transition = root.get("returnTransition");
         if (transition == null || !transition.isObject())
             throw invalid(file, "returnTransition must be an object");
@@ -135,8 +157,23 @@ public final class GenerationProfile {
         }
         if (minimumRooms > roomCount.max || maximumRooms < roomCount.min)
             throw invalid(file, "roomQuota totals cannot satisfy roomCount");
-        return new GenerationProfile(version, locationId, returnLocation, returnRoomId,
-            roomCount, difficultyBudget, enemyTypes, parsed);
+        TuningTargets targets = tuningTargets(root.get("tuningTargets"), file, status);
+        return new GenerationProfile(version, locationId, status, returnLocation, returnRoomId,
+            roomCount, difficultyBudget, enemyTypes, parsed, targets);
+    }
+
+    private static TuningTargets tuningTargets(JsonValue value, FileHandle file, String status) {
+        if (value == null) {
+            if (status.equals("production"))
+                throw invalid(file, "production profile requires tuningTargets");
+            return null;
+        }
+        if (!value.isObject()) throw invalid(file, "tuningTargets must be an object");
+        return new TuningTargets(
+            range(value.get("averageRooms"), file, "tuningTargets.averageRooms", 1, 64),
+            range(value.get("averageEnemies"), file, "tuningTargets.averageEnemies", 0, 64),
+            range(value.get("combatRoomPercent"), file, "tuningTargets.combatRoomPercent", 0, 100),
+            range(value.get("optionalBranchPercent"), file, "tuningTargets.optionalBranchPercent", 0, 100));
     }
 
     private static int budget(JsonValue value, FileHandle file, String field) {

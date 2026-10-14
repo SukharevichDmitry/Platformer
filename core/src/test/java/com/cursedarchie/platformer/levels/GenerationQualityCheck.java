@@ -19,6 +19,12 @@ public final class GenerationQualityCheck {
         public double averageRooms;
         public double averageMainRouteRooms;
         public double averageEnemies;
+        public double combatRoomPercent;
+        public double optionalBranchPercent;
+        public long shortestRouteSeed = -1;
+        public long longestRouteSeed = -1;
+        public long optionalBranchSeed = -1;
+        public long noBranchSeed = -1;
         public Map<String, Integer> templates = new LinkedHashMap<>();
         public Map<String, Integer> enemyTypes = new LinkedHashMap<>();
     }
@@ -41,6 +47,8 @@ public final class GenerationQualityCheck {
         long roomTotal = 0;
         long routeTotal = 0;
         long enemyTotal = 0;
+        long combatRoomTotal = 0;
+        long optionalBranchTotal = 0;
 
         for (long seed = firstSeed; seed < firstSeed + count; seed++) {
             final long currentSeed = seed;
@@ -59,8 +67,16 @@ public final class GenerationQualityCheck {
                 verifyTransition(layout, profile, new FileHandle(args[0]), currentSeed);
 
                 int enemies = 0;
+                int branches = graph.rooms.size() - graph.mainRoute.size();
+                optionalBranchTotal += branches;
+                if (graph.rooms.size() < report.minRooms) report.shortestRouteSeed = currentSeed;
+                if (graph.rooms.size() > report.maxRooms) report.longestRouteSeed = currentSeed;
+                if (branches > 0 && report.optionalBranchSeed < 0) report.optionalBranchSeed = currentSeed;
+                if (branches == 0 && report.noBranchSeed < 0) report.noBranchSeed = currentSeed;
                 for (PlacedRoomGraph.PlacedRoom room : layout.rooms) {
                     increment(report.templates, room.templateId);
+                    String encounterRole = catalog.templates.get(room.templateId).encounterRole;
+                    if (encounterRole.equals("combat") || encounterRole.equals("boss")) combatRoomTotal++;
                     for (GeneratedRoomEncounters.Spawn spawn : encounters.roomSpawns(room.id)) {
                         enemies++;
                         increment(report.enemyTypes, spawn.type);
@@ -78,6 +94,9 @@ public final class GenerationQualityCheck {
         report.averageRooms = roomTotal / (double) count;
         report.averageMainRouteRooms = routeTotal / (double) count;
         report.averageEnemies = enemyTotal / (double) count;
+        report.combatRoomPercent = combatRoomTotal * 100.0 / roomTotal;
+        report.optionalBranchPercent = optionalBranchTotal * 100.0 / count;
+        if (profile.status.equals("production") && count >= 1000) verifyTuningTargets(profile, report);
         Json json = new Json(JsonWriter.OutputType.json);
         json.setTypeName(null);
         reportFile.parent().mkdirs();
@@ -85,7 +104,23 @@ public final class GenerationQualityCheck {
         System.out.println("GENERATION QUALITY PASSED: " + count + " seeds from " + firstSeed +
             "; rooms " + report.minRooms + ".." + report.maxRooms +
             ", average=" + report.averageRooms + ", enemies=" + report.averageEnemies +
+            ", combat=" + report.combatRoomPercent + "%" +
+            ", branches=" + report.optionalBranchPercent + "%" +
             "; report=" + reportFile.path());
+    }
+
+    private static void verifyTuningTargets(GenerationProfile profile, Report report) {
+        GenerationProfile.TuningTargets targets = profile.tuningTargets;
+        target("averageRooms", report.averageRooms, targets.averageRooms);
+        target("averageEnemies", report.averageEnemies, targets.averageEnemies);
+        target("combatRoomPercent", report.combatRoomPercent, targets.combatRoomPercent);
+        target("optionalBranchPercent", report.optionalBranchPercent, targets.optionalBranchPercent);
+    }
+
+    private static void target(String name, double actual, GenerationProfile.IntRange expected) {
+        if (actual < expected.min || actual > expected.max)
+            throw new AssertionError("Production tuning target " + name + " expected " +
+                expected.min + ".." + expected.max + " but was " + actual);
     }
 
     private static void verifyNoOverlap(PlacedRoomGraph layout, long seed) {
