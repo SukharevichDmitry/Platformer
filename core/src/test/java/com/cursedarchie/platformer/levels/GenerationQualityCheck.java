@@ -25,6 +25,7 @@ public final class GenerationQualityCheck {
         public long longestRouteSeed = -1;
         public long optionalBranchSeed = -1;
         public long noBranchSeed = -1;
+        public int maxConsecutiveSafeRooms;
         public Map<String, Integer> templates = new LinkedHashMap<>();
         public Map<String, Integer> enemyTypes = new LinkedHashMap<>();
     }
@@ -64,7 +65,7 @@ public final class GenerationQualityCheck {
                 GeneratedRoomEncounters encounters = rule(currentSeed, "spawn",
                     () -> new RoomEncounterGenerator().generate(tiles, catalog, profile));
                 rule(currentSeed, "spawn", () -> { RoomEncounterGenerator.validate(encounters, catalog, profile); return encounters; });
-                verifyTransition(layout, profile, new FileHandle(args[0]), currentSeed);
+                verifyTransition(tiles, profile, new FileHandle(args[0]), currentSeed);
 
                 int enemies = 0;
                 int branches = graph.rooms.size() - graph.mainRoute.size();
@@ -73,6 +74,8 @@ public final class GenerationQualityCheck {
                 if (graph.rooms.size() > report.maxRooms) report.longestRouteSeed = currentSeed;
                 if (branches > 0 && report.optionalBranchSeed < 0) report.optionalBranchSeed = currentSeed;
                 if (branches == 0 && report.noBranchSeed < 0) report.noBranchSeed = currentSeed;
+                report.maxConsecutiveSafeRooms = Math.max(report.maxConsecutiveSafeRooms,
+                    consecutiveSafeRooms(graph, catalog));
                 for (PlacedRoomGraph.PlacedRoom room : layout.rooms) {
                     increment(report.templates, room.templateId);
                     String encounterRole = catalog.templates.get(room.templateId).encounterRole;
@@ -115,6 +118,9 @@ public final class GenerationQualityCheck {
         target("averageEnemies", report.averageEnemies, targets.averageEnemies);
         target("combatRoomPercent", report.combatRoomPercent, targets.combatRoomPercent);
         target("optionalBranchPercent", report.optionalBranchPercent, targets.optionalBranchPercent);
+        if (report.maxConsecutiveSafeRooms > targets.maxConsecutiveSafeRooms)
+            throw new AssertionError("Production tuning target maxConsecutiveSafeRooms expected at most " +
+                targets.maxConsecutiveSafeRooms + " but was " + report.maxConsecutiveSafeRooms);
     }
 
     private static void target(String name, double actual, GenerationProfile.IntRange expected) {
@@ -133,14 +139,29 @@ public final class GenerationQualityCheck {
         }
     }
 
-    private static void verifyTransition(PlacedRoomGraph layout, GenerationProfile profile, FileHandle assets, long seed) {
+    private static void verifyTransition(GeneratedRoomTiles tiles, GenerationProfile profile,
+                                         FileHandle assets, long seed) {
         if (!assets.child("levels").child(profile.returnLocation).child(profile.returnRoomId + ".json").exists())
             throw new AssertionError("rule=transition, missing return room at seed " + seed);
-        PlacedRoomGraph.PlacedRoom entry = layout.rooms.get(0);
-        for (PlacedRoomGraph.PlacedRoom room : layout.rooms)
-            if (room.worldX < entry.worldX || room.worldX == entry.worldX && room.id < entry.id) entry = room;
-        for (PlacedRoomGraph.PlacedRoom room : layout.rooms)
-            if (room.worldX < entry.worldX) throw new AssertionError("rule=transition, entry is not on left boundary at seed " + seed);
+        int entryRoomId = GeneratedLocationFactory.entryRoomId(tiles.layout);
+        GeneratedRoomTiles opened = GeneratedLocationFactory.openExteriorEntry(tiles, entryRoomId);
+        rule(seed, "transition", () -> { RoomRouteReachability.validate(opened); return opened; });
+        java.util.List<String> rows = opened.roomRows(entryRoomId);
+        int height = tiles.layout.room(entryRoomId).height;
+        if (rows.get(height - 2).charAt(0) != ' ' || rows.get(height - 3).charAt(0) != ' ' ||
+            rows.get(height - 1).charAt(0) != '#')
+            throw new AssertionError("rule=transition, exterior entry is not walkable at seed " + seed);
+    }
+
+    private static int consecutiveSafeRooms(GeneratedRoomGraph graph, RoomTemplateCatalog catalog) {
+        int current = 0;
+        int maximum = 0;
+        for (int roomId : graph.mainRoute) {
+            String role = catalog.templates.get(graph.room(roomId).templateId).encounterRole;
+            current = role.equals("safe") ? current + 1 : 0;
+            maximum = Math.max(maximum, current);
+        }
+        return maximum;
     }
 
     private static void increment(Map<String, Integer> counts, String key) {

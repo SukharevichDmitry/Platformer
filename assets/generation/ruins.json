@@ -24,7 +24,7 @@
       "weight": 3,
       "width": {"min": 13, "max": 16},
       "height": {"min": 8, "max": 10},
-      "roomQuota": {"min": 2, "max": 5},
+      "roomQuota": {"min": 3, "max": 5},
       "enemySpawns": {"min": 1, "max": 2},
       "difficultyBudget": 4,
       "allowedEnemyTypes": ["default", "boss"]
@@ -34,6 +34,7 @@
     "averageRooms": {"min": 7, "max": 8},
     "averageEnemies": {"min": 4, "max": 6},
     "combatRoomPercent": {"min": 30, "max": 50},
-    "optionalBranchPercent": {"min": 40, "max": 60}
+    "optionalBranchPercent": {"min": 40, "max": 60},
+    "maxConsecutiveSafeRooms": 4
   }
 }

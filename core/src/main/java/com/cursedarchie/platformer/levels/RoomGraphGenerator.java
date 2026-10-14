@@ -72,7 +72,8 @@ public final class RoomGraphGenerator {
             }
             if (gaps.isEmpty())
                 throw new IllegalArgumentException("Seed " + seed + " has no horizontal route gap for a filler");
-            route.add(gaps.get(random.nextInt(gaps.size())) + 1, chosen);
+            List<Integer> pacedGaps = bestPacingGaps(route, chosen, gaps, catalog);
+            route.add(pacedGaps.get(random.nextInt(pacedGaps.size())) + 1, chosen);
             increment(counts, catalog.templates.get(chosen).patternId);
             remaining--;
         }
@@ -148,6 +149,34 @@ public final class RoomGraphGenerator {
             if (choice < 0) return id;
         }
         throw new IllegalStateException("Weighted choice failed");
+    }
+
+    private static List<Integer> bestPacingGaps(List<String> route, String chosen, List<Integer> gaps,
+                                                 RoomTemplateCatalog catalog) {
+        List<Integer> best = new ArrayList<>();
+        int bestStreak = Integer.MAX_VALUE;
+        for (int gap : gaps) {
+            List<String> candidate = new ArrayList<>(route);
+            candidate.add(gap + 1, chosen);
+            int streak = maximumSafeStreak(candidate, catalog);
+            if (streak < bestStreak) {
+                best.clear();
+                bestStreak = streak;
+            }
+            if (streak == bestStreak) best.add(gap);
+        }
+        return best;
+    }
+
+    private static int maximumSafeStreak(List<String> route, RoomTemplateCatalog catalog) {
+        int current = 0;
+        int maximum = 0;
+        for (String templateId : route) {
+            String role = catalog.templates.get(templateId).encounterRole;
+            current = role.equals("safe") ? current + 1 : 0;
+            maximum = Math.max(maximum, current);
+        }
+        return maximum;
     }
 
     private static void increment(Map<String, Integer> counts, String patternId) {

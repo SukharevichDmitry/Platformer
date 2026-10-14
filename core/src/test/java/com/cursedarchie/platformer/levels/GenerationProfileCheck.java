@@ -13,6 +13,7 @@ public final class GenerationProfileCheck {
         if (profile.version != 2 || !"ruins".equals(profile.locationId) ||
             !"production".equals(profile.status) || profile.tuningTargets == null ||
             profile.tuningTargets.combatRoomPercent.min != 30 || profile.roomCount.min != 5 ||
+            profile.tuningTargets.maxConsecutiveSafeRooms != 4 ||
             profile.roomCount.max != 10 || profile.allowedEnemyTypes.size() != 2 ||
             profile.roomPatterns.size() != 2 || profile.roomPatterns.get(0).width.max != 12 ||
             profile.roomPatterns.get(0).roomQuota.max != 7 ||

@@ -19,13 +19,16 @@ public final class GenerationProfile {
         public final IntRange averageEnemies;
         public final IntRange combatRoomPercent;
         public final IntRange optionalBranchPercent;
+        public final int maxConsecutiveSafeRooms;
 
         private TuningTargets(IntRange averageRooms, IntRange averageEnemies,
-                              IntRange combatRoomPercent, IntRange optionalBranchPercent) {
+                              IntRange combatRoomPercent, IntRange optionalBranchPercent,
+                              int maxConsecutiveSafeRooms) {
             this.averageRooms = averageRooms;
             this.averageEnemies = averageEnemies;
             this.combatRoomPercent = combatRoomPercent;
             this.optionalBranchPercent = optionalBranchPercent;
+            this.maxConsecutiveSafeRooms = maxConsecutiveSafeRooms;
         }
     }
     public static final class IntRange {
@@ -169,11 +172,16 @@ public final class GenerationProfile {
             return null;
         }
         if (!value.isObject()) throw invalid(file, "tuningTargets must be an object");
+        int safeStreak = integer(value.get("maxConsecutiveSafeRooms"), file,
+            "tuningTargets.maxConsecutiveSafeRooms");
+        if (safeStreak < 1 || safeStreak > 64)
+            throw invalid(file, "tuningTargets.maxConsecutiveSafeRooms must be between 1 and 64");
         return new TuningTargets(
             range(value.get("averageRooms"), file, "tuningTargets.averageRooms", 1, 64),
             range(value.get("averageEnemies"), file, "tuningTargets.averageEnemies", 0, 64),
             range(value.get("combatRoomPercent"), file, "tuningTargets.combatRoomPercent", 0, 100),
-            range(value.get("optionalBranchPercent"), file, "tuningTargets.optionalBranchPercent", 0, 100));
+            range(value.get("optionalBranchPercent"), file, "tuningTargets.optionalBranchPercent", 0, 100),
+            safeStreak);
     }
 
     private static int budget(JsonValue value, FileHandle file, String field) {

@@ -41,12 +41,7 @@ final class GeneratedLocationFactory {
         GeneratedRoomGraph graph = new RoomGraphGenerator().generate(profile, catalog, seed);
         PlacedRoomGraph layout = new RoomLayoutPlacer().place(graph, catalog, profile);
         GeneratedRoomTiles tiles = new RoomTileGenerator().generate(layout, catalog);
-        int entryRoomId = 0;
-        for (PlacedRoomGraph.PlacedRoom room : layout.rooms) {
-            PlacedRoomGraph.PlacedRoom current = layout.room(entryRoomId);
-            if (room.worldX < current.worldX ||
-                (room.worldX == current.worldX && room.id < current.id)) entryRoomId = room.id;
-        }
+        int entryRoomId = entryRoomId(layout);
         tiles = openExteriorEntry(tiles, entryRoomId);
         RoomRouteReachability.validate(tiles);
         GeneratedRoomEncounters encounters = new RoomEncounterGenerator().generate(tiles, catalog, profile);
@@ -113,7 +108,17 @@ final class GeneratedLocationFactory {
         return run;
     }
 
-    private GeneratedRoomTiles openExteriorEntry(GeneratedRoomTiles tiles, int entryRoomId) {
+    static int entryRoomId(PlacedRoomGraph layout) {
+        int entryRoomId = 0;
+        for (PlacedRoomGraph.PlacedRoom room : layout.rooms) {
+            PlacedRoomGraph.PlacedRoom current = layout.room(entryRoomId);
+            if (room.worldX < current.worldX ||
+                (room.worldX == current.worldX && room.id < current.id)) entryRoomId = room.id;
+        }
+        return entryRoomId;
+    }
+
+    static GeneratedRoomTiles openExteriorEntry(GeneratedRoomTiles tiles, int entryRoomId) {
         List<List<String>> rooms = new ArrayList<>(tiles.rooms);
         PlacedRoomGraph.PlacedRoom room = tiles.layout.room(entryRoomId);
         List<String> rows = new ArrayList<>(tiles.roomRows(entryRoomId));
