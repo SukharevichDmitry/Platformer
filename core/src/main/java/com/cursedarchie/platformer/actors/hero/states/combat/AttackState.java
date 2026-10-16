@@ -5,11 +5,17 @@ import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class AttackState implements HeroState {
+    private final Set<Actor> hitTargets = new HashSet<>();
+
     @Override
     public void enter(Hero hero) {
-        hero.setLeftAttackActive(hero.isFacingLeft());
-        hero.setRightAttackActive(!hero.isFacingLeft());
+        hitTargets.clear();
+        hero.setLeftAttackActive(false);
+        hero.setRightAttackActive(false);
         Gdx.app.log("HERO", "Start Attacking");
     }
 
@@ -18,18 +24,21 @@ public class AttackState implements HeroState {
 
         hero.setCombatStateTime(hero.getCombatStateTime() + delta);
 
-        boolean activeFrame =
-            !hero.isAttackHandled() && hero.getCombatStateTime() >= hero.getAttackDuration() * 0.5f;
+        boolean activeFrame = hero.getCombatStateTime() >= Hero.ATTACK_STARTUP &&
+            hero.getCombatStateTime() < Hero.ATTACK_ACTIVE_END;
+        hero.setLeftAttackActive(activeFrame && hero.isFacingLeft());
+        hero.setRightAttackActive(activeFrame && !hero.isFacingLeft());
 
         if (activeFrame) {
             for (Actor target : hero.getAttackTargets()) {
+                if (hitTargets.contains(target) || !hero.isTargetInFacingAttack(target)) continue;
                 target.takeDamage(hero.getDamage());
+                hitTargets.add(target);
 
                 Gdx.app.log("HERO",
                     "dealt damage to " + target.getClass().getSimpleName()
                 );
             }
-            hero.setAttackHandled(true);
         }
 
         if (hero.getCombatStateTime() >= hero.getAttackDuration()) {

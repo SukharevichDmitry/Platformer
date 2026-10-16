@@ -1,8 +1,8 @@
 {
-  "version": 2,
+  "version": 3,
   "status": "production",
   "locationId": "ruins",
-  "returnTransition": {"location": "forest", "id": 0},
+  "returnTransition": {"location": "start", "id": 2},
   "roomCount": {"min": 5, "max": 10},
   "difficultyBudget": 12,
   "allowedEnemyTypes": ["default", "boss"],

@@ -1,8 +1,30 @@
 # Platformer
 
-A [libGDX](https://libgdx.com/) project generated with [gdx-liftoff](https://github.com/libgdx/gdx-liftoff).
+A libGDX 1.12.1 / Box2D platformer prototype. The authored `start` location leads
+to a seeded, generated `ruins` run. JDK 17 is used for development checks.
 
-This project was generated with a template including simple application launchers and an `ApplicationAdapter` extension that draws libGDX logo.
+## Where to work
+
+- `GameWorld` owns the fixed 1/60-second simulation, Box2D world, location
+  transitions, enemies, and generated-run defeat state. `HeroController` stores
+  input edges and applies movement/jump/attack on fixed steps, not render frames.
+- `GameContactListener` tracks terrain-foot, vision, and attack-sensor overlaps.
+  `GameWorld.refreshHeroGrounding` also checks post-step body-contact normals so
+  the hero can stand on an enemy's head but not jump from its side. Never destroy
+  bodies in a Box2D contact callback.
+- `RoomManager` loads authored `assets/levels/start` JSON or generated ruins from
+  `assets/generation/ruins.json` and its templates. `LocationInstance` builds
+  terrain fixtures: full solid cells merge across room borders; partial tiles
+  keep their own bounds.
+- `WorldRenderer` draws the world; `GameScreen` owns its lifecycle and clears
+  held/buffered input on pause or hide. `GeneratedRunStore` persists a generated
+  run via libGDX Preferences. Changing generated output or save compatibility
+  requires reviewing the generation profile version.
+
+Start with `FOUNDATION_POLISH_PLAN.md` for current polish status and remaining
+manual feel checks. Its original audit is historical, not a description of all
+current behavior. Check `git status` before editing: this workspace may contain
+uncommitted gameplay work.
 
 ## Build and check the desktop release
 
@@ -27,21 +49,22 @@ so a working graphics driver/display is required. It renders the menu and
 gameplay, clicks START, presses Escape, clicks Continue, returns to the menu,
 starts a fresh game, and clicks EXIT. Failures produce a nonzero exit status.
 It uses only the extracted release JAR and the test harness on its classpath.
-It also crosses between the `start` and `forest` locations 20 times, checks
+It also crosses between `start` and generated `ruins` repeatedly, checks
 room/enemy body counts and texture counts, then checks disposal after a death.
 
 For a visible check, launch the extracted build, repeat those actions, and
 resize both menu and pause screens. Location transitions now unload old room
 and enemy bodies before activating the destination. The game screen disposes
 its Box2D world, atlas, sprite batch and shape renderer when the run ends.
-To return from the forest, move left through its open edge. You reappear inside
-`start` room 2, clear of the exit that leads back to the forest. The packaged
-smoke test checks both border crossings repeatedly.
+To return from ruins, move left through its entry edge. You reappear inside
+`start` room 2, clear of the exit that leads back to ruins. The packaged smoke
+test checks both border crossings repeatedly.
 
 The camera follows the hero until any side of the view reaches one
 world block past the outermost room in the current location. Run
 `./gradlew.bat lwjgl3:cameraBoundaryTest` to check the limit in both `start`
-and `forest`; it also checks that ordinary following continues between the edges.
+and the legacy authored `forest` test fixture; it also checks that ordinary
+following continues between the edges.
 
 ## Simulation and room checks
 
@@ -52,17 +75,20 @@ step. Room JSON is validated before any room tiles or physics are built.
 ```powershell
 ./gradlew.bat core:check
 ./gradlew.bat lwjgl3:simulationRegressionTest
+./gradlew.bat lwjgl3:packagedSmokeTest
 ```
 
 `core:check` validates the authored rooms and checks malformed fixtures for
-useful file, row and neighbor errors. The simulation test uses the packaged
-game and a hidden graphics window to check split frames, a capped stall, and
-held movement state timing. The GitHub Actions validation workflow runs both
-checks on Ubuntu with a virtual display.
+useful file, row and neighbor errors; it also runs the seeded generation
+quality gate. The simulation test uses a hidden graphics window to check fixed
+steps, movement/contact behavior, jump buffering, and attack timing. The
+packaged smoke test checks the distributable in a hidden desktop window,
+including repeated border travel and screen lifecycle. Desktop checks require
+a working graphics driver/display.
 
 The procedural ruins pipeline generates a seeded graph, room layout, tile rows,
-and encounter spawn data. Walk right through forest to enter ruins; walk left
-through its outermost room to return. The layout is generated once per game run.
+and encounter spawn data. Walk right through `start` room 2 to enter ruins;
+walk left through the ruins entry to return. The layout is generated once per game run.
 Run `./gradlew.bat core:validateRoomEncounters` to check 1,000 seeds for stable
 spawns, allowed enemy types, difficulty limits, walkable terrain, and clear
 entries and story space. Run `./gradlew.bat lwjgl3:generatedLocationTest` to
@@ -78,6 +104,12 @@ Before week 1 changes, a source snapshot, working/index patches and Git index
 copy were saved in the ignored `backups/` directory. Keep that directory when
 cleaning build outputs. Existing gameplay edits are separate from the week 1
 commit; the packaged smoke check exercises the current working tree.
+
+Movement, tile-collision, or enemy-body changes also warrant
+`lwjgl3:generatedLocationTest`; changes to generated content or save behavior
+warrant `lwjgl3:generatedRunPersistenceTest` and a review of the ruins profile
+version. Automated checks cannot certify how movement or combat feels, so pair
+them with a visible playthrough of `start` and one generated ruins run.
 
 ## Platforms
 

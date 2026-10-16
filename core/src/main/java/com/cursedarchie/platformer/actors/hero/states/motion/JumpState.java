@@ -13,7 +13,7 @@ public class JumpState implements HeroState {
 
     @Override
     public void update(Hero hero, float delta) {
-        if (hero.isGrounded()) {
+        if (hero.isGrounded() && hero.getBody().getLinearVelocity().y <= 0f) {
             if (Math.abs(hero.getBody().getLinearVelocity().x) > 0.1f) {
                 hero.getMotionStateMachine().changeState(new MoveState());
             } else {

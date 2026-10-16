@@ -22,7 +22,7 @@ public final class RoomTileGenerator {
                 for (int piece = 0; piece < pieces; piece++) {
                     int length = 2 + random.nextInt(template.patternId.equals("arena") ? 3 : 2);
                     int x = 2 + random.nextInt(room.width - length - 3);
-                    int floorY = 4 + (template.patternId.equals("arena") ? random.nextInt(2) : 0);
+                    int floorY = 3;
                     int row = room.height - 1 - floorY;
                     boolean clear = true;
                     for (int i = x; i < x + length; i++)

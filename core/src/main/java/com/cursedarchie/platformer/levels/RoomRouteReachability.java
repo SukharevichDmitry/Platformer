@@ -13,7 +13,7 @@ public final class RoomRouteReachability {
         if (generated == null || generated.rooms.size() != generated.layout.rooms.size())
             throw new IllegalArgumentException("Tile rows must match placed rooms");
         if (Hero.WALK_SPEED <= 0 || Hero.BODY_SIZE <= 0 || Hero.BODY_SIZE >= 1 ||
-            Hero.JUMP_IMPULSE <= 0 || GameWorld.GRAVITY <= 0)
+            Hero.JUMP_SPEED <= 0 || GameWorld.GRAVITY <= 0)
             throw new IllegalStateException("Unsupported hero movement configuration");
         for (PlacedRoomGraph.PlacedRoom room : generated.layout.rooms) {
             List<String> rows = generated.roomRows(room.id);

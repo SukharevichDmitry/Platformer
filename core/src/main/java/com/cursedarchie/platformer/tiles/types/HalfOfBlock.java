@@ -6,10 +6,7 @@ import com.cursedarchie.platformer.tiles.Tile;
 public class HalfOfBlock extends Tile {
 
     public HalfOfBlock(Vector2 pos) {
-        super(pos);
-        this.setSize(0.5f);
-        this.bounds.width = SIZE * 2;
-        this.bounds.height = SIZE;
+        super(pos, 1f, 0.5f);
     }
 
 }

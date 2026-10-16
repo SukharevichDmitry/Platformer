@@ -28,11 +28,7 @@ public class SimpleEnemyBrain implements EnemyBrain {
         if (enemy.isCanSeeHero()) {
             enemy.setIntent(CHASE);
         } else {
-            enemy.setIntent(PATROL);
+            enemy.setIntent(IDLE);
         }
-//
-//        if (!enemy.isCanSeeHero() && enemy.getCurrentIntent() == CHASE) {
-//            enemy.setIntent(IDLE);
-//        }
     }
 }

@@ -1,6 +1,8 @@
 package com.cursedarchie.platformer.levels;
 
 import com.badlogic.gdx.files.FileHandle;
+import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.world.GameWorld;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -20,6 +22,9 @@ public final class RoomTileGenerationCheck {
         boolean varied = false;
         int addedPlatforms = 0;
         int addedCover = 0;
+        float nominalJumpRise = Hero.JUMP_SPEED * Hero.JUMP_SPEED / (2f * GameWorld.GRAVITY);
+        if (nominalJumpRise < 3f)
+            throw new AssertionError("Jump cannot reach the highest intended template ledges");
         for (long seed = 0; seed < 1000; seed++) {
             PlacedRoomGraph layout = placer.place(graphGenerator.generate(profile, catalog, seed), catalog, profile);
             GeneratedRoomTiles tiles = tileGenerator.generate(layout, catalog);
@@ -39,7 +44,11 @@ public final class RoomTileGenerationCheck {
                             (after.charAt(x) != '_' && after.charAt(x) != '#') ||
                             y >= room.height - 3)
                             throw new AssertionError("Seed " + seed + " changed a protected tile");
-                        if (after.charAt(x) == '_') addedPlatforms++;
+                        if (after.charAt(x) == '_') {
+                            if (room.height - 1 - y != 3)
+                                throw new AssertionError("Generated ledge is outside the reachable height band");
+                            addedPlatforms++;
+                        }
                         else addedCover++;
                     }
                 }

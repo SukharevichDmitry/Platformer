@@ -2,7 +2,7 @@
 
 ## Runtime flow
 
-The authored `forest` exit loads the `ruins` generation profile through `RoomManager`. Authored and generated locations both become `LocationInstance` and `RoomInstance` objects, so rendering, collision, enemies, camera bounds, and transitions use the same runtime path.
+The authored `start` room 2 exit loads the `ruins` generation profile through `RoomManager`; the generated entry returns to `start` room 2. `forest` remains in the assets as legacy authored content but is not on the normal route. Authored and generated locations both become `LocationInstance` and `RoomInstance` objects, so rendering, collision, enemies, camera bounds, and transitions use the same runtime path.
 
 Generation runs before the current location is unloaded and outside a locked Box2D step:
 
@@ -15,7 +15,7 @@ Generation runs before the current location is unloaded and outside a locked Box
 7. `GeneratedLocationFactory` opens the leftmost exterior entry, validates it, and converts the result to normal room data.
 8. `GeneratedRunStore` saves the profile version, seed, topology, placement, narrative choices, and defeated enemy IDs in libGDX Preferences.
 
-The current production profile is `assets/generation/ruins.json`, version 2. A generated seed is shown in the upper-left corner while the player is inside a generated location.
+The current production profile is `assets/generation/ruins.json`, version 3. Version 3 lowers optional ledges to a reachable height and moves high template ledges down; version-2 saved ruins runs are incompatible and start a fresh generated run. A generated seed is shown in the upper-left corner while the player is inside a generated location.
 
 ## Production tuning
 

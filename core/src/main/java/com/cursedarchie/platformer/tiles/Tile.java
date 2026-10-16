@@ -5,18 +5,14 @@ import com.badlogic.gdx.math.Vector2;
 
 public abstract class Tile {
 
-    protected float SIZE;
-    protected Vector2  position;
-    protected Rectangle  bounds = new Rectangle();
+    protected final Vector2 position;
+    protected final Rectangle bounds;
     private boolean isBlockingSight = true;
 
 
-    public Tile(Vector2 localPos) {
+    public Tile(Vector2 localPos, float width, float height) {
         this.position = localPos;
-        this.bounds.setX(localPos.x);
-        this.bounds.setY(localPos.y);
-        this.bounds.width = SIZE;
-        this.bounds.height = SIZE;
+        this.bounds = new Rectangle(localPos.x, localPos.y, width, height);
     }
 
     public Vector2 getPosition() {
@@ -25,15 +21,13 @@ public abstract class Tile {
     public Rectangle getBounds() {
         return bounds;
     }
-    public void setSize(float SIZE) {
-        this.SIZE = SIZE;
-    }
-    public float getSize() {
-        return SIZE;
-    }
-
     public boolean isSolid() {
         return true;
+    }
+
+    /** Only whole grid cells may join the location's merged terrain fixtures. */
+    public boolean isFullCellSolid() {
+        return false;
     }
 
     public boolean isBlockingSight() {

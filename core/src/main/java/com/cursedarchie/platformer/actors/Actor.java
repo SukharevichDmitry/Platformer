@@ -404,6 +404,17 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
         return attackTargets;
     }
 
+    public boolean isTargetInFacingAttack(Actor target) {
+        if (target == null || !target.isAlive()) return false;
+        AttackConfig attack = facingLeft ? attackLeft : attackRight;
+        Vector2 origin = body.getPosition();
+        Vector2 targetPosition = target.getPosition();
+        return Math.abs(targetPosition.x - (origin.x + attack.offsetX)) <
+                (attack.width + target.size) / 2f &&
+            Math.abs(targetPosition.y - (origin.y + attack.offsetY)) <
+                (attack.height + target.size) / 2f;
+    }
+
     public void addVisibleActor(Actor actor) {
         visibleActors.add(actor);
     }

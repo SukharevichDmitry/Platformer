@@ -3,6 +3,7 @@ package com.cursedarchie.platformer.levels;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
+import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,7 +95,7 @@ public final class RoomValidator {
         for (JsonValue spawn : spawns) {
             if (!spawn.isObject()) throw invalid(file, "enemySpawns[" + index + "] must be an object");
             String type = string(spawn.get("type"), file, "enemySpawns[" + index + "].type");
-            if (!type.equals("default") && !type.equals("boss"))
+            if (!EnemyFactory.supportsType(type))
                 throw invalid(file, "enemySpawns[" + index + "] has unknown type " + type);
             JsonValue position = spawn.get("position");
             if (position == null || !position.isObject())

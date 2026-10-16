@@ -84,8 +84,18 @@ public class EnemyPerception {
     }
 
     public void prepareToAttack(Enemy enemy) {
-        enemy.setCanAttackHero(
-            !enemy.getAttackTargets().isEmpty()
-        );
+        boolean canAttack = false;
+        if (enemy.isCanSeeHero()) {
+            float enemyX = enemy.getPosition().x;
+            for (Actor target : enemy.getAttackTargets()) {
+                if (!(target instanceof Hero) || !target.isAlive()) continue;
+                float dx = target.getPosition().x - enemyX;
+                if ((enemy.isFacingLeft() && dx < 0f) || (!enemy.isFacingLeft() && dx > 0f)) {
+                    canAttack = true;
+                    break;
+                }
+            }
+        }
+        enemy.setCanAttackHero(canAttack);
     }
 }

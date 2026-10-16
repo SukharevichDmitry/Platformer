@@ -23,10 +23,6 @@ public class CombatStateMachine {
 
 
     public void changeState(EnemyState newState) {
-        if (enemy.isCanAttackHero()) {
-            enemy.requestAttack();
-        }
-
         if (currentCombatState != null) {
             currentCombatState.exit(enemy);
         }

@@ -33,3 +33,9 @@ Platformer/*
 
 # Local snapshots kept before development work.
 backups/
+
+# Local agent instructions and imported reference skills (not game assets).
+AGENTS.md
+.agents/
+.codex/
+GIT_WORKFLOW.md

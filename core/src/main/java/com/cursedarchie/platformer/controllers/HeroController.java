@@ -2,7 +2,6 @@ package com.cursedarchie.platformer.controllers;
 
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
-import com.badlogic.gdx.math.Vector2;
 import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MotionIdleState;
 import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
@@ -10,29 +9,18 @@ import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.world.GameWorld;
 
-import java.util.HashMap;
-import java.util.Map;
-
-
+/** Collects input events and applies them only during GameWorld's fixed simulation steps. */
 public class HeroController implements InputProcessor {
-
-    enum Keys {
-        LEFT, RIGHT, JUMP, ATTACK
-    }
-
-    private final GameWorld gameWorld;
     private final Hero hero;
-    private boolean attackKeyWasPressed = false;
-    private final Map<Keys, Boolean> keys = new HashMap<>();
-    {
-        keys.put(Keys.LEFT, false);
-        keys.put(Keys.RIGHT, false);
-        keys.put(Keys.JUMP, false);
-        keys.put(Keys.ATTACK, false);
-    }
-
+    private static final float ATTACK_BUFFER_SECONDS = 0.12f;
+    private static final float JUMP_BUFFER_SECONDS = 0.1f;
+    private boolean leftHeld;
+    private boolean rightHeld;
+    private boolean attackHeld;
+    private float attackBufferRemaining;
+    private boolean jumpHeld;
+    private float jumpBufferRemaining;
     public HeroController(GameWorld gameWorld) {
-        this.gameWorld = gameWorld;
         this.hero = gameWorld.getHero();
     }
 
@@ -40,16 +28,18 @@ public class HeroController implements InputProcessor {
     public boolean keyDown(int keycode) {
         switch (keycode) {
             case Input.Keys.LEFT:
-                keys.put(Keys.LEFT, true);
+                leftHeld = true;
                 break;
             case Input.Keys.RIGHT:
-                keys.put(Keys.RIGHT, true);
+                rightHeld = true;
                 break;
             case Input.Keys.SPACE:
-                keys.put(Keys.JUMP, true);
+                if (!jumpHeld) jumpBufferRemaining = JUMP_BUFFER_SECONDS;
+                jumpHeld = true;
                 break;
             case Input.Keys.X:
-                keys.put(Keys.ATTACK, true);
+                if (!attackHeld) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
+                attackHeld = true;
                 break;
         }
         return true;
@@ -58,16 +48,16 @@ public class HeroController implements InputProcessor {
     public boolean keyUp(int keycode) {
         switch (keycode) {
             case Input.Keys.LEFT:
-                keys.put(Keys.LEFT, false);
+                leftHeld = false;
                 break;
             case Input.Keys.RIGHT:
-                keys.put(Keys.RIGHT, false);
+                rightHeld = false;
                 break;
             case Input.Keys.SPACE:
-                keys.put(Keys.JUMP, false);
+                jumpHeld = false;
                 break;
             case Input.Keys.X:
-                keys.put(Keys.ATTACK, false);
+                attackHeld = false;
                 break;
         }
         return true;
@@ -106,11 +96,21 @@ public class HeroController implements InputProcessor {
             return;
         }
 
-        processInput();
+        processInput(delta);
 
         checkHeroPositionForDeathFall();
 
         hero.update(delta);
+    }
+
+    public void clearInput() {
+        // Pause/hide must discard both held controls and one-shot buffered actions.
+        leftHeld = false;
+        rightHeld = false;
+        jumpHeld = false;
+        jumpBufferRemaining = 0f;
+        attackHeld = false;
+        attackBufferRemaining = 0f;
     }
 
 
@@ -120,38 +120,49 @@ public class HeroController implements InputProcessor {
         }
     }
 
-    private void processInput() {
-        handleMovementInput();
-        handleCombatInput();
+    private void processInput(float delta) {
+        handleMovementInput(delta);
+        handleCombatInput(delta);
     }
 
-    private void handleMovementInput() {
-        float moveX = 0;
-        boolean leftKey = keys.get(Keys.LEFT);
-        boolean rightKey = keys.get(Keys.RIGHT);
-        boolean jumpKey = keys.get(Keys.JUMP);
+    private void handleMovementInput(float delta) {
+        float direction = 0f;
         boolean isJumpState = hero.getMotionStateMachine().getCurrentState() instanceof JumpState;
 
-        if (leftKey) {
-            moveX = -hero.getVelocity();
+        if (leftHeld && !rightHeld) {
+            direction = -1f;
             hero.setFacingLeft(true);
-        }
-        if (rightKey) {
-            moveX = hero.getVelocity();
+        } else if (rightHeld && !leftHeld) {
+            direction = 1f;
             hero.setFacingLeft(false);
         }
 
-        hero.getBody().setLinearVelocity(moveX, hero.getBody().getLinearVelocity().y);
+        float currentX = hero.getBody().getLinearVelocity().x;
+        float currentY = hero.getBody().getLinearVelocity().y;
+        float targetX = direction * hero.getVelocity();
+        float acceleration = hero.isGrounded()
+            ? (direction == 0f ? Hero.GROUND_BRAKING : Hero.GROUND_ACCELERATION)
+            : (direction == 0f ? Hero.AIR_BRAKING : Hero.AIR_ACCELERATION);
+        float moveX = approach(currentX, targetX, acceleration * delta);
+        float moveY = Math.max(currentY, -Hero.MAX_FALL_SPEED);
+        hero.getBody().setLinearVelocity(moveX, moveY);
 
-        if (jumpKey && hero.isGrounded() && !isJumpState) {
-            hero.getBody().applyLinearImpulse(
-                new Vector2(0, hero.getJumpForce()),
-                hero.getBody().getWorldCenter(),
-                true
-            );
+        if (jumpBufferRemaining > 0f && hero.isGrounded() && moveY <= 0.1f) {
+            // Grounding was refreshed after the previous physics step, but JumpState may
+            // still be active until hero.update below. Leave it so re-entering JumpState
+            // starts a new jump animation instead of being ignored as the same state.
+            if (isJumpState) hero.getMotionStateMachine().changeState(new MotionIdleState());
+            hero.getBody().setLinearVelocity(moveX, hero.getJumpForce());
+            hero.getBody().setGravityScale(1f);
+            jumpBufferRemaining = 0f;
             hero.getMotionStateMachine().changeState(new JumpState());
             return;
         }
+        jumpBufferRemaining = Math.max(0f, jumpBufferRemaining - delta);
+
+        float gravityScale = moveY < 0f ? Hero.FALL_GRAVITY_SCALE
+            : (!jumpHeld && moveY > 0f ? Hero.RELEASE_GRAVITY_SCALE : 1f);
+        hero.getBody().setGravityScale(gravityScale);
 
         if (!isJumpState) {
             if (moveX != 0) {
@@ -161,14 +172,18 @@ public class HeroController implements InputProcessor {
             }
         }
     }
-    private void handleCombatInput() {
-        if (keys.get(Keys.ATTACK)) {
-            if (!attackKeyWasPressed) {
-                hero.getCombatStateMachine().changeState(new AttackState());
-                attackKeyWasPressed = true;
-            }
+
+    private static float approach(float current, float target, float step) {
+        if (current < target) return Math.min(current + step, target);
+        return Math.max(current - step, target);
+    }
+    private void handleCombatInput(float delta) {
+        if (attackBufferRemaining > 0f &&
+            !(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
+            hero.getCombatStateMachine().changeState(new AttackState());
+            attackBufferRemaining = 0f;
         } else {
-            attackKeyWasPressed = false;
+            attackBufferRemaining = Math.max(0f, attackBufferRemaining - delta);
         }
     }
 }

@@ -10,7 +10,7 @@ public final class GenerationProfileCheck {
         if (args.length != 2) throw new IllegalArgumentException("Expected assets and fixture directories");
         FileHandle sample = new FileHandle(new File(args[0], "generation/ruins.json"));
         GenerationProfile profile = GenerationProfile.load(sample);
-        if (profile.version != 2 || !"ruins".equals(profile.locationId) ||
+        if (profile.version != 3 || !"ruins".equals(profile.locationId) ||
             !"production".equals(profile.status) || profile.tuningTargets == null ||
             profile.tuningTargets.combatRoomPercent.min != 30 || profile.roomCount.min != 5 ||
             profile.tuningTargets.maxConsecutiveSafeRooms != 4 ||
@@ -26,7 +26,7 @@ public final class GenerationProfileCheck {
         fixture.writeString(valid.replace("\"min\": 5, \"max\": 10", "\"min\": 11, \"max\": 10"), false);
         expectError(fixture, "roomCount");
 
-        fixture.writeString(valid.replace("\"version\": 2", "\"version\": 0"), false);
+        fixture.writeString(valid.replace("\"version\": 3", "\"version\": 0"), false);
         expectError(fixture, "version");
 
         fixture.writeString(valid.replace("\"status\": \"production\"", "\"status\": \"released\""), false);
@@ -51,7 +51,7 @@ public final class GenerationProfileCheck {
         fixture.writeString(valid.replace("\"difficultyBudget\": 4", "\"difficultyBudget\": 0"), false);
         expectError(fixture, "difficultyBudget cannot satisfy enemySpawns");
 
-        fixture.writeString(valid.replace("\"returnTransition\": {\"location\": \"forest\", \"id\": 0}",
+        fixture.writeString(valid.replace("\"returnTransition\": {\"location\": \"start\", \"id\": 2}",
             "\"returnTransition\": {\"location\": \"ruins\", \"id\": 0}"), false);
         expectError(fixture, "returnTransition");
 

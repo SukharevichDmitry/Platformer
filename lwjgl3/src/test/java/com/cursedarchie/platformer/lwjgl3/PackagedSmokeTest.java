@@ -12,6 +12,7 @@ import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.cursedarchie.platformer.Main;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.screens.GameScreen;
 import com.cursedarchie.platformer.screens.MenuScreen;
 import com.cursedarchie.platformer.screens.PauseScreen;
@@ -33,7 +34,7 @@ public final class PackagedSmokeTest extends Main {
         PackagedSmokeTest test = new PackagedSmokeTest();
         new Lwjgl3Application(test, config);
         if (!test.complete) throw new AssertionError("Smoke test ended before completion");
-        System.out.println("PACKAGED SMOKE PASSED: repeated start/forest border travel, menu, pause, restart, death, exit");
+        System.out.println("PACKAGED SMOKE PASSED: repeated start/ruins border travel, menu, pause, restart, death, exit");
     }
 
     @Override public void render() {
@@ -50,6 +51,7 @@ public final class PackagedSmokeTest extends Main {
             case 2:
                 exerciseTransitions(((GameScreen) getScreen()).getGameWorld());
                 exerciseBorderTravel(((GameScreen) getScreen()).getGameWorld());
+                exerciseGroundSeam(((GameScreen) getScreen()).getGameWorld());
                 if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Gameplay texture count grew");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                 expect(PauseScreen.class);
@@ -103,20 +105,20 @@ public final class PackagedSmokeTest extends Main {
     private void exerciseTransitions(GameWorld world) {
         int startBodies = world.getWorld().getBodyCount();
         int startEnemies = world.getEnemies().size;
-        int forestBodies = -1;
-        int forestEnemies = -1;
+        int ruinsBodies = -1;
+        int ruinsEnemies = -1;
         for (int i = 0; i < 20; i++) {
-            world.changeLocation("forest", 0);
-            if (forestBodies < 0) {
-                forestBodies = world.getWorld().getBodyCount();
-                forestEnemies = world.getEnemies().size;
+            world.changeLocation("ruins", 0);
+            if (ruinsBodies < 0) {
+                ruinsBodies = world.getWorld().getBodyCount();
+                ruinsEnemies = world.getEnemies().size;
             }
-            assertLocation(world, "forest", forestBodies, forestEnemies);
+            assertLocation(world, "ruins", ruinsBodies, ruinsEnemies);
             world.changeLocation("start", 0);
             assertLocation(world, "start", startBodies, startEnemies);
         }
         try {
-            world.changeLocation("forest", 99);
+            world.changeLocation("ruins", 99);
             throw new AssertionError("Missing room was accepted");
         } catch (IllegalArgumentException expected) {
             assertLocation(world, "start", startBodies, startEnemies);
@@ -126,32 +128,71 @@ public final class PackagedSmokeTest extends Main {
     private void assertLocation(GameWorld world, String name, int bodies, int enemies) {
         if (!name.equals(world.getLocation().getLocation()) ||
             world.getWorld().getBodyCount() != bodies || world.getEnemies().size != enemies ||
-            bodies != 1 + world.getLocation().getRooms().size() + enemies) {
+            bodies != 2 + enemies) {
             throw new AssertionError("Location resources did not return to baseline: " + name);
         }
     }
 
     private void exerciseBorderTravel(GameWorld world) {
+        world.changeLocation("ruins", 0);
+        int ruinsBodies = world.getWorld().getBodyCount();
+        int ruinsEnemies = world.getEnemies().size;
         for (int i = 0; i < 20; i++) {
             world.changeLocation("start", 2);
             float right = world.getCurrentRoom().getWorldX() + world.getCurrentRoom().getWidth();
             float y = world.getCurrentRoom().getWorldY() + 2;
             world.getHero().getBody().setTransform(right - 0.1f, y, 0);
             world.update(1f / 60f);
-            assertLocation(world, "forest", 2, 0);
+            assertLocation(world, "ruins", ruinsBodies, ruinsEnemies);
 
             float left = world.getCurrentRoom().getWorldX();
             y = world.getCurrentRoom().getWorldY() + 2;
             world.getHero().getBody().setTransform(left + 0.1f, y, 0);
             world.update(1f / 60f);
-            assertLocation(world, "start", 6, 2);
+            assertLocation(world, "start", 4, 2);
             if (world.getCurrentRoom().getRoomId() != 2 ||
                 world.getHero().getBody().getPosition().x >=
                     world.getCurrentRoom().getWorldX() + world.getCurrentRoom().getWidth() - 0.2f) {
-                throw new AssertionError("Return spawn is in the wrong room or retriggers the forest exit");
+                throw new AssertionError("Return spawn is in the wrong room or retriggers the ruins exit");
             }
             world.update(1f / 60f);
-            assertLocation(world, "start", 6, 2);
+            assertLocation(world, "start", 4, 2);
+        }
+    }
+
+    private void exerciseGroundSeam(GameWorld world) {
+        world.changeLocation("start", 0);
+        for (Enemy enemy : world.getEnemies()) enemy.setAlive(false);
+        world.update(1f / 60f);
+
+        for (int roomId = 1; roomId <= 2; roomId++) {
+            float seam = world.getLocation().getRoom(roomId).getWorldX();
+            int[] floorFixtures = {0};
+            world.getWorld().QueryAABB(fixture -> {
+                if ("level".equals(fixture.getUserData())) floorFixtures[0]++;
+                return true;
+            }, seam - 0.01f, 0.5f, seam + 0.01f, 0.5f);
+            if (floorFixtures[0] != 1) {
+                throw new AssertionError("Room seam " + roomId + " has " + floorFixtures[0] + " separate floor fixtures");
+            }
+            for (float startY : new float[]{1.25f, 1.26f, 1.3f}) {
+                world.getHero().getBody().setTransform(seam - 0.7f, startY, 0);
+                world.getHero().getBody().setLinearVelocity(0, 0);
+                for (int i = 0; i < 30; i++) world.update(1f / 60f);
+                world.getHeroController().keyDown(Input.Keys.RIGHT);
+                for (int i = 0; i < 30; i++) world.update(1f / 60f);
+                world.getHeroController().keyUp(Input.Keys.RIGHT);
+                if (world.getHero().getPosition().x < seam + 0.5f) {
+                    throw new AssertionError("Hero stuck crossing room seam " + roomId + " to the right at x=" + world.getHero().getPosition().x);
+                }
+
+                world.getHeroController().keyDown(Input.Keys.LEFT);
+                for (int i = 0; i < 36; i++) world.update(1f / 60f);
+                world.getHeroController().keyUp(Input.Keys.LEFT);
+                if (world.getHero().getPosition().x > seam - 0.5f) {
+                    throw new AssertionError("Hero stuck crossing room seam " + roomId + " to the left at x=" + world.getHero().getPosition().x);
+                }
+            }
         }
     }
 

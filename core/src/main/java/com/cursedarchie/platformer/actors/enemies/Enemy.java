@@ -39,6 +39,10 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private boolean canSeeHero = false;
     private boolean canAttackHero = false;
     private boolean attackRequested;
+    private final float attackStartup;
+    private final float attackActiveEnd;
+    private final float attackCooldown;
+    private float attackCooldownRemaining;
     private Vector2 heroLastKnownPos = new Vector2();
     protected MotionStateMachine motionStateMachine;
     protected CombatStateMachine combatStateMachine;
@@ -60,6 +64,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         this.health = cfg.maxHealth;
         this.damage = cfg.damage;
         this.attackDuration = cfg.attackDuration;
+        this.attackStartup = cfg.attackStartup;
+        this.attackActiveEnd = cfg.attackActiveEnd;
+        this.attackCooldown = cfg.attackCooldown;
         this.velocity = cfg.velocity;
         this.attackLeft = cfg.attackLeft;
         this.attackRight = cfg.attackRight;
@@ -83,13 +90,18 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             PhysicsCategories.ENEMY,
             (short)(
                 PhysicsCategories.WALL |
-                PhysicsCategories.HERO |
                 PhysicsCategories.GROUND |
-                PhysicsCategories.ENEMY |
+                PhysicsCategories.HERO |
                 PhysicsCategories.HERO_ATTACK |
                 PhysicsCategories.VISION
             )
         );
+
+        // Enemies block the hero but should not be displaced by ordinary walking contact.
+        Fixture bodyFixture = body.getFixtureList().first();
+        bodyFixture.setDensity(2000f);
+        body.resetMassData();
+        body.setLinearDamping(8f);
 
         //FOOT_SENSOR============================================================
 
@@ -97,9 +109,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             PhysicsCategories.ENEMY,
             (short)(
                 PhysicsCategories.WALL |
-                PhysicsCategories.GROUND |
-                PhysicsCategories.HERO |
-                PhysicsCategories.ENEMY
+                PhysicsCategories.GROUND
             )
         );
 
@@ -162,6 +172,13 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isCanAttackHero() {
         return canAttackHero;
     }
+
+    public float getAttackStartup() { return attackStartup; }
+    public float getAttackActiveEnd() { return attackActiveEnd; }
+
+    public void beginAttackCooldown() {
+        attackCooldownRemaining = attackCooldown;
+    }
     public void setCanAttackHero(boolean canAttackHero) {
         this.canAttackHero = canAttackHero;
     }
@@ -178,7 +195,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     /*==============================================COMBAT============================================================*/
 
     public void requestAttack() {
-        if (combatStateMachine.getCurrentState() instanceof AttackState) return;
+        if (attackCooldownRemaining > 0f || combatStateMachine.getCurrentState() instanceof AttackState) return;
 
         attackRequested = true;
     }
@@ -234,6 +251,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         if (!active) {
             return;
         }
+
+        attackCooldownRemaining = Math.max(0f, attackCooldownRemaining - delta);
 
         if (brain != null) {
             brain.think(this, null, delta);

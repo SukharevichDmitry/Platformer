@@ -3,6 +3,7 @@ package com.cursedarchie.platformer.physics;
 import com.badlogic.gdx.physics.box2d.*;
 import com.cursedarchie.platformer.actors.Actor;
 
+/** Maintains sensor overlap sets; never creates or destroys Box2D bodies in callbacks. */
 public class GameContactListener implements ContactListener {
 
     @Override
@@ -41,15 +42,9 @@ public class GameContactListener implements ContactListener {
 
         Actor actor = (Actor) actorData;
 
-        Object otherData = other.getBody().getUserData();
-
-        boolean isGround =
-            "level".equals(other.getBody().getUserData());
-
-        boolean isActor =
-            otherData instanceof Actor;
-
-        if (isGround || isActor) {
+        // Actor bodies are handled by GameWorld's post-step manifold check, not here.
+        boolean isGround = "level".equals(other.getBody().getUserData());
+        if (isGround && !other.isSensor()) {
 
             int contacts = actor.getFootContacts();
 
@@ -73,6 +68,7 @@ public class GameContactListener implements ContactListener {
         if (vision == null) return;
 
         Fixture other = (vision == a) ? b : a;
+        if (other.isSensor()) return;
 
         Object ownerObj = vision.getBody().getUserData();
         Object targetObj = other.getBody().getUserData();
@@ -85,10 +81,8 @@ public class GameContactListener implements ContactListener {
 
         if (begin) {
             owner.addVisibleActor(target);
-            System.out.println("[ENEMY] ADD " + target);
         } else {
             owner.removeVisibleActor(target);
-            System.out.println("[ENEMY] REMOVE " + target);
         }
     }
 
@@ -112,10 +106,8 @@ public class GameContactListener implements ContactListener {
 
         if (begin) {
             attacker.addAttackTarget(target);
-            System.out.println("[ENEMY] ADD " + target);
         } else {
             attacker.removeAttackTarget(target);
-            System.out.println("[ENEMY] REMOVE " + target);
         }
     }
 

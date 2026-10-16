@@ -10,8 +10,19 @@ import com.cursedarchie.platformer.physics.PhysicsCategories;
 
 public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public static final float BODY_SIZE = 0.5f;
-    public static final float WALK_SPEED = 5f;
-    public static final float JUMP_IMPULSE = 1f;
+    public static final float WALK_SPEED = 6.5f;
+    public static final float GROUND_ACCELERATION = 75f;
+    public static final float GROUND_BRAKING = 85f;
+    public static final float AIR_ACCELERATION = 45f;
+    public static final float AIR_BRAKING = 22f;
+    public static final float JUMP_SPEED = 16.4f;
+    public static final float FALL_GRAVITY_SCALE = 1.25f;
+    public static final float RELEASE_GRAVITY_SCALE = 1.5f;
+    public static final float MAX_FALL_SPEED = 14f;
+    public static final float ATTACK_STARTUP = 0.12f;
+    public static final float ATTACK_ACTIVE_END = 0.24f;
+    public static final float ATTACK_DURATION = 0.36f;
+    public static final float DAMAGE_INVULNERABILITY = 0.5f;
 
     /*===========================================PARAMETERS===========================================================*/
 
@@ -29,6 +40,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
 
     protected MotionStateMachine motionStateMachine;
     protected CombatStateMachine combatStateMachine;
+    private float invulnerabilityRemaining;
 
     /*===========================================CONSTRUCTOR==========================================================*/
 
@@ -47,12 +59,12 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         this.maxHealth = 3;
         this.health = maxHealth;
         this.velocity = WALK_SPEED;
-        this.jumpForce = JUMP_IMPULSE;
+        this.jumpForce = JUMP_SPEED;
         this.alive = true;
         this.facingLeft = false;
         this.attackHandled = false;
         this.damage = 1f;
-        this.attackDuration = 0.6f;
+        this.attackDuration = ATTACK_DURATION;
         this.attackLeft = new AttackConfig(0.4f, 0.4f, -0.5f, 0f);
         this.attackRight = new AttackConfig(0.4f, 0.4f, 0.5f, 0f);
 
@@ -64,8 +76,8 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             PhysicsCategories.HERO,
             (short)(
                 PhysicsCategories.WALL |
-                PhysicsCategories.ENEMY |
                 PhysicsCategories.GROUND |
+                PhysicsCategories.ENEMY |
                 PhysicsCategories.ENEMY_ATTACK |
                 PhysicsCategories.VISION
             )
@@ -77,8 +89,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             PhysicsCategories.HERO,
             (short)(
                 PhysicsCategories.WALL |
-                PhysicsCategories.GROUND |
-                PhysicsCategories.ENEMY
+                PhysicsCategories.GROUND
             )
         );
 
@@ -101,13 +112,22 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public CombatStateMachine getCombatStateMachine() {
         return combatStateMachine;
     }
+    public float getInvulnerabilityRemaining() { return invulnerabilityRemaining; }
 
     /*==========================================CONTROLLERS===========================================================*/
 
     @Override
     public void update(float delta) {
+        invulnerabilityRemaining = Math.max(0f, invulnerabilityRemaining - delta);
         motionStateMachine.update(delta);
         combatStateMachine.update(delta);
+    }
+
+    @Override
+    public void takeDamage(float damage) {
+        if (!alive || invulnerabilityRemaining > 0f) return;
+        super.takeDamage(damage);
+        if (alive) invulnerabilityRemaining = DAMAGE_INVULNERABILITY;
     }
 
     @Override

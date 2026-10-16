@@ -13,6 +13,7 @@ public class MotionIdleState implements EnemyState {
 
     @Override
     public void update (Enemy enemy, float delta) {
+        enemy.moveStop();
     }
 
     @Override

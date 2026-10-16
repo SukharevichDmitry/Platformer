@@ -16,9 +16,10 @@ import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
 import java.util.HashMap;
 import java.util.Map;
 
+/** Owns one play run: Box2D, fixed-step gameplay, rooms, enemies, and generated-run state. */
 public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public static final float FIXED_STEP = 1f / 60f;
-    public static final float GRAVITY = 10f;
+    public static final float GRAVITY = 40f;
     private static final int MAX_STEPS_PER_FRAME = 6;
 
     private final World world;
@@ -31,8 +32,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private LocationInstance location;
     private int currentRoomId;
     private RoomInstance currentRoom;
-    Map<Integer, RoomState> roomStates = new HashMap<>();
+    private final Map<Integer, RoomState> roomStates = new HashMap<>();
     private final Array<Enemy> enemies = new Array<>();
+    private final Array<DefeatEffect> defeatEffects = new Array<>();
     private final EnemyController enemyController;
     private boolean disposed;
     private float accumulator;
@@ -65,6 +67,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     public void update(float delta) {
         if (delta <= 0f || Float.isNaN(delta)) return;
+        // Drop excess accumulated time after a stall instead of simulating an unbounded backlog.
         accumulator = Math.min(accumulator + delta, FIXED_STEP * MAX_STEPS_PER_FRAME);
         int steps = (int) (accumulator / FIXED_STEP);
         accumulator -= steps * FIXED_STEP;
@@ -72,28 +75,91 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void simulateStep(float delta) {
+        updateDefeatEffects(delta);
+        // Body destruction must happen outside Box2D's locked world.step callback.
         removeDeadEnemies();
+        heroController.update(delta);
         world.step(delta, 6, 2);
+        // Contacts from this step affect input on the next step (including buffered jumps).
+        refreshHeroGrounding();
 
         updateCurrentRoom();
         checkRoomExit();
 
-        heroController.update(delta);
         enemyController.update(delta);
 
         removeDeadEnemies();
+    }
+
+    private void refreshHeroGrounding() {
+        boolean supported = hero.getFootContacts() > 0;
+        if (!supported) {
+            for (Contact contact : world.getContactList()) {
+                if (isEnemyHeadSupport(contact)) {
+                    supported = true;
+                    break;
+                }
+            }
+        }
+        hero.setGrounded(supported);
+    }
+
+    private boolean isEnemyHeadSupport(Contact contact) {
+        if (!contact.isTouching() || !contact.isEnabled()) return false;
+        Fixture a = contact.getFixtureA();
+        Fixture b = contact.getFixtureB();
+        if (!"BODY".equals(a.getUserData()) || !"BODY".equals(b.getUserData())) return false;
+        Object ownerA = a.getBody().getUserData();
+        Object ownerB = b.getBody().getUserData();
+        boolean heroIsA = ownerA == hero && ownerB instanceof Enemy && ((Enemy) ownerB).isAlive();
+        boolean heroIsB = ownerB == hero && ownerA instanceof Enemy && ((Enemy) ownerA).isAlive();
+        if (!heroIsA && !heroIsB) return false;
+
+        // Box2D's manifold normal points from fixture A to B; only support from below
+        // counts. Side contact must block movement without granting a jump.
+        float normalY = contact.getWorldManifold().getNormal().y;
+        return heroIsA ? normalY < -0.7f : normalY > 0.7f;
     }
 
     private void removeDeadEnemies() {
         for (int i = enemies.size - 1; i >= 0; i--) {
             Enemy enemy = enemies.get(i);
             if (!enemy.isAlive()) {
+                defeatEffects.add(new DefeatEffect(enemy));
                 rememberDefeatedEnemy(enemy);
                 forgetEnemy(enemy);
                 world.destroyBody(enemy.getBody());
                 enemies.removeIndex(i);
             }
         }
+    }
+
+    private void updateDefeatEffects(float delta) {
+        for (int i = defeatEffects.size - 1; i >= 0; i--) {
+            DefeatEffect effect = defeatEffects.get(i);
+            effect.elapsed += delta;
+            if (effect.elapsed >= DefeatEffect.DURATION) defeatEffects.removeIndex(i);
+        }
+    }
+
+    public static final class DefeatEffect {
+        public static final float DURATION = 0.3f;
+        public final float x;
+        public final float y;
+        public final float size;
+        public final boolean facingLeft;
+        public final boolean boss;
+        private float elapsed;
+
+        private DefeatEffect(Enemy enemy) {
+            x = enemy.getPosition().x;
+            y = enemy.getPosition().y;
+            size = enemy.getSize();
+            facingLeft = enemy.isFacingLeft();
+            boss = size >= 1f;
+        }
+
+        public float getProgress() { return Math.min(1f, elapsed / DURATION); }
     }
 
     private void rememberDefeatedEnemy(Enemy enemy) {
@@ -117,22 +183,19 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
 
     private void buildLocation() {
-        for (RoomInstance room : location.getRooms()) {
-            room.buildBodies(world);
-        }
+        location.buildBodies(world);
         spawnEnemies();
     }
 
     private void unloadLocation() {
+        defeatEffects.clear();
         for (int i = enemies.size - 1; i >= 0; i--) {
             Enemy enemy = enemies.get(i);
             forgetEnemy(enemy);
             world.destroyBody(enemy.getBody());
         }
         enemies.clear();
-        for (RoomInstance room : location.getRooms()) {
-            room.getRuntime().destroy(world);
-        }
+        location.destroyBodies(world);
     }
 
     public void changeLocation(String locationName, int roomId) {
@@ -162,6 +225,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
         hero.getBody().setTransform(spawn, 0);
         hero.getBody().setLinearVelocity(0, 0);
+        // The old location's endContact events are not a reliable way to reset support.
+        hero.setFootContacts(0);
+        hero.setGrounded(false);
     }
 
     private void updateCurrentRoom() {
@@ -198,35 +264,19 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public void spawnEnemies() {
-
-        for (RoomInstance room :
-            location.getRooms()) {
-
-            RoomState state =
-                getRoomState(
-                    room.getRoomId()
-                );
-
-            if (state.isEnemiesSpawned()) {
-                continue;
-            }
+        for (RoomInstance room : location.getRooms()) {
+            RoomState state = getRoomState(room.getRoomId());
+            if (state.isEnemiesSpawned()) continue;
 
             for (int spawnIndex = 0; spawnIndex < room.getSpawns().size; spawnIndex++) {
                 EnemySpawnData spawn = room.getSpawns().get(spawnIndex);
+                // Stable per-room ID lets a generated run omit enemies defeated earlier.
                 String persistentId = room.getRoomId() + ":" + spawnIndex;
                 if (location.isGenerated() &&
                     location.getGeneratedRun().defeatedSpawnIds.contains(persistentId, false)) continue;
 
-                Vector2 pos =
-                    room.localToWorld(
-                        spawn.position
-                    );
-
-                Enemy enemy = enemyController.spawnEnemy(
-                    spawn,
-                    pos,
-                    world
-                );
+                Vector2 pos = room.localToWorld(spawn.position);
+                Enemy enemy = enemyController.spawnEnemy(spawn, pos, world);
                 if (enemy != null && location.isGenerated()) enemy.setPersistentSpawnId(persistentId);
             }
 
@@ -235,15 +285,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private RoomState getRoomState(int roomId) {
-        return roomStates.computeIfAbsent(
-            roomId,
-            id -> new RoomState()
-        );
+        return roomStates.computeIfAbsent(roomId, id -> new RoomState());
     }
 
     public Array<Enemy> getEnemies() {
         return enemies;
     }
+    public Array<DefeatEffect> getDefeatEffects() { return defeatEffects; }
     public Array<Enemy> getAliveEnemies() {
         Array<Enemy> alive = new Array<>();
         for (Enemy e : enemies) {

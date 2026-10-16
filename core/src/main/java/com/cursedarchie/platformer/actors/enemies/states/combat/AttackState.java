@@ -5,13 +5,18 @@ import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.states.EnemyState;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class AttackState implements EnemyState {
+    private final Set<Actor> hitTargets = new HashSet<>();
+
     @Override
     public void enter(Enemy enemy) {
         enemy.clearAttackRequest();
-
-        enemy.setLeftAttackActive(enemy.isFacingLeft());
-        enemy.setRightAttackActive(!enemy.isFacingLeft());
+        hitTargets.clear();
+        enemy.setLeftAttackActive(false);
+        enemy.setRightAttackActive(false);
         Gdx.app.log("INFO", "Start Attacking");
     }
 
@@ -19,18 +24,18 @@ public class AttackState implements EnemyState {
     public void update(Enemy enemy, float delta) {
         enemy.setCombatStateTime(enemy.getCombatStateTime() + delta);
 
-        boolean activeFrame =
-            !enemy.isAttackHandled() && enemy.getCombatStateTime() >= enemy.getAttackDuration() * 0.5f;
+        boolean activeFrame = enemy.getCombatStateTime() >= enemy.getAttackStartup() &&
+            enemy.getCombatStateTime() < enemy.getAttackActiveEnd();
+        enemy.setLeftAttackActive(activeFrame && enemy.isFacingLeft());
+        enemy.setRightAttackActive(activeFrame && !enemy.isFacingLeft());
 
         if (activeFrame) {
 
             for (Actor target : enemy.getAttackTargets()) {
-                boolean inFront =
-                    (enemy.isFacingLeft() && target.getPosition().x < enemy.getPosition().x) ||
-                        (!enemy.isFacingLeft() && target.getPosition().x > enemy.getPosition().x);
-                if (!inFront) continue;
+                if (hitTargets.contains(target) || !enemy.isTargetInFacingAttack(target)) continue;
 
                 target.takeDamage(enemy.getDamage());
+                hitTargets.add(target);
                 Gdx.app.log(
                     "COMBAT",
                     enemy.getClass().getSimpleName()
@@ -39,7 +44,6 @@ public class AttackState implements EnemyState {
                 );
             }
 
-            enemy.setAttackHandled(true);
         }
 
         if (enemy.getCombatStateTime() >= enemy.getAttackDuration()) {
@@ -52,6 +56,7 @@ public class AttackState implements EnemyState {
         enemy.setAttackHandled(false);
         enemy.setLeftAttackActive(false);
         enemy.setRightAttackActive(false);
+        enemy.beginAttackCooldown();
         Gdx.app.log("INFO", "Finished Attacking");
     }
 }

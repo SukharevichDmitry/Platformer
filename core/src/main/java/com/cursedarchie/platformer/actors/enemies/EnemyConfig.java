@@ -9,6 +9,9 @@ public class EnemyConfig {
     public float viewAngle;
     public float damage;
     public float attackDuration;
+    public float attackStartup;
+    public float attackActiveEnd;
+    public float attackCooldown;
     public float velocity;
     public AttackConfig attackLeft = new AttackConfig();
     public AttackConfig attackRight = new AttackConfig();

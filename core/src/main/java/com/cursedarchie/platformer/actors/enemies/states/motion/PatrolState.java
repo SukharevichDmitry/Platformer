@@ -12,7 +12,7 @@ public class PatrolState implements EnemyState {
 
     @Override
     public void update (Enemy enemy, float delta) {
-
+        enemy.moveStop();
     }
 
     @Override

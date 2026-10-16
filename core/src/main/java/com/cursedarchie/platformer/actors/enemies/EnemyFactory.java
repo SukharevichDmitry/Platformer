@@ -42,9 +42,12 @@ public class EnemyFactory {
         cfg.viewAngle = 45f;
 
         cfg.damage = 1f;
-        cfg.attackDuration = 3f;
+        cfg.attackDuration = 0.65f;
+        cfg.attackStartup = 0.25f;
+        cfg.attackActiveEnd = 0.37f;
+        cfg.attackCooldown = 0.55f;
 
-        cfg.velocity = 2f;
+        cfg.velocity = 3.2f;
 
         cfg.attackLeft = new AttackConfig(0.4f, 0.4f, -0.5f, 0f);
         cfg.attackRight = new AttackConfig(0.4f, 0.4f, 0.5f, 0f);
@@ -62,9 +65,12 @@ public class EnemyFactory {
         cfg.viewAngle = 90f;
 
         cfg.damage = 2f;
-        cfg.attackDuration = 4f;
+        cfg.attackDuration = 1.1f;
+        cfg.attackStartup = 0.5f;
+        cfg.attackActiveEnd = 0.68f;
+        cfg.attackCooldown = 1f;
 
-        cfg.velocity = 1f;
+        cfg.velocity = 1.8f;
 
         cfg.attackLeft = new AttackConfig(0.8f, 0.8f, -2.5f, 0f);
         cfg.attackRight = new AttackConfig(0.8f, 0.8f, 2.5f, 0f);

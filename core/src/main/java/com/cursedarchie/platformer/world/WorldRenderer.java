@@ -20,6 +20,7 @@ import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.levels.RoomInstance;
 import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
 
@@ -38,7 +39,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private static final float CAMERA_HEIGHT = 7f;
     private static final float EDGE_MARGIN = 1f;
     public static final float RUNNING_FRAME_DURATION = 0.06f;
-    public static final float ATTACK_FRAME_DURATION = 0.15f;
+    public static final float ATTACK_FRAME_DURATION = 0.12f;
 
     private final GameWorld gameWorld;
     private final Hero hero;
@@ -48,6 +49,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final ShapeRenderer debugRenderer = new ShapeRenderer();
     private final TextureAtlas atlas;
     private final TextureRegion blockTexture;
+    private final TextureRegion halfBlockTexture;
 
     private TextureRegion heroIdleLeft;
     private TextureRegion heroIdleRight;
@@ -98,6 +100,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         spriteBatch = new SpriteBatch();
         atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
         blockTexture = atlas.findRegion("block");
+        halfBlockTexture = new TextureRegion(blockTexture, 0, 0,
+            blockTexture.getRegionWidth(), blockTexture.getRegionHeight() / 2);
         loadTextures();
     }
 
@@ -201,6 +205,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawTiles();
             drawHero();
             drawEnemy();
+            drawDefeatEffects();
         spriteBatch.end();
 
         if (debug) {
@@ -288,17 +293,17 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     Tile tile = tiles[x][y];
                     if (tile == null) continue;
 
-                    Vector2 local = tile.getPosition();
+                    Rectangle bounds = tile.getBounds();
 
-                    float worldX = roomX + local.x;
-                    float worldY = roomY + local.y;
+                    float worldX = roomX + bounds.x;
+                    float worldY = roomY + bounds.y;
 
                     spriteBatch.draw(
-                        blockTexture,
+                        tile instanceof HalfOfBlock ? halfBlockTexture : blockTexture,
                         worldX,
                         worldY,
-                        tile.getSize(),
-                        tile.getSize()
+                        bounds.width,
+                        bounds.height
                     );
                 }
             }
@@ -308,7 +313,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private void drawHero() {
 
         TextureRegion heroFrame = this.hero.isFacingLeft() ? heroIdleLeft : heroIdleRight;
-        if (this.hero.getMotionStateMachine().getCurrentState() instanceof MoveState) {
+        if (this.hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
+            heroFrame = this.hero.isFacingLeft() ?
+                heroAttackLeftAnimation.getKeyFrame(this.hero.getCombatStateTime(), false) :
+                heroAttackRightAnimation.getKeyFrame(this.hero.getCombatStateTime(), false);
+        } else if (this.hero.getMotionStateMachine().getCurrentState() instanceof MoveState) {
             heroFrame = this.hero.isFacingLeft() ?
                 heroWalkLeftAnimation.getKeyFrame(this.hero.getMotionStateTime(), true) :
                 heroWalkRightAnimation.getKeyFrame(this.hero.getMotionStateTime(), true);
@@ -318,12 +327,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             } else {
                 heroFrame = this.hero.isFacingLeft() ? heroFallLeft : heroFallRight;
             }
-        } else if (this.hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
-            heroFrame = this.hero.isFacingLeft() ?
-                heroAttackLeftAnimation.getKeyFrame(this.hero.getCombatStateTime(), false) :
-                heroAttackRightAnimation.getKeyFrame(this.hero.getCombatStateTime(), false);
         }
 
+        if (hero.getInvulnerabilityRemaining() > 0f) {
+            spriteBatch.setColor(1f, 0.65f, 0.65f, 1f);
+        }
         spriteBatch.draw(
             heroFrame,
             (this.hero.getPosition().x - this.hero.getSize()/2f),
@@ -331,6 +339,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             this.hero.getSize(),
             this.hero.getSize()
         );
+        spriteBatch.setColor(Color.WHITE);
     }
 
     private void drawHeroSensors() {
@@ -463,12 +472,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
                 enemyFrame = enemy.isFacingLeft() ? enemyIdleLeft : enemyIdleRight;
                 if (enemy.getCombatStateMachine().getCurrentState() instanceof com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) {
+                    float shownFrame = enemy.getCombatStateTime() < enemy.getAttackStartup()
+                        ? 0f : ATTACK_FRAME_DURATION;
                     enemyFrame = enemy.isFacingLeft() ?
-                        enemyAttackLeftAnimation.getKeyFrame(enemy.getCombatStateTime(), false) :
-                        enemyAttackRightAnimation.getKeyFrame(enemy.getCombatStateTime(), false);
+                        enemyAttackLeftAnimation.getKeyFrame(shownFrame, false) :
+                        enemyAttackRightAnimation.getKeyFrame(shownFrame, false);
                 }
-                else if (enemy.getMotionStateMachine().getCurrentState() instanceof ChaseState ||
-                    enemy.getMotionStateMachine().getCurrentState() instanceof PatrolState) {
+                else if ((enemy.getMotionStateMachine().getCurrentState() instanceof ChaseState ||
+                    enemy.getMotionStateMachine().getCurrentState() instanceof PatrolState) &&
+                    Math.abs(enemy.getBody().getLinearVelocity().x) > 0.1f) {
                     enemyFrame = enemy.isFacingLeft() ?
                         enemyWalkLeftAnimation.getKeyFrame(enemy.getMotionStateTime(), true) :
                         enemyWalkRightAnimation.getKeyFrame(enemy.getMotionStateTime(), true);
@@ -484,7 +496,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     }
                 }
 
-
+                if (enemy.getCombatStateMachine().getCurrentState() instanceof
+                    com.cursedarchie.platformer.actors.enemies.states.combat.AttackState &&
+                    enemy.getCombatStateTime() < enemy.getAttackStartup()) {
+                    spriteBatch.setColor(1f, 0.6f, 0.6f, 1f);
+                }
                 spriteBatch.draw(
                     enemyFrame,
                     (enemy.getPosition().x - enemy.getSize()/2f),
@@ -492,8 +508,23 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     enemy.getSize(),
                     enemy.getSize()
                 );
+                spriteBatch.setColor(Color.WHITE);
             }
         }
+    }
+
+    private void drawDefeatEffects() {
+        for (GameWorld.DefeatEffect effect : gameWorld.getDefeatEffects()) {
+            float progress = effect.getProgress();
+            TextureRegion frame = effect.boss
+                ? (effect.facingLeft ? bossIdleLeft : bossIdleRight)
+                : (effect.facingLeft ? enemyIdleLeft : enemyIdleRight);
+            spriteBatch.setColor(1f, 0.7f + 0.3f * progress, 0.7f + 0.3f * progress,
+                1f - progress);
+            spriteBatch.draw(frame, effect.x - effect.size / 2f,
+                effect.y - effect.size / 2f + 0.15f * progress, effect.size, effect.size);
+        }
+        spriteBatch.setColor(Color.WHITE);
     }
 
     private void drawViewCones() {
@@ -553,18 +584,18 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     Tile tile = tiles[x][y];
                     if (tile == null) continue;
 
-                    Vector2 local = tile.getPosition();
+                    Rectangle bounds = tile.getBounds();
 
-                    float worldX = roomX + local.x;
-                    float worldY = roomY + local.y;
+                    float worldX = roomX + bounds.x;
+                    float worldY = roomY + bounds.y;
 
                     if (!inDebugRange(worldX, worldY)) continue;
 
                     debugRenderer.rect(
                         worldX,
                         worldY,
-                        tile.getSize(),
-                        tile.getSize()
+                        bounds.width,
+                        bounds.height
                     );
                 }
             }

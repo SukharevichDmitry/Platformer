@@ -4,6 +4,7 @@ import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.math.Rectangle;
 import com.cursedarchie.platformer.levels.GenerationProfile;
 import com.cursedarchie.platformer.levels.LocationInstance;
 import com.cursedarchie.platformer.levels.PlacedRoomGraph;
@@ -11,6 +12,8 @@ import com.cursedarchie.platformer.levels.RoomInstance;
 import com.cursedarchie.platformer.levels.RoomGraphGenerator;
 import com.cursedarchie.platformer.levels.RoomLayoutPlacer;
 import com.cursedarchie.platformer.levels.RoomTemplateCatalog;
+import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
 import com.cursedarchie.platformer.world.GameWorld;
 
 /** Exercises packaged generation, border transitions, and repeated unload/reload. */
@@ -32,14 +35,10 @@ public final class GeneratedLocationTest extends ApplicationAdapter {
         world = new GameWorld(42L);
         int startBodies = world.getWorld().getBodyCount();
         int startEnemies = world.getEnemies().size;
-        int forestBodies = -1;
         int ruinsBodies = -1;
         int ruinsEnemies = -1;
         LocationInstance generated = null;
         for (int i = 0; i < 20; i++) {
-            world.changeLocation("forest", 0);
-            if (forestBodies < 0) forestBodies = world.getWorld().getBodyCount();
-            expect("forest", forestBodies, 0);
             world.changeLocation("ruins", 0);
             if (generated == null) {
                 generated = world.getLocation();
@@ -52,8 +51,10 @@ public final class GeneratedLocationTest extends ApplicationAdapter {
                     left = Math.min(left, Math.round(room.getWorldX()));
                 RoomInstance entry = generated.getRoom(generated.getEntryRoomId());
                 if (entry.getWorldX() != left || entry.getLocationEntry() == null ||
-                    !"forest".equals(entry.getLocationEntry().location))
-                    throw new AssertionError("Generated entry does not open onto forest");
+                    !"start".equals(entry.getLocationEntry().location) ||
+                    entry.getLocationEntry().id != 2)
+                    throw new AssertionError("Generated entry does not open onto start room 2");
+                checkPartialTileGeometry(generated);
             } else if (world.getLocation() != generated) {
                 throw new AssertionError("Ruins regenerated during the same run");
             }
@@ -62,16 +63,18 @@ public final class GeneratedLocationTest extends ApplicationAdapter {
             expect("start", startBodies, startEnemies);
         }
 
-        world.changeLocation("forest", 0);
-        RoomInstance forest = world.getCurrentRoom();
-        world.getHero().getBody().setTransform(forest.getWorldX() + forest.getWidth() - 0.1f,
-            forest.getWorldY() + 2f, 0);
+        world.changeLocation("start", 2);
+        RoomInstance startExit = world.getCurrentRoom();
+        world.getHero().getBody().setTransform(startExit.getWorldX() + startExit.getWidth() - 0.1f,
+            startExit.getWorldY() + 2f, 0);
         world.update(GameWorld.FIXED_STEP);
         expect("ruins", ruinsBodies, ruinsEnemies);
         RoomInstance entry = world.getCurrentRoom();
         world.getHero().getBody().setTransform(entry.getWorldX() + 0.1f, entry.getWorldY() + 2f, 0);
         world.update(GameWorld.FIXED_STEP);
-        expect("forest", forestBodies, 0);
+        expect("start", startBodies, startEnemies);
+        if (world.getCurrentRoom().getRoomId() != 2)
+            throw new AssertionError("Generated return missed the authored exit room");
         exerciseOptionalBranchEntry();
         passed = true;
         Gdx.app.exit();
@@ -90,8 +93,7 @@ public final class GeneratedLocationTest extends ApplicationAdapter {
         if (branchSeed < 0) throw new AssertionError("No optional left branch found");
         GameWorld branchWorld = new GameWorld(branchSeed);
         try {
-            branchWorld.changeLocation("forest", 0);
-            int forestBodies = branchWorld.getWorld().getBodyCount();
+            int startBodies = branchWorld.getWorld().getBodyCount();
             branchWorld.changeLocation("ruins", 0);
             RoomInstance entry = branchWorld.getCurrentRoom();
             if (entry.getRoomId() == 0 ||
@@ -100,12 +102,44 @@ public final class GeneratedLocationTest extends ApplicationAdapter {
             branchWorld.getHero().getBody().setTransform(entry.getWorldX() + 0.1f,
                 entry.getWorldY() + 2f, 0);
             branchWorld.update(GameWorld.FIXED_STEP);
-            if (!"forest".equals(branchWorld.getLocation().getLocation()) ||
-                branchWorld.getWorld().getBodyCount() != forestBodies)
-                throw new AssertionError("Optional branch did not return cleanly to forest");
+            if (!"start".equals(branchWorld.getLocation().getLocation()) ||
+                branchWorld.getCurrentRoom().getRoomId() != 2 ||
+                branchWorld.getWorld().getBodyCount() != startBodies)
+                throw new AssertionError("Optional branch did not return cleanly to start");
         } finally {
             branchWorld.dispose();
         }
+    }
+
+    private void checkPartialTileGeometry(LocationInstance generated) {
+        for (RoomInstance room : generated.getRooms()) {
+            Tile[][] tiles = room.getTiles();
+            for (int x = 0; x < tiles.length; x++) {
+                for (int y = 0; y < tiles[x].length; y++) {
+                    Tile tile = tiles[x][y];
+                    if (!(tile instanceof HalfOfBlock)) continue;
+                    Rectangle bounds = tile.getBounds();
+                    if (bounds.width != 1f || bounds.height != 0.5f)
+                        throw new AssertionError("Half tile visual bounds are not 1 x 0.5");
+                    float worldX = room.getWorldX() + bounds.x + 0.5f;
+                    float worldY = room.getWorldY() + bounds.y;
+                    if (hasTerrainAt(worldX, worldY + 0.25f) == false ||
+                        hasTerrainAt(worldX, worldY + 0.75f))
+                        throw new AssertionError("Half tile has an invisible full-cell fixture");
+                    return;
+                }
+            }
+        }
+        throw new AssertionError("Generated seed has no half tile to check");
+    }
+
+    private boolean hasTerrainAt(float x, float y) {
+        boolean[] found = {false};
+        world.getWorld().QueryAABB(fixture -> {
+            if ("level".equals(fixture.getUserData())) found[0] = true;
+            return true;
+        }, x - 0.01f, y - 0.01f, x + 0.01f, y + 0.01f);
+        return found[0];
     }
 
     private void expect(String location, int bodies, int enemies) {
