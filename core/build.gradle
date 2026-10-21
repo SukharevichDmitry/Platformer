@@ -46,6 +46,11 @@ tasks.register('validateRoomTiles', JavaExec) {
   mainClass = 'com.cursedarchie.platformer.levels.RoomTileGenerationCheck'
   args rootProject.file('assets').path
 }
+tasks.register('validateStoneLighting', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.world.StoneLightingCheck'
+}
 tasks.register('validateRoomEncounters', JavaExec) {
   dependsOn 'testClasses'
   classpath = sourceSets.test.runtimeClasspath
@@ -70,6 +75,7 @@ tasks.named('check') {
   dependsOn 'validateRoomGraphs'
   dependsOn 'validateRoomLayouts'
   dependsOn 'validateRoomTiles'
+  dependsOn 'validateStoneLighting'
   dependsOn 'validateRoomEncounters'
   dependsOn 'qualityGateGeneratedWorld'
 }

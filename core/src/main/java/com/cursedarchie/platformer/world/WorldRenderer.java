@@ -19,8 +19,12 @@ import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.hero.states.motion.JumpState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.levels.RoomInstance;
+import com.cursedarchie.platformer.levels.LocationInstance;
+import com.cursedarchie.platformer.levels.VerticalConnection;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
+import com.cursedarchie.platformer.tiles.types.OneWayPlatform;
+import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
 
@@ -38,6 +42,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private static final float CAMERA_WIDTH = 10f;
     private static final float CAMERA_HEIGHT = 7f;
     private static final float EDGE_MARGIN = 1f;
+    private static final float VERTICAL_FOLLOW_SPEED = 8f;
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.12f;
 
@@ -45,11 +50,18 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final Hero hero;
 
     private final OrthographicCamera cam;
+    private LocationInstance cameraLocation;
 
     private final ShapeRenderer debugRenderer = new ShapeRenderer();
     private final TextureAtlas atlas;
-    private final TextureRegion blockTexture;
-    private final TextureRegion halfBlockTexture;
+    private final TextureAtlas ruinsAtlas;
+    private final TextureRegion[] wallFaces = new TextureRegion[256];
+    private final TextureRegion backgroundStone;
+    private final TextureRegion stoneHalf;
+    private final TextureRegion platformOneWay;
+    private final TextureRegion blockBreakable;
+    private final TextureRegion ladderSegment;
+    private final TextureRegion ladderCap;
 
     private TextureRegion heroIdleLeft;
     private TextureRegion heroIdleRight;
@@ -95,14 +107,29 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         Vector2 heroPos = hero.getPosition();
         this.cam = new OrthographicCamera(CAMERA_WIDTH, CAMERA_HEIGHT);
         this.cam.position.set(heroPos.x, heroPos.y, 0);
-        this.cam.update();
+        updateCamera(0f);
         this.debug = debug;
         spriteBatch = new SpriteBatch();
         atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
-        blockTexture = atlas.findRegion("block");
-        halfBlockTexture = new TextureRegion(blockTexture, 0, 0,
-            blockTexture.getRegionWidth(), blockTexture.getRegionHeight() / 2);
+        ruinsAtlas = new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas"));
+        for (int i = 0; i < wallFaces.length; i++) {
+            String name = "wall_mask_" + (i & 15);
+            if (i >= 16) name += "_corner_" + (i >> 4);
+            wallFaces[i] = requiredRegion(ruinsAtlas, name);
+        }
+        backgroundStone = requiredRegion(ruinsAtlas, "wall_center");
+        stoneHalf = ruinsAtlas.findRegion("stone_half");
+        platformOneWay = ruinsAtlas.findRegion("platform_oneway");
+        blockBreakable = ruinsAtlas.findRegion("block_breakable");
+        ladderSegment = ruinsAtlas.findRegion("ladder_segment");
+        ladderCap = ruinsAtlas.findRegion("ladder_cap");
         loadTextures();
+    }
+
+    private static TextureRegion requiredRegion(TextureAtlas atlas, String name) {
+        TextureRegion region = atlas.findRegion(name);
+        if (region == null) throw new IllegalArgumentException("Missing ruins atlas region: " + name);
+        return region;
     }
 
     private void loadTextures() {
@@ -196,13 +223,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     }
 
-    public void render() {
-        updateCamera();
+    public void render(float delta) {
+        updateCamera(delta);
 
         spriteBatch.setProjectionMatrix(cam.combined);
 
         spriteBatch.begin();
+            drawBackgroundMasonry();
             drawTiles();
+            drawClimbShafts();
             drawHero();
             drawEnemy();
             drawDefeatEffects();
@@ -219,7 +248,52 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         drawHitBar();
     }
 
-    private void updateCamera() {
+    private void drawClimbShafts() {
+        for (VerticalConnection shaft : gameWorld.getLocation().getVerticalConnections()) {
+            // This is visual-only: the narrow climb grip is owned by VerticalConnection.
+            float left = shaft.centerX - 0.28f;
+            float bottom = shaft.bottomY - 0.45f;
+            float top = shaft.topY + 0.35f;
+            for (float y = bottom; y < top - 0.01f; y += 0.75f)
+                spriteBatch.draw(ladderSegment, left, y, 0.56f, Math.min(0.75f, top - y));
+            spriteBatch.draw(ladderCap, left, bottom - 0.05f, 0.56f, 0.35f);
+            spriteBatch.draw(ladderCap, left, top - 0.28f, 0.56f, 0.35f);
+        }
+    }
+
+    /** Dark, non-solid infill hides the blank void behind room walls and doors. */
+    private void drawBackgroundMasonry() {
+        int left = (int) Math.floor(getVisibleLeftEdge()) - 1;
+        int right = (int) Math.ceil(getVisibleRightEdge()) + 1;
+        int bottom = (int) Math.floor(getVisibleBottomEdge()) - 1;
+        int top = (int) Math.ceil(getVisibleTopEdge()) + 1;
+        for (int x = left; x < right; x++) {
+            for (int y = bottom; y < top; y++) {
+                boolean withinRoom = false;
+                float nearestRoom = Float.POSITIVE_INFINITY;
+                for (RoomInstance room : gameWorld.getLocation().getRooms()) {
+                    float distanceX = Math.max(room.getWorldX() - (x + 0.5f),
+                        Math.max((x + 0.5f) - (room.getWorldX() + room.getWidth()), 0f));
+                    float distanceY = Math.max(room.getWorldY() - (y + 0.5f),
+                        Math.max((y + 0.5f) - (room.getWorldY() + room.getHeight()), 0f));
+                    nearestRoom = Math.min(nearestRoom, (float) Math.sqrt(distanceX * distanceX + distanceY * distanceY));
+                    if (distanceX == 0f && distanceY == 0f) {
+                        withinRoom = true;
+                        break;
+                    }
+                }
+                // Outside the playable rooms, masonry continues visually into
+                // darkness. It remains purely decorative, never a hidden wall.
+                float shade = withinRoom ? 0.25f : nearestRoom < 1.5f ? 0.58f :
+                    nearestRoom < 3.5f ? 0.43f : 0.28f;
+                spriteBatch.setColor(shade, shade * 0.94f, shade, 1f);
+                spriteBatch.draw(backgroundStone, x, y, 1f, 1f);
+            }
+        }
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    private void updateCamera(float delta) {
 
         Vector2 heroPos = hero.getPosition();
         float levelLeft = Float.POSITIVE_INFINITY;
@@ -245,11 +319,13 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 levelTop + EDGE_MARGIN - halfHeight);
         }
 
-        cam.position.set(
-            cameraX,
-            cameraY,
-            0
-        );
+        // Never pan through empty space on a location transition. Only vertical
+        // movement within one location is eased; horizontal follow stays responsive.
+        boolean locationChanged = cameraLocation != gameWorld.getLocation();
+        cameraLocation = gameWorld.getLocation();
+        float smoothY = locationChanged ? cameraY : cam.position.y +
+            (cameraY - cam.position.y) * (1f - (float) Math.exp(-VERTICAL_FOLLOW_SPEED * Math.max(0f, delta)));
+        cam.position.set(cameraX, smoothY, 0);
 
         cam.update();
     }
@@ -298,16 +374,30 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     float worldX = roomX + bounds.x;
                     float worldY = roomY + bounds.y;
 
-                    spriteBatch.draw(
-                        tile instanceof HalfOfBlock ? halfBlockTexture : blockTexture,
-                        worldX,
-                        worldY,
-                        bounds.width,
-                        bounds.height
-                    );
+                    if (tile instanceof OneWayPlatform) {
+                        // The wood strip occupies the top 12/64 of its image cell,
+                        // matching the fixture's top 0.18 world units.
+                        spriteBatch.draw(platformOneWay, worldX, roomY + y, 1f, 1f);
+                    } else if (tile instanceof HalfOfBlock) {
+                        spriteBatch.draw(stoneHalf, worldX, roomY + y, 1f, 1f);
+                    } else if (tile instanceof BreakableBlock) {
+                        spriteBatch.draw(blockBreakable, worldX, worldY, bounds.width, bounds.height);
+                    } else {
+                        drawDirectionalStone(room, x, y, worldX, worldY, bounds.width, bounds.height);
+                    }
                 }
             }
         }
+    }
+
+    private void drawDirectionalStone(RoomInstance room, int x, int y,
+                                    float drawX, float drawY, float width, float height) {
+        // Only empty space inside a room can illuminate a stone face.
+        // World coordinates let adjacent rooms share the same stone edges.
+        int worldX = Math.round(room.getWorldX()) + x;
+        int worldY = Math.round(room.getWorldY()) + y;
+        int lighting = StoneLighting.mask(gameWorld.getLocation().getRooms(), worldX, worldY);
+        spriteBatch.draw(wallFaces[lighting], drawX, drawY, width, height);
     }
 
     private void drawHero() {
@@ -676,6 +766,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     public void dispose() {
         spriteBatch.dispose();
         debugRenderer.dispose();
+        ruinsAtlas.dispose();
         atlas.dispose();
     }
 }

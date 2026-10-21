@@ -99,6 +99,14 @@ tasks.register('generatedRunPersistenceTest', JavaExec) {
   workingDir = layout.buildDirectory.dir('smoke-distribution')
   if (os.contains('mac')) jvmArgs '-XstartOnFirstThread'
 }
+tasks.register('interactiveTileTest', JavaExec) {
+  dependsOn 'testClasses', 'extractSmokeDistribution'
+  mainClass = 'com.cursedarchie.platformer.levels.InteractiveTilePhysicsTest'
+  classpath = files(sourceSets.test.output.classesDirs,
+    layout.buildDirectory.file("smoke-distribution/${project.name}-${project.version}/lib/${appName}-${projectVersion}.jar"))
+  workingDir = layout.buildDirectory.dir('smoke-distribution')
+  if (os.contains('mac')) jvmArgs '-XstartOnFirstThread'
+}
 
 jar {
 // sets the name of the .jar file this produces to the name of the game or app, with the version after.

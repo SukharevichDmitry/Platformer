@@ -49,15 +49,15 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         }
         float roomLeft = world.getCurrentRoom().getWorldX();
         world.getHero().getBody().setTransform(roomLeft + 5f, 2, 0);
-        renderer.render();
+        renderSettled();
         if (Math.abs(renderer.getVisibleRightEdge() - (roomLeft + 10f)) > 0.001f) {
             throw new AssertionError(location + " camera stopped following before the boundary");
         }
         world.getHero().getBody().setTransform(levelRight - 0.1f, 2, 0);
-        renderer.render();
+        renderSettled();
         assertRightEdge(location, levelRight + 1f);
         world.getHero().getBody().setTransform(levelRight + 3f, 2, 0);
-        renderer.render();
+        renderSettled();
         assertRightEdge(location, levelRight + 1f);
     }
 
@@ -68,13 +68,13 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
             levelLeft = Math.min(levelLeft, room.getWorldX());
         }
         world.getHero().getBody().setTransform(levelLeft + 5f, 2, 0);
-        renderer.render();
+        renderSettled();
         assertLeftEdge(location, levelLeft);
         world.getHero().getBody().setTransform(levelLeft + 0.1f, 2, 0);
-        renderer.render();
+        renderSettled();
         assertLeftEdge(location, levelLeft - 1f);
         world.getHero().getBody().setTransform(levelLeft - 3f, 2, 0);
-        renderer.render();
+        renderSettled();
         assertLeftEdge(location, levelLeft - 1f);
     }
 
@@ -101,6 +101,17 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         float middle = (bottom + top) / 2f;
         moveHeroVertically(middle);
         assertVerticalEdge(location, renderer.getVisibleBottomEdge(), middle - 3.5f, "following");
+        float beforeJump = renderer.getVisibleBottomEdge();
+        world.getHero().getBody().setTransform(5, middle + 2f, 0);
+        renderer.render(GameWorld.FIXED_STEP);
+        float firstJumpFrame = renderer.getVisibleBottomEdge();
+        if (firstJumpFrame <= beforeJump || firstJumpFrame >= beforeJump + 1f)
+            throw new AssertionError(location + " vertical camera did not ease toward a jump");
+        float atSixty = followForOneSecond(middle, 60);
+        float atThirty = followForOneSecond(middle, 30);
+        float atOneTwenty = followForOneSecond(middle, 120);
+        if (Math.abs(atSixty - atThirty) > 0.001f || Math.abs(atSixty - atOneTwenty) > 0.001f)
+            throw new AssertionError(location + " vertical smoothing depends on render FPS");
         moveHeroVertically(bottom + 0.1f);
         assertVerticalEdge(location, renderer.getVisibleBottomEdge(), bottom - 1f, "bottom");
         moveHeroVertically(bottom - 3f);
@@ -113,7 +124,19 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
 
     private void moveHeroVertically(float y) {
         world.getHero().getBody().setTransform(5, y, 0);
-        renderer.render();
+        renderSettled();
+    }
+
+    private float followForOneSecond(float middle, int fps) {
+        moveHeroVertically(middle);
+        world.getHero().getBody().setTransform(5, middle + 2f, 0);
+        for (int i = 0; i < fps; i++) renderer.render(1f / fps);
+        return renderer.getVisibleBottomEdge();
+    }
+
+    private void renderSettled() {
+        // A long frame reaches the clamped target while normal frames stay smoothed.
+        renderer.render(2f);
     }
 
     private void assertVerticalEdge(String location, float actual, float expected, String edge) {

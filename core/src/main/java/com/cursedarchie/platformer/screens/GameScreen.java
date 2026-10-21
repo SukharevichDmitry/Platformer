@@ -6,12 +6,16 @@
     import com.cursedarchie.platformer.world.WorldRenderer;
     import com.cursedarchie.platformer.world.GameWorld;
     import com.cursedarchie.platformer.world.GenerationSeedOverlay;
+    import com.cursedarchie.platformer.world.MiniMapRenderer;
+    import com.cursedarchie.platformer.world.LocationTitleOverlay;
 
     public class GameScreen implements Screen {
 
         private final GameWorld gameWorld;
         private final WorldRenderer renderer;
         private final GenerationSeedOverlay seedOverlay;
+        private final MiniMapRenderer miniMap;
+        private final LocationTitleOverlay locationTitle;
         private final Main game;
         private final long constructionStartedNs = System.nanoTime();
         private final float initializationMs;
@@ -29,6 +33,8 @@
             gameWorld = new GameWorld();
             renderer = new WorldRenderer(gameWorld, false);
             seedOverlay = new GenerationSeedOverlay(gameWorld);
+            miniMap = new MiniMapRenderer(gameWorld);
+            locationTitle = new LocationTitleOverlay(gameWorld);
             initializationMs = (System.nanoTime() - constructionStartedNs) / 1_000_000f;
         }
 
@@ -57,10 +63,13 @@
 
             long updateStartedNs = System.nanoTime();
             gameWorld.update(delta);
+            locationTitle.update(delta);
             float updateMs = (System.nanoTime() - updateStartedNs) / 1_000_000f;
             long renderStartedNs = System.nanoTime();
-            renderer.render();
+            renderer.render(delta);
+            miniMap.render();
             seedOverlay.render();
+            locationTitle.render();
             float renderMs = (System.nanoTime() - renderStartedNs) / 1_000_000f;
             recordStartupTiming(delta, updateMs, renderMs);
 
@@ -90,6 +99,8 @@
         public void resize(int width, int height) {
             renderer.setSize(width, height);
             seedOverlay.resize(width, height);
+            miniMap.resize(width, height);
+            locationTitle.resize(width, height);
         }
 
         @Override
@@ -111,6 +122,8 @@
             disposed = true;
             renderer.dispose();
             seedOverlay.dispose();
+            miniMap.dispose();
+            locationTitle.dispose();
             gameWorld.dispose();
         }
 

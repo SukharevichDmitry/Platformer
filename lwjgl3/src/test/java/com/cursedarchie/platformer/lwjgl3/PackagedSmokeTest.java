@@ -25,6 +25,7 @@ public final class PackagedSmokeTest extends Main {
     private GameScreen deathGame;
     private boolean complete;
     private int menuTextures;
+    private int gameplayTextures;
 
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
@@ -49,10 +50,13 @@ public final class PackagedSmokeTest extends Main {
                 firstGame = getScreen();
                 break;
             case 2:
+                // The previous menu is disposed asynchronously after START; baseline
+                // only once that disposal and the first gameplay render have completed.
+                gameplayTextures = Texture.getNumManagedTextures();
                 exerciseTransitions(((GameScreen) getScreen()).getGameWorld());
                 exerciseBorderTravel(((GameScreen) getScreen()).getGameWorld());
                 exerciseGroundSeam(((GameScreen) getScreen()).getGameWorld());
-                if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Gameplay texture count grew");
+                if (Texture.getNumManagedTextures() != gameplayTextures) throw new AssertionError("Gameplay texture count grew");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                 expect(PauseScreen.class);
                 break;
@@ -77,7 +81,7 @@ public final class PackagedSmokeTest extends Main {
                 if (getScreen() == firstGame) throw new AssertionError("Restart reused the game");
                 break;
             case 7:
-                if (Texture.getNumManagedTextures() != menuTextures) throw new AssertionError("Restart texture count grew");
+                if (Texture.getNumManagedTextures() != gameplayTextures) throw new AssertionError("Restart texture count grew");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                 expect(PauseScreen.class);
                 break;

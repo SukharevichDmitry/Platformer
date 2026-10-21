@@ -21,6 +21,8 @@ public final class RoomTileGenerationCheck {
         String firstSignature = null;
         boolean varied = false;
         int addedPlatforms = 0;
+        int addedOneWay = 0;
+        int addedBreakable = 0;
         int addedCover = 0;
         float nominalJumpRise = Hero.JUMP_SPEED * Hero.JUMP_SPEED / (2f * GameWorld.GRAVITY);
         if (nominalJumpRise < 3f)
@@ -41,13 +43,16 @@ public final class RoomTileGenerationCheck {
                     for (int x = 0; x < room.width; x++) {
                         if (before.charAt(x) == after.charAt(x)) continue;
                         if (before.charAt(x) != ' ' ||
-                            (after.charAt(x) != '_' && after.charAt(x) != '#') ||
+                            (after.charAt(x) != '_' && after.charAt(x) != '#' &&
+                                after.charAt(x) != '=' && after.charAt(x) != 'B') ||
                             y >= room.height - 3)
                             throw new AssertionError("Seed " + seed + " changed a protected tile");
-                        if (after.charAt(x) == '_') {
+                        if (after.charAt(x) == '_' || after.charAt(x) == '=' || after.charAt(x) == 'B') {
                             if (room.height - 1 - y != 3)
                                 throw new AssertionError("Generated ledge is outside the reachable height band");
                             addedPlatforms++;
+                            if (after.charAt(x) == '=') addedOneWay++;
+                            if (after.charAt(x) == 'B') addedBreakable++;
                         }
                         else addedCover++;
                     }
@@ -69,8 +74,9 @@ public final class RoomTileGenerationCheck {
                 }
             }
         }
-        if (!varied || addedPlatforms == 0 || addedCover == 0)
+        if (!varied || addedPlatforms == 0 || addedOneWay == 0 ||
+            addedBreakable == 0 || addedCover == 0)
             throw new AssertionError("Seeded pattern pieces produced no tile variation");
-        System.out.println("ROOM TILES PASSED: 1000 deterministic seeds, platform and cover pieces, walking routes and blocked-route rejection");
+        System.out.println("ROOM TILES PASSED: 1000 deterministic seeds, one-way and breakable ledges, cover, walking routes and blocked-route rejection");
     }
 }

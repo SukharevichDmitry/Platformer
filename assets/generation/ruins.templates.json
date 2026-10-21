@@ -4,6 +4,12 @@
   "routeFillers": ["collapsed_passage", "guarded_hall"],
   "optionalBranches": [
     {
+      "anchorTemplate": "bell_hall",
+      "anchorSide": "top",
+      "required": true,
+      "templateIds": ["watchtower"]
+    },
+    {
       "anchorTemplate": "entry",
       "anchorSide": "left",
       "templateIds": ["cache", "ambush"]
@@ -43,11 +49,11 @@
       "width": 13,
       "height": 8,
       "tileRows": [
-        "#####  ######",
+        "###### ######",
         "#           #",
         "#           #",
         "#           #",
-        "#    ###    #",
+        "#   #  #    #",
         "             ",
         "             ",
         "#############"
@@ -55,7 +61,7 @@
       "doors": [
         {"side": "left", "offset": 1, "span": 2},
         {"side": "right", "offset": 1, "span": 2},
-        {"side": "top", "offset": 5, "span": 2}
+        {"side": "top", "offset": 6, "span": 1}
       ]
     },
     {
@@ -101,6 +107,27 @@
         "#############"
       ],
       "doors": [{"side": "left", "offset": 1, "span": 2}]
+    },
+    {
+      "id": "watchtower",
+      "patternId": "arena",
+      "role": "optional",
+      "biome": "ruins",
+      "encounterRole": "combat",
+      "narrativeEventId": null,
+      "width": 13,
+      "height": 8,
+      "tileRows": [
+        "#############",
+        "#           #",
+        "#           #",
+        "#           #",
+        "#  =    B   #",
+        "#           #",
+        "#           #",
+        "###### ######"
+      ],
+      "doors": [{"side": "bottom", "offset": 6, "span": 1}]
     },
     {
       "id": "cache",

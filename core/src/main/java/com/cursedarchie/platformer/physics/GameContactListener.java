@@ -43,7 +43,8 @@ public class GameContactListener implements ContactListener {
         Actor actor = (Actor) actorData;
 
         // Actor bodies are handled by GameWorld's post-step manifold check, not here.
-        boolean isGround = "level".equals(other.getBody().getUserData());
+        boolean isGround = "level".equals(other.getBody().getUserData()) &&
+            !(other.getUserData() instanceof OneWaySurface);
         if (isGround && !other.isSensor()) {
 
             int contacts = actor.getFootContacts();
@@ -120,7 +121,24 @@ public class GameContactListener implements ContactListener {
     }
 
     @Override
-    public void preSolve(Contact contact, Manifold oldManifold) { }
+    public void preSolve(Contact contact, Manifold oldManifold) {
+        Fixture a = contact.getFixtureA();
+        Fixture b = contact.getFixtureB();
+        Fixture platform = a.getUserData() instanceof OneWaySurface ? a :
+            b.getUserData() instanceof OneWaySurface ? b : null;
+        if (platform == null) return;
+        Fixture actorFixture = platform == a ? b : a;
+        if (!(actorFixture.getBody().getUserData() instanceof Actor) || actorFixture.isSensor()) {
+            contact.setEnabled(false);
+            return;
+        }
+        Actor actor = (Actor) actorFixture.getBody().getUserData();
+        float top = ((OneWaySurface) platform.getUserData()).topY;
+        float feet = actor.getPosition().y - actor.getSize() / 2f;
+        // Keep an already-supported body on top, but never snag a rising body or its side.
+        if (feet < top - 0.06f || actor.getBody().getLinearVelocity().y > 0.05f)
+            contact.setEnabled(false);
+    }
 
     @Override
     public void postSolve(Contact contact, ContactImpulse impulse) { }

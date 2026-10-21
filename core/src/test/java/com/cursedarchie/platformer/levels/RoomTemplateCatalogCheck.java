@@ -13,12 +13,13 @@ public final class RoomTemplateCatalogCheck {
         FileHandle sample = generation.child("ruins.templates.json");
         RoomTemplateCatalog catalog = RoomTemplateCatalog.load(sample, profile);
         if (!catalog.locationId.equals("ruins") || catalog.requiredRoute.size() != 4 ||
-            catalog.templates.size() != 8 || catalog.optionalBranches.size() != 1 ||
+            catalog.templates.size() != 9 || catalog.optionalBranches.size() != 2 ||
             catalog.routeFillers.size() != 2 ||
             !catalog.requiredRoute.get(0).equals("entry") ||
             !catalog.requiredRoute.get(3).equals("exit_gate") ||
             catalog.templates.get("entry").door("left") == null ||
-            catalog.optionalBranches.get(0).templateIds.size() != 2)
+            !catalog.optionalBranches.get(0).required ||
+            catalog.optionalBranches.get(1).templateIds.size() != 2)
             throw new AssertionError("Sample catalog lost its story route or optional branch");
 
         FileHandle fixture = new FileHandle(new File(args[1], "generation/templates.json"));

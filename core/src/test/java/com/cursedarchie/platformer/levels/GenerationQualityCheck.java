@@ -50,6 +50,9 @@ public final class GenerationQualityCheck {
         long enemyTotal = 0;
         long combatRoomTotal = 0;
         long optionalBranchTotal = 0;
+        int requiredBranchCount = 0;
+        for (RoomTemplateCatalog.BranchSlot slot : catalog.optionalBranches)
+            if (slot.required) requiredBranchCount++;
 
         for (long seed = firstSeed; seed < firstSeed + count; seed++) {
             final long currentSeed = seed;
@@ -68,7 +71,8 @@ public final class GenerationQualityCheck {
                 verifyTransition(tiles, profile, new FileHandle(args[0]), currentSeed);
 
                 int enemies = 0;
-                int branches = graph.rooms.size() - graph.mainRoute.size();
+                // Optional-branch tuning excludes guaranteed vertical progression rooms.
+                int branches = graph.rooms.size() - graph.mainRoute.size() - requiredBranchCount;
                 optionalBranchTotal += branches;
                 if (graph.rooms.size() < report.minRooms) report.shortestRouteSeed = currentSeed;
                 if (graph.rooms.size() > report.maxRooms) report.longestRouteSeed = currentSeed;

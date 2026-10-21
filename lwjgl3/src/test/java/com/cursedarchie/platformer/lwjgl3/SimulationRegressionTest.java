@@ -12,6 +12,7 @@ import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.world.GameWorld;
+import com.cursedarchie.platformer.world.LocationTitleOverlay;
 
 /** Integration check for fixed simulation steps and state-machine timing. */
 public final class SimulationRegressionTest extends ApplicationAdapter {
@@ -58,8 +59,50 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkRenderRateConsistency();
         checkHeroAttackTimingAndDirection();
         checkEnemyAttackAndDamageCooldown();
+        checkLocationTitleTiming();
         passed = true;
         Gdx.app.exit();
+    }
+
+    private void checkLocationTitleTiming() {
+        GameWorld titleWorld = new GameWorld(42L);
+        LocationTitleOverlay title = new LocationTitleOverlay(titleWorld);
+        try {
+            title.update(0f);
+            if (!"Start".equals(title.getTitle()))
+                throw new AssertionError("Initial location title is missing");
+            closeTo(title.getOpacity(), 0f, "location title did not start transparent");
+            title.update(0.2f);
+            closeTo(title.getOpacity(), 0.5f, "location title did not fade in");
+            title.update(0.2f);
+            closeTo(title.getOpacity(), 1f, "location title did not become fully visible");
+            title.update(2f);
+            closeTo(title.getOpacity(), 1f, "location title did not hold");
+            title.update(0.4f);
+            closeTo(title.getOpacity(), 0.5f, "location title did not fade out");
+            title.update(0.4f);
+            closeTo(title.getOpacity(), 0f, "location title did not disappear");
+
+            com.cursedarchie.platformer.levels.RoomInstance nextRoom = titleWorld.getLocation().getRoom(1);
+            titleWorld.getHero().getBody().setTransform(nextRoom.getWorldX() + 2f,
+                nextRoom.getWorldY() + 2f, 0f);
+            titleWorld.update(GameWorld.FIXED_STEP);
+            if (titleWorld.getCurrentRoom() != nextRoom)
+                throw new AssertionError("Location-title room-change check did not enter room 1");
+            title.update(GameWorld.FIXED_STEP);
+            closeTo(title.getOpacity(), 0f, "room movement replayed the location title");
+
+            titleWorld.changeLocation("ruins", 0);
+            title.update(0f);
+            if (!"Ruins".equals(title.getTitle()))
+                throw new AssertionError("New location title is missing");
+            closeTo(title.getOpacity(), 0f, "new location title did not restart its fade");
+            title.update(0.2f);
+            closeTo(title.getOpacity(), 0.5f, "new location title did not fade in");
+        } finally {
+            title.dispose();
+            titleWorld.dispose();
+        }
     }
 
     private void checkEnemyAwareness() {
