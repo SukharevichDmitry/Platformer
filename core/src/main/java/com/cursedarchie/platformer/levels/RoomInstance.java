@@ -75,6 +75,8 @@ public class RoomInstance {
     }
     public Tile[][] getTiles() { return tiles; }
 
+    public void removeTile(int x, int y) { tiles[x][y] = null; }
+
 
     public void buildTiles() {
         tiles = new Tile[data.width][data.height];

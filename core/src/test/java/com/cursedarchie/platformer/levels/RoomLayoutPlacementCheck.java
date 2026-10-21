@@ -25,7 +25,7 @@ public final class RoomLayoutPlacementCheck {
             if (placed.seed != seed || !placed.placementSignature().equals(repeated.placementSignature()))
                 throw new AssertionError("Seed " + seed + " placement was not deterministic");
             checkPlacement(graph, placed, catalog, profile);
-            if (graph.rooms.size() == graph.mainRoute.size()) sawClosedBranch = true;
+            if (graph.rooms.size() == graph.mainRoute.size() + 1) sawClosedBranch = true;
             else sawOpenBranch = true;
             for (PlacedRoomGraph.PlacedRoom room : placed.rooms) {
                 RoomTemplateCatalog.RoomTemplate template = catalog.templates.get(room.templateId);

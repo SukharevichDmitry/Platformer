@@ -62,11 +62,13 @@ public final class RoomTemplateCatalog {
     public static final class BranchSlot {
         public final String anchorTemplate;
         public final String anchorSide;
+        public final boolean required;
         public final List<String> templateIds;
 
-        private BranchSlot(String anchorTemplate, String anchorSide, List<String> templateIds) {
+        private BranchSlot(String anchorTemplate, String anchorSide, boolean required, List<String> templateIds) {
             this.anchorTemplate = anchorTemplate;
             this.anchorSide = anchorSide;
+            this.required = required;
             this.templateIds = Collections.unmodifiableList(templateIds);
         }
     }
@@ -175,7 +177,11 @@ public final class RoomTemplateCatalog {
                 if (!optionalIds.add(candidateId))
                     throw invalid(file, field + " repeats optional template " + candidateId);
             }
-            branches.add(new BranchSlot(anchorId, side, candidates));
+            JsonValue requiredNode = node.get("required");
+            if (requiredNode != null && !requiredNode.isBoolean())
+                throw invalid(file, field + ".required must be a boolean");
+            branches.add(new BranchSlot(anchorId, side,
+                requiredNode != null && requiredNode.asBoolean(), candidates));
         }
         List<String> fillers = identifiers(root.get("routeFillers"), file, "routeFillers", 0, 64);
         for (String fillerId : fillers) {
@@ -241,7 +247,7 @@ public final class RoomTemplateCatalog {
         List<String> tileRows = new ArrayList<>();
         for (JsonValue row : rows) {
             String tiles = string(row, file, field + ".tileRows[" + tileRows.size() + "]");
-            if (tiles.length() != width || !tiles.matches("[ #_]*"))
+            if (tiles.length() != width || !tiles.matches("[ #_=B]*"))
                 throw invalid(file, field + ".tileRows[" + tileRows.size() + "] has invalid width or tile");
             tileRows.add(tiles);
         }
@@ -259,8 +265,10 @@ public final class RoomTemplateCatalog {
             int offset = integer(doorNode.get("offset"), file, doorField + ".offset");
             int span = integer(doorNode.get("span"), file, doorField + ".span");
             int edgeLength = side.equals("left") || side.equals("right") ? height : width;
-            if (offset < 1 || span < 2 || offset + span > edgeLength - 1)
-                throw invalid(file, doorField + " must leave a corner and span at least two tiles");
+            int minimumSpan = side.equals("left") || side.equals("right") ? 2 : 1;
+            if (offset < 1 || span < minimumSpan || offset + span > edgeLength - 1)
+                throw invalid(file, doorField + " must leave a corner and span at least " +
+                    minimumSpan + " tile" + (minimumSpan == 1 ? "" : "s"));
             for (int i = offset; i < offset + span; i++) {
                 int x = side.equals("left") ? 0 : side.equals("right") ? width - 1 : i;
                 int y = side.equals("bottom") ? 0 : side.equals("top") ? height - 1 : i;

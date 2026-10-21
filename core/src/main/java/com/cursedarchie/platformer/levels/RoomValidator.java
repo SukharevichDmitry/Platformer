@@ -81,7 +81,7 @@ public final class RoomValidator {
                 throw invalid(file, "tileRows[" + rowNumber + "] has width " + tiles.length() + "; expected " + width);
             for (int x = 0; x < width; x++) {
                 char tile = tiles.charAt(x);
-                if (tile != ' ' && tile != '#' && tile != '_')
+                if (tile != ' ' && tile != '#' && tile != '_' && tile != '=' && tile != 'B')
                     throw invalid(file, "tileRows[" + rowNumber + "][" + x + "] has unknown tile '" + tile + "'");
             }
             rowNumber++;

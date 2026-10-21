@@ -11,10 +11,15 @@ import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.levels.*;
 import com.cursedarchie.platformer.levels.wrappers.LocationTransition;
 import com.cursedarchie.platformer.physics.GameContactListener;
+import com.cursedarchie.platformer.physics.OneWaySurface;
+import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /** Owns one play run: Box2D, fixed-step gameplay, rooms, enemies, and generated-run state. */
 public class GameWorld implements com.badlogic.gdx.utils.Disposable {
@@ -33,11 +38,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private int currentRoomId;
     private RoomInstance currentRoom;
     private final Map<Integer, RoomState> roomStates = new HashMap<>();
+    private final Map<String, Set<Integer>> visitedRooms = new HashMap<>();
     private final Array<Enemy> enemies = new Array<>();
     private final Array<DefeatEffect> defeatEffects = new Array<>();
     private final EnemyController enemyController;
     private boolean disposed;
     private float accumulator;
+    private boolean breakHitThisSwing;
 
 
     public GameWorld() { this(new RoomManager()); }
@@ -55,6 +62,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         this.currentRoomId = 0;
         location = roomManager.loadLocation(currentLocationName);
         currentRoom = location.getRoom(currentRoomId);
+        markCurrentRoomVisited();
 
         this.hero = new Hero(new Vector2(5, 5), world);
         world.setContactListener(new GameContactListener());
@@ -79,6 +87,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         // Body destruction must happen outside Box2D's locked world.step callback.
         removeDeadEnemies();
         heroController.update(delta);
+        updateBreakableAttack();
         world.step(delta, 6, 2);
         // Contacts from this step affect input on the next step (including buffered jumps).
         refreshHeroGrounding();
@@ -95,13 +104,68 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         boolean supported = hero.getFootContacts() > 0;
         if (!supported) {
             for (Contact contact : world.getContactList()) {
-                if (isEnemyHeadSupport(contact)) {
+                if (isEnemyHeadSupport(contact) || isOneWaySupport(contact)) {
                     supported = true;
                     break;
                 }
             }
         }
         hero.setGrounded(supported);
+    }
+
+    private boolean isOneWaySupport(Contact contact) {
+        if (!contact.isTouching() || !contact.isEnabled()) return false;
+        Fixture a = contact.getFixtureA();
+        Fixture b = contact.getFixtureB();
+        Fixture platform = a.getUserData() instanceof OneWaySurface ? a :
+            b.getUserData() instanceof OneWaySurface ? b : null;
+        if (platform == null) return false;
+        Fixture actor = platform == a ? b : a;
+        if (actor.getBody() != hero.getBody() || !"BODY".equals(actor.getUserData())) return false;
+        float feet = hero.getPosition().y - Hero.BODY_SIZE / 2f;
+        return feet >= ((OneWaySurface) platform.getUserData()).topY - 0.07f &&
+            hero.getBody().getLinearVelocity().y <= 0.1f;
+    }
+
+    private void updateBreakableAttack() {
+        if (!hero.isLeftAttackActive() && !hero.isRightAttackActive()) {
+            breakHitThisSwing = false;
+            return;
+        }
+        if (breakHitThisSwing) return;
+        float heroX = hero.getPosition().x;
+        float heroY = hero.getPosition().y;
+        boolean left = hero.isLeftAttackActive();
+        float attackMinX = heroX + (left ? -0.7f : 0.3f);
+        float attackMaxX = heroX + (left ? -0.3f : 0.7f);
+        float attackMinY = heroY - 0.2f;
+        float attackMaxY = heroY + 0.2f;
+        RoomInstance hitRoom = null;
+        int hitX = -1, hitY = -1;
+        float nearest = Float.MAX_VALUE;
+        for (RoomInstance room : location.getRooms()) {
+            Tile[][] tiles = room.getTiles();
+            for (int x = 0; x < tiles.length; x++) {
+                for (int y = 0; y < tiles[x].length; y++) {
+                    if (!(tiles[x][y] instanceof BreakableBlock)) continue;
+                    float worldX = room.getWorldX() + x;
+                    float worldY = room.getWorldY() + y;
+                    if (worldX >= attackMaxX || worldX + 1f <= attackMinX ||
+                        worldY >= attackMaxY || worldY + 1f <= attackMinY) continue;
+                    float distance = Math.abs(worldX + 0.5f - heroX);
+                    if (distance < nearest) {
+                        nearest = distance;
+                        hitRoom = room;
+                        hitX = x;
+                        hitY = y;
+                    }
+                }
+            }
+        }
+        if (hitRoom != null && location.breakTile(hitRoom.getRoomId(), hitX, hitY)) {
+            breakHitThisSwing = true;
+            roomManager.saveGeneratedRun(location);
+        }
     }
 
     private boolean isEnemyHeadSupport(Contact contact) {
@@ -213,9 +277,11 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         unloadLocation();
         currentLocationName = locationName;
         location = nextLocation;
+        breakHitThisSwing = false;
         roomStates.clear();
         currentRoomId = nextRoom.getRoomId();
         currentRoom = nextRoom;
+        markCurrentRoomVisited();
 
         buildLocation();
         Vector2 spawn = new Vector2(
@@ -237,6 +303,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             if (room.contains(heroPos)) {
                 currentRoomId = room.getRoomId();
                 currentRoom = room;
+                markCurrentRoomVisited();
                 return;
             }
         }
@@ -307,6 +374,17 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
     public RoomInstance getCurrentRoom() {
         return currentRoom;
+    }
+    public boolean isRoomVisited(int roomId) {
+        Set<Integer> visited = visitedRooms.get(currentLocationName);
+        return visited != null && visited.contains(roomId);
+    }
+
+    private void markCurrentRoomVisited() {
+        // Room discovery belongs to the run, not to a rendered frame. Keep separate
+        // sets per location so revisiting start does not reveal unseen ruins rooms.
+        visitedRooms.computeIfAbsent(currentLocationName, name -> new HashSet<>())
+            .add(currentRoomId);
     }
     public World getWorld() {
         return world;

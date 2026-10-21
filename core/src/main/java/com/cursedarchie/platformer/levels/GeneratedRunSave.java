@@ -12,6 +12,7 @@ public final class GeneratedRunSave {
     public String placementSignature;
     public Array<String> narrativeChoices = new Array<>();
     public Array<String> defeatedSpawnIds = new Array<>();
+    public Array<String> brokenTileIds = new Array<>();
 
     public GeneratedRunSave() { }
 }

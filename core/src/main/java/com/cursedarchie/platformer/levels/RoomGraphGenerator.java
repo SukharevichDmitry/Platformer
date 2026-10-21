@@ -41,21 +41,29 @@ public final class RoomGraphGenerator {
         Random random = new Random(seed);
         int targetCount = profile.roomCount.min + random.nextInt(profile.roomCount.max - profile.roomCount.min + 1);
         int remaining = targetCount - catalog.requiredRoute.size();
-        if (remaining < 0 || !canFinish(anchorCounts, patterns, remaining))
+        int requiredBranches = 0;
+        for (RoomTemplateCatalog.BranchSlot slot : catalog.optionalBranches)
+            if (slot.required) requiredBranches++;
+        if (remaining < requiredBranches || !canFinish(anchorCounts, patterns, remaining))
             throw new IllegalArgumentException("Seed " + seed + " cannot satisfy roomCount and roomQuota");
         Map<String, Integer> counts = new HashMap<>(anchorCounts);
 
         List<RoomTemplateCatalog.BranchSlot> slots = new ArrayList<>(catalog.optionalBranches);
         Collections.shuffle(slots, random);
+        slots.sort((a, b) -> Boolean.compare(b.required, a.required));
         List<Choice> branches = new ArrayList<>();
         for (RoomTemplateCatalog.BranchSlot slot : slots) {
-            if (remaining == 0 || !random.nextBoolean()) continue;
+            if (!slot.required && (remaining <= requiredBranches || !random.nextBoolean())) continue;
             List<String> candidates = viable(slot.templateIds, catalog, patterns, counts, remaining - 1);
-            if (candidates.isEmpty()) continue;
+            if (candidates.isEmpty()) {
+                if (slot.required) throw new IllegalArgumentException("No viable required branch at " + slot.anchorTemplate);
+                continue;
+            }
             String chosen = weighted(candidates, catalog, patterns, random);
             increment(counts, catalog.templates.get(chosen).patternId);
             branches.add(new Choice(slot, chosen));
             remaining--;
+            if (slot.required) requiredBranches--;
         }
 
         List<String> route = new ArrayList<>(catalog.requiredRoute);

@@ -79,6 +79,14 @@ final class GeneratedLocationFactory {
             room.buildTiles();
             location.addRoom(room);
         }
+        for (PlacedRoomGraph.DoorJoin join : layout.doorJoins) {
+            if (!join.fromSide.equals("top") && !join.fromSide.equals("bottom")) continue;
+            PlacedRoomGraph.PlacedRoom from = layout.room(join.fromRoomId);
+            PlacedRoomGraph.PlacedRoom to = layout.room(join.toRoomId);
+            location.addVerticalConnection(new VerticalConnection(join,
+                join.fromSide.equals("top") ? from : to,
+                join.fromSide.equals("top") ? to : from));
+        }
         location.setGeneration(run, entryRoomId);
         return location;
     }
@@ -105,6 +113,7 @@ final class GeneratedLocationFactory {
         run.placementSignature = placement;
         run.narrativeChoices = narratives;
         if (run.defeatedSpawnIds == null) run.defeatedSpawnIds = new Array<>();
+        if (run.brokenTileIds == null) run.brokenTileIds = new Array<>();
         return run;
     }
 

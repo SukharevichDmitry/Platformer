@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 5,
   "status": "production",
   "locationId": "ruins",
   "returnTransition": {"location": "start", "id": 2},
@@ -33,7 +33,7 @@
   "tuningTargets": {
     "averageRooms": {"min": 7, "max": 8},
     "averageEnemies": {"min": 4, "max": 6},
-    "combatRoomPercent": {"min": 30, "max": 50},
+    "combatRoomPercent": {"min": 50, "max": 55},
     "optionalBranchPercent": {"min": 40, "max": 60},
     "maxConsecutiveSafeRooms": 4
   }

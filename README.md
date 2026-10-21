@@ -20,6 +20,10 @@ to a seeded, generated `ruins` run. JDK 17 is used for development checks.
   held/buffered input on pause or hide. `GeneratedRunStore` persists a generated
   run via libGDX Preferences. Changing generated output or save compatibility
   requires reviewing the generation profile version.
+- `WorldRenderer` eases vertical camera movement while following horizontally;
+  `MiniMapRenderer` draws a top-right room map using `GameWorld`'s per-location
+  visit history. Room visits last for the current run, not across saved runs.
+  `LocationTitleOverlay` briefly names each location on entry.
 
 Start with `FOUNDATION_POLISH_PLAN.md` for current polish status and remaining
 manual feel checks. Its original audit is historical, not a description of all
@@ -89,6 +93,20 @@ a working graphics driver/display.
 The procedural ruins pipeline generates a seeded graph, room layout, tile rows,
 and encounter spawn data. Walk right through `start` room 2 to enter ruins;
 walk left through the ruins entry to return. The layout is generated once per game run.
+Every ruins layout has an upper watchtower above the bell hall. Stand within its
+visible shaft and hold Up to climb; hold Down to descend. Left/Right moves
+across the ladder, including off either end, and Space jumps away from it.
+Releasing Up/Down holds position until you move away. The mini-map reveals the
+watchtower only after the hero enters it. The ladder grip follows its narrow
+art rather than neighboring blocks. Wooden one-way ledges can be jumped through
+from below and landed on from above. Heavily cracked blocks can be broken with
+X in attack range; they stay broken when the generated run reloads. The muted
+masonry behind rooms is decorative and has no collision.
+Structural stone now uses one compatible nine-face masonry family across
+connected walls and floors: center, side, top/bottom, and correctly oriented
+corners are selected from world-neighbor occupancy, including room seams.
+Exterior backing continues past room edges
+and darkens with distance, without changing the room's physical boundaries.
 Run `./gradlew.bat core:validateRoomEncounters` to check 1,000 seeds for stable
 spawns, allowed enemy types, difficulty limits, walkable terrain, and clear
 entries and story space. Run `./gradlew.bat lwjgl3:generatedLocationTest` to
@@ -96,7 +114,7 @@ check packaged border travel and repeated room and enemy cleanup.
 
 Generated ruins persist through the platform's libGDX Preferences storage. The
 save includes its profile version, seed, graph and layout signatures, narrative
-room choices, and defeated enemy spawn IDs. Run
+room choices, defeated enemy spawn IDs, and broken tile IDs. Run
 `./gradlew.bat lwjgl3:generatedRunPersistenceTest` to verify that a complete
 game-world reload restores the same rooms, exits, choices, and defeated enemies.
 

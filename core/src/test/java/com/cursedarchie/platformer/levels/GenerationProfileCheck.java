@@ -10,9 +10,9 @@ public final class GenerationProfileCheck {
         if (args.length != 2) throw new IllegalArgumentException("Expected assets and fixture directories");
         FileHandle sample = new FileHandle(new File(args[0], "generation/ruins.json"));
         GenerationProfile profile = GenerationProfile.load(sample);
-        if (profile.version != 3 || !"ruins".equals(profile.locationId) ||
+        if (profile.version != 5 || !"ruins".equals(profile.locationId) ||
             !"production".equals(profile.status) || profile.tuningTargets == null ||
-            profile.tuningTargets.combatRoomPercent.min != 30 || profile.roomCount.min != 5 ||
+            profile.tuningTargets.combatRoomPercent.min != 50 || profile.roomCount.min != 5 ||
             profile.tuningTargets.maxConsecutiveSafeRooms != 4 ||
             profile.roomCount.max != 10 || profile.allowedEnemyTypes.size() != 2 ||
             profile.roomPatterns.size() != 2 || profile.roomPatterns.get(0).width.max != 12 ||
@@ -26,14 +26,14 @@ public final class GenerationProfileCheck {
         fixture.writeString(valid.replace("\"min\": 5, \"max\": 10", "\"min\": 11, \"max\": 10"), false);
         expectError(fixture, "roomCount");
 
-        fixture.writeString(valid.replace("\"version\": 3", "\"version\": 0"), false);
+        fixture.writeString(valid.replace("\"version\": 5", "\"version\": 0"), false);
         expectError(fixture, "version");
 
         fixture.writeString(valid.replace("\"status\": \"production\"", "\"status\": \"released\""), false);
         expectError(fixture, "status");
 
-        fixture.writeString(valid.replace("\"combatRoomPercent\": {\"min\": 30, \"max\": 50}",
-            "\"combatRoomPercent\": {\"min\": 51, \"max\": 50}"), false);
+        fixture.writeString(valid.replace("\"combatRoomPercent\": {\"min\": 50, \"max\": 55}",
+            "\"combatRoomPercent\": {\"min\": 56, \"max\": 55}"), false);
         expectError(fixture, "tuningTargets.combatRoomPercent");
 
         fixture.writeString(valid.replace("\"default\", \"boss\"", "\"default\", \"enemy2\""), false);

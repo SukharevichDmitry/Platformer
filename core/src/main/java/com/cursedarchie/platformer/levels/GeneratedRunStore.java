@@ -27,7 +27,7 @@ public final class GeneratedRunStore {
             if (save == null || save.formatVersion != FORMAT_VERSION ||
                 save.profileVersion != profileVersion || !locationId.equals(save.locationId) ||
                 save.topologySignature == null || save.placementSignature == null ||
-                save.narrativeChoices == null || save.defeatedSpawnIds == null) {
+                save.narrativeChoices == null || save.defeatedSpawnIds == null || save.brokenTileIds == null) {
                 remove(locationId);
                 return null;
             }

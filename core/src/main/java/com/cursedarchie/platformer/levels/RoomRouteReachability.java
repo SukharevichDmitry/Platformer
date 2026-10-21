@@ -5,7 +5,7 @@ import com.cursedarchie.platformer.world.GameWorld;
 
 import java.util.List;
 
-/** Verifies a standing, grounded hero can walk from every doorway to every other doorway. */
+/** Verifies horizontal walking lanes and clear, climbable vertical joins. */
 public final class RoomRouteReachability {
     private RoomRouteReachability() {}
 
@@ -21,9 +21,16 @@ public final class RoomRouteReachability {
             for (String row : rows)
                 if (row.length() != room.width) throw invalid(generated, room.id, "wrong row width");
             // A two-tile-high clear lane gives the actual 0.5 tile hero clearance.
-            // Its continuous floor means the route needs only the hero's walking action.
+            // Bottom doors are deliberate shaft openings; all other floor remains walkable.
             for (int x = 0; x < room.width; x++) {
-                if (tile(rows, room.height, x, 0) != '#')
+                boolean bottomDoor = false;
+                for (PlacedRoomGraph.DoorJoin join : generated.layout.doorJoins) {
+                    if ((join.fromSide.equals("top") && join.toRoomId == room.id ||
+                         join.fromSide.equals("bottom") && join.fromRoomId == room.id) &&
+                        room.worldX + x >= join.worldX && room.worldX + x < join.worldX + join.span)
+                        bottomDoor = true;
+                }
+                if (tile(rows, room.height, x, 0) != (bottomDoor ? ' ' : '#'))
                     throw invalid(generated, room.id, "floor missing at x=" + x);
                 if (x > 0 && x < room.width - 1 &&
                     (tile(rows, room.height, x, 1) != ' ' ||
@@ -32,9 +39,10 @@ public final class RoomRouteReachability {
             }
         }
         for (PlacedRoomGraph.DoorJoin join : generated.layout.doorJoins) {
-            if (!join.fromSide.equals("left") && !join.fromSide.equals("right"))
-                throw invalid(generated, join.fromRoomId,
-                    "vertical doorway has no verified route within the hero's jump limits");
+            if (join.fromSide.equals("top") || join.fromSide.equals("bottom")) {
+                validateVertical(generated, join);
+                continue;
+            }
             if (join.span < 2 || join.worldY != generated.layout.room(join.fromRoomId).worldY + 1 ||
                 join.worldY != generated.layout.room(join.toRoomId).worldY + 1)
                 throw invalid(generated, join.fromRoomId, "doorway lacks walking-height clearance");
@@ -46,6 +54,26 @@ public final class RoomRouteReachability {
                 if (tile(generated.roomRows(from.id), from.height, fromX, y) != ' ' ||
                     tile(generated.roomRows(to.id), to.height, toX, y) != ' ')
                     throw invalid(generated, from.id, "doorway is blocked");
+        }
+    }
+
+    private static void validateVertical(GeneratedRoomTiles generated, PlacedRoomGraph.DoorJoin join) {
+        PlacedRoomGraph.PlacedRoom from = generated.layout.room(join.fromRoomId);
+        PlacedRoomGraph.PlacedRoom to = generated.layout.room(join.toRoomId);
+        PlacedRoomGraph.PlacedRoom lower = join.fromSide.equals("top") ? from : to;
+        PlacedRoomGraph.PlacedRoom upper = join.fromSide.equals("top") ? to : from;
+        if (join.span < 1 || join.worldY != lower.worldY + lower.height ||
+            join.worldY != upper.worldY || join.span <= Hero.BODY_SIZE)
+            throw invalid(generated, from.id, "vertical opening is misaligned or too narrow");
+        for (int worldX = join.worldX; worldX < join.worldX + join.span; worldX++) {
+            int lowerX = worldX - lower.worldX;
+            int upperX = worldX - upper.worldX;
+            for (int y = 1; y < lower.height; y++)
+                if (tile(generated.roomRows(lower.id), lower.height, lowerX, y) != ' ')
+                    throw invalid(generated, lower.id, "climb shaft is blocked");
+            for (int y = 0; y <= 2; y++)
+                if (tile(generated.roomRows(upper.id), upper.height, upperX, y) != ' ')
+                    throw invalid(generated, upper.id, "upper shaft opening is blocked");
         }
     }
 
