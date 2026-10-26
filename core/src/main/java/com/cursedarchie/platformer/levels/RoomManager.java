@@ -20,8 +20,8 @@ public class RoomManager {
     private final JsonReader jsonReader = new JsonReader();
 
     public RoomManager() {
-        this(new Random().nextLong(),
-            new GeneratedRunStore(Gdx.app.getPreferences("com.cursedarchie.platformer.generated-run")));
+        // START creates a new run. Persistence is opt-in for an eventual Continue flow.
+        this(new Random().nextLong(), new GeneratedRunStore(null));
     }
 
     public RoomManager(long runSeed) { this(runSeed, new GeneratedRunStore(null)); }

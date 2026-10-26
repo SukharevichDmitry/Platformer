@@ -6,6 +6,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.enemies.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.enemies.states.motion.MotionIdleState;
 import com.cursedarchie.platformer.actors.hero.Hero;
@@ -53,6 +54,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             throw new AssertionError("Held movement reset the motion state");
         closeTo(hero.getMotionStateTime(), GameWorld.FIXED_STEP * 2f, "motion timing is inconsistent");
         checkEnemyAwareness();
+        checkEnemyStopsAtAttackRange();
         checkHeroMovementAndContacts();
         checkJumpBuffer();
         checkEnemyHeadJump();
@@ -135,6 +137,54 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 throw new AssertionError("Enemy did not attack the hero inside its front range");
         } finally {
             attackWorld.dispose();
+        }
+    }
+
+    private void checkEnemyStopsAtAttackRange() {
+        checkEnemyStopsAtAttackRange(false);
+        checkEnemyStopsAtAttackRange(true);
+    }
+
+    private void checkEnemyStopsAtAttackRange(boolean boss) {
+        GameWorld chaseWorld = new GameWorld();
+        try {
+            Enemy attacker = null;
+            for (Enemy enemy : chaseWorld.getEnemies()) {
+                if ((enemy.getSize() > 1f) == boss) attacker = enemy;
+                else enemy.setAlive(false);
+            }
+            if (attacker == null) throw new AssertionError("Missing enemy for chase range check");
+            Hero hero = chaseWorld.getHero();
+            hero.getBody().setTransform(5f, 1.25f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            attacker.setFacingLeft(true);
+            attacker.getBody().setTransform(8f, boss ? 1.75f : 1.25f, 0f);
+            attacker.getBody().setLinearVelocity(0f, 0f);
+
+            for (int i = 0; i < 100 && !attacker.isCanAttackHero(); i++)
+                chaseWorld.update(GameWorld.FIXED_STEP);
+            if (!attacker.isCanAttackHero())
+                throw new AssertionError("Enemy never reached its attack range: boss=" + boss);
+            float heroX = hero.getPosition().x;
+            float attackerX = attacker.getPosition().x;
+            for (int i = 0; i < 20; i++) chaseWorld.update(GameWorld.FIXED_STEP);
+            if (!(attacker.getMotionStateMachine().getCurrentState() instanceof MotionIdleState) ||
+                Math.abs(attacker.getBody().getLinearVelocity().x) > 0.01f)
+                throw new AssertionError("Enemy kept chasing inside attack range: boss=" + boss);
+            if (Math.abs(hero.getPosition().x - heroX) > 0.05f ||
+                Math.abs(attacker.getPosition().x - attackerX) > 0.05f)
+                throw new AssertionError("Enemy pushed the hero while attacking: boss=" + boss);
+            if (boss) {
+                attacker.setBrain(null);
+                attacker.setIntent(Enemy.Intent.IDLE);
+                attacker.getBody().setTransform(7f, 1.75f, 0f);
+                attacker.getBody().setLinearVelocity(0f, 0f);
+                chaseWorld.update(GameWorld.FIXED_STEP);
+                if (attacker.getAttackTargets().contains(hero))
+                    throw new AssertionError("Boss attack sensor still reaches two units from its body");
+            }
+        } finally {
+            chaseWorld.dispose();
         }
     }
 
@@ -373,10 +423,20 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             for (int i = 0; i < 3; i++) combatWorld.update(GameWorld.FIXED_STEP);
             if (regular.getHealth() != regularHealth - hero.getDamage() || boss.getHealth() != bossHealth)
                 throw new AssertionError("Hero strike missed the front target or hit behind");
+            GameWorld.DamageIndicator enemyHit = indicatorFor(combatWorld, regular);
+            if (enemyHit == null || enemyHit.amount != hero.getDamage() ||
+                indicatorFor(combatWorld, boss) != null || !combatWorld.hasRecentDamage(regular))
+                throw new AssertionError("Damage cue did not match the hero's real hit");
             for (int i = 0; i < 35; i++) combatWorld.update(GameWorld.FIXED_STEP);
             if (regular.getHealth() != regularHealth - hero.getDamage())
                 throw new AssertionError("Held attack damaged a target twice");
             combatWorld.getHeroController().keyUp(Input.Keys.X);
+            int cuesBeforeLethalHit = combatWorld.getDamageIndicators().size;
+            regular.takeDamage(regular.getHealth());
+            combatWorld.update(GameWorld.FIXED_STEP);
+            if (combatWorld.getDamageIndicators().size <= cuesBeforeLethalHit ||
+                combatWorld.getEnemies().contains(regular, true))
+                throw new AssertionError("Lethal enemy hit lost its damage cue during cleanup");
         } finally {
             combatWorld.dispose();
         }
@@ -410,13 +470,30 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             for (int i = 0; i < 6; i++) combatWorld.update(GameWorld.FIXED_STEP);
             if (hero.getHealth() != health - attacker.getDamage())
                 throw new AssertionError("Enemy attack missed its active window");
+            GameWorld.DamageIndicator heroHit = indicatorFor(combatWorld, hero);
+            if (heroHit == null || heroHit.amount != attacker.getDamage() ||
+                !combatWorld.hasRecentDamage(hero))
+                throw new AssertionError("Hero damage cue did not match the enemy's real hit");
+            int indicatorCount = combatWorld.getDamageIndicators().size;
             attacker.getCombatStateMachine().changeState(new AttackState());
             for (int i = 0; i < 18; i++) combatWorld.update(GameWorld.FIXED_STEP);
             if (hero.getHealth() != health - attacker.getDamage())
                 throw new AssertionError("Hero took a second hit during the damage cooldown");
+            if (combatWorld.getDamageIndicators().size != indicatorCount)
+                throw new AssertionError("Invulnerable hero displayed a false damage cue");
+            attacker.setActive(false);
+            for (int i = 0; i < 45; i++) combatWorld.update(GameWorld.FIXED_STEP);
+            if (combatWorld.hasRecentDamage(hero) || combatWorld.getDamageIndicators().size != 0)
+                throw new AssertionError("Damage cue did not fade and expire");
         } finally {
             combatWorld.dispose();
         }
+    }
+
+    private static GameWorld.DamageIndicator indicatorFor(GameWorld world, Actor target) {
+        for (GameWorld.DamageIndicator indicator : world.getDamageIndicators())
+            if (indicator.target == target) return indicator;
+        return null;
     }
 
     private static void closeTo(float actual, float expected, String failure) {

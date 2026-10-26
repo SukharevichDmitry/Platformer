@@ -3,10 +3,15 @@ package com.cursedarchie.platformer.levels;
 import com.badlogic.gdx.files.FileHandle;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.world.GameWorld;
+import com.cursedarchie.platformer.levels.wrappers.RoomData;
+import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.TileMetrics;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Checks seeded tile pieces and grounded hero routes across many layouts. */
 public final class RoomTileGenerationCheck {
@@ -20,10 +25,13 @@ public final class RoomTileGenerationCheck {
         RoomTileGenerator tileGenerator = new RoomTileGenerator();
         String firstSignature = null;
         boolean varied = false;
+        Set<String> entryLayouts = new HashSet<>();
+        Set<String> storyLayouts = new HashSet<>();
         int addedPlatforms = 0;
         int addedOneWay = 0;
         int addedBreakable = 0;
         int addedCover = 0;
+        int addedFineStone = 0;
         float nominalJumpRise = Hero.JUMP_SPEED * Hero.JUMP_SPEED / (2f * GameWorld.GRAVITY);
         if (nominalJumpRise < 3f)
             throw new AssertionError("Jump cannot reach the highest intended template ledges");
@@ -37,6 +45,28 @@ public final class RoomTileGenerationCheck {
             if (firstSignature == null) firstSignature = tiles.tileSignature();
             else if (!firstSignature.equals(tiles.tileSignature())) varied = true;
             for (PlacedRoomGraph.PlacedRoom room : layout.rooms) {
+                RoomData data = new RoomData();
+                data.width = room.width;
+                data.height = room.height;
+                data.tileRows = tiles.roomRows(room.id).toArray(new String[0]);
+                RoomInstance physicalRoom = new RoomInstance(data);
+                physicalRoom.buildTiles();
+                if (physicalRoom.getTiles().length != room.width * TileMetrics.CELLS_PER_UNIT ||
+                    physicalRoom.getTiles()[0].length != room.height * TileMetrics.CELLS_PER_UNIT)
+                    throw new AssertionError("Room did not keep its world size on the finer grid");
+                addedFineStone += RoomFineDecorator.decorate(physicalRoom,
+                    catalog.templates.get(room.templateId));
+                for (int fineX = 2; fineX < physicalRoom.getTileColumns() - 2; fineX++)
+                    for (int fineY = 2; fineY < 6; fineY++)
+                        if (physicalRoom.getTiles()[fineX][fineY] != null)
+                            throw new AssertionError("Fine decoration blocked the walking corridor");
+                Tile firstStone = physicalRoom.getTiles()[0][0];
+                if (firstStone != null && firstStone.getBounds().width != TileMetrics.SIZE)
+                    throw new AssertionError("Stone cell has the old width");
+                if (room.templateId.equals("entry"))
+                    entryLayouts.add(String.join("/", tiles.roomRows(room.id)));
+                if (room.templateId.equals("story_shrine"))
+                    storyLayouts.add(String.join("/", tiles.roomRows(room.id)));
                 for (int y = 0; y < room.height; y++) {
                     String before = room.tileRows.get(y);
                     String after = tiles.roomRows(room.id).get(y);
@@ -48,8 +78,9 @@ public final class RoomTileGenerationCheck {
                             y >= room.height - 3)
                             throw new AssertionError("Seed " + seed + " changed a protected tile");
                         if (after.charAt(x) == '_' || after.charAt(x) == '=' || after.charAt(x) == 'B') {
-                            if (room.height - 1 - y != 3)
-                                throw new AssertionError("Generated ledge is outside the reachable height band");
+                            int ledgeHeight = room.height - 1 - y;
+                            if (ledgeHeight != 3 && ledgeHeight != 5)
+                                throw new AssertionError("Generated ledge is outside the reachable tiers");
                             addedPlatforms++;
                             if (after.charAt(x) == '=') addedOneWay++;
                             if (after.charAt(x) == 'B') addedBreakable++;
@@ -74,9 +105,12 @@ public final class RoomTileGenerationCheck {
                 }
             }
         }
-        if (!varied || addedPlatforms == 0 || addedOneWay == 0 ||
-            addedBreakable == 0 || addedCover == 0)
-            throw new AssertionError("Seeded pattern pieces produced no tile variation");
-        System.out.println("ROOM TILES PASSED: 1000 deterministic seeds, one-way and breakable ledges, cover, walking routes and blocked-route rejection");
+        if (!varied || entryLayouts.size() < 8 || storyLayouts.size() < 4 ||
+            addedPlatforms == 0 || addedOneWay == 0 ||
+            addedBreakable == 0 || addedCover == 0 || addedFineStone == 0)
+            throw new AssertionError("Seeded rooms lack visible layout variation");
+        System.out.println("ROOM TILES PASSED: 1000 seeds, " + entryLayouts.size() +
+            " entry and " + storyLayouts.size() +
+            " story layouts, room motifs, half-cell ribs and reachable routes");
     }
 }

@@ -3,6 +3,8 @@ package com.cursedarchie.platformer.world;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -22,6 +24,7 @@ import com.cursedarchie.platformer.levels.RoomInstance;
 import com.cursedarchie.platformer.levels.LocationInstance;
 import com.cursedarchie.platformer.levels.VerticalConnection;
 import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.TileMetrics;
 import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
 import com.cursedarchie.platformer.tiles.types.OneWayPlatform;
 import com.cursedarchie.platformer.tiles.types.BreakableBlock;
@@ -91,6 +94,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private TextureRegion bossIdleRight;
 
     private final SpriteBatch spriteBatch;
+    private final BitmapFont damageFont;
+    private final GlyphLayout damageLayout = new GlyphLayout();
     private final boolean debug;
     private int width;
     private int height;
@@ -110,6 +115,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         updateCamera(0f);
         this.debug = debug;
         spriteBatch = new SpriteBatch();
+        damageFont = new BitmapFont();
+        damageFont.getData().setScale(0.025f);
         atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
         ruinsAtlas = new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas"));
         for (int i = 0; i < wallFaces.length; i++) {
@@ -235,6 +242,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawHero();
             drawEnemy();
             drawDefeatEffects();
+            drawDamageIndicators();
         spriteBatch.end();
 
         if (debug) {
@@ -263,19 +271,21 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     /** Dark, non-solid infill hides the blank void behind room walls and doors. */
     private void drawBackgroundMasonry() {
-        int left = (int) Math.floor(getVisibleLeftEdge()) - 1;
-        int right = (int) Math.ceil(getVisibleRightEdge()) + 1;
-        int bottom = (int) Math.floor(getVisibleBottomEdge()) - 1;
-        int top = (int) Math.ceil(getVisibleTopEdge()) + 1;
+        int left = (int) Math.floor(getVisibleLeftEdge() * TileMetrics.CELLS_PER_UNIT) - 2;
+        int right = (int) Math.ceil(getVisibleRightEdge() * TileMetrics.CELLS_PER_UNIT) + 2;
+        int bottom = (int) Math.floor(getVisibleBottomEdge() * TileMetrics.CELLS_PER_UNIT) - 2;
+        int top = (int) Math.ceil(getVisibleTopEdge() * TileMetrics.CELLS_PER_UNIT) + 2;
         for (int x = left; x < right; x++) {
             for (int y = bottom; y < top; y++) {
+                float centerX = (x + 0.5f) * TileMetrics.SIZE;
+                float centerY = (y + 0.5f) * TileMetrics.SIZE;
                 boolean withinRoom = false;
                 float nearestRoom = Float.POSITIVE_INFINITY;
                 for (RoomInstance room : gameWorld.getLocation().getRooms()) {
-                    float distanceX = Math.max(room.getWorldX() - (x + 0.5f),
-                        Math.max((x + 0.5f) - (room.getWorldX() + room.getWidth()), 0f));
-                    float distanceY = Math.max(room.getWorldY() - (y + 0.5f),
-                        Math.max((y + 0.5f) - (room.getWorldY() + room.getHeight()), 0f));
+                    float distanceX = Math.max(room.getWorldX() - centerX,
+                        Math.max(centerX - (room.getWorldX() + room.getWidth()), 0f));
+                    float distanceY = Math.max(room.getWorldY() - centerY,
+                        Math.max(centerY - (room.getWorldY() + room.getHeight()), 0f));
                     nearestRoom = Math.min(nearestRoom, (float) Math.sqrt(distanceX * distanceX + distanceY * distanceY));
                     if (distanceX == 0f && distanceY == 0f) {
                         withinRoom = true;
@@ -287,7 +297,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 float shade = withinRoom ? 0.25f : nearestRoom < 1.5f ? 0.58f :
                     nearestRoom < 3.5f ? 0.43f : 0.28f;
                 spriteBatch.setColor(shade, shade * 0.94f, shade, 1f);
-                spriteBatch.draw(backgroundStone, x, y, 1f, 1f);
+                spriteBatch.draw(backgroundStone, x * TileMetrics.SIZE, y * TileMetrics.SIZE,
+                    TileMetrics.SIZE, TileMetrics.SIZE);
             }
         }
         spriteBatch.setColor(Color.WHITE);
@@ -377,9 +388,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     if (tile instanceof OneWayPlatform) {
                         // The wood strip occupies the top 12/64 of its image cell,
                         // matching the fixture's top 0.18 world units.
-                        spriteBatch.draw(platformOneWay, worldX, roomY + y, 1f, 1f);
+                        spriteBatch.draw(platformOneWay, worldX, roomY + y * TileMetrics.SIZE,
+                            TileMetrics.SIZE, TileMetrics.SIZE);
                     } else if (tile instanceof HalfOfBlock) {
-                        spriteBatch.draw(stoneHalf, worldX, roomY + y, 1f, 1f);
+                        spriteBatch.draw(stoneHalf, worldX, roomY + y * TileMetrics.SIZE,
+                            TileMetrics.SIZE, TileMetrics.SIZE);
                     } else if (tile instanceof BreakableBlock) {
                         spriteBatch.draw(blockBreakable, worldX, worldY, bounds.width, bounds.height);
                     } else {
@@ -394,8 +407,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                                     float drawX, float drawY, float width, float height) {
         // Only empty space inside a room can illuminate a stone face.
         // World coordinates let adjacent rooms share the same stone edges.
-        int worldX = Math.round(room.getWorldX()) + x;
-        int worldY = Math.round(room.getWorldY()) + y;
+        int worldX = Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT) + x;
+        int worldY = Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT) + y;
         int lighting = StoneLighting.mask(gameWorld.getLocation().getRooms(), worldX, worldY);
         spriteBatch.draw(wallFaces[lighting], drawX, drawY, width, height);
     }
@@ -419,7 +432,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             }
         }
 
-        if (hero.getInvulnerabilityRemaining() > 0f) {
+        if (gameWorld.hasRecentDamage(hero)) {
+            spriteBatch.setColor(1f, 0.35f, 0.35f, 1f);
+        } else if (hero.getInvulnerabilityRemaining() > 0f) {
             spriteBatch.setColor(1f, 0.65f, 0.65f, 1f);
         }
         spriteBatch.draw(
@@ -586,7 +601,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     }
                 }
 
-                if (enemy.getCombatStateMachine().getCurrentState() instanceof
+                if (gameWorld.hasRecentDamage(enemy)) {
+                    spriteBatch.setColor(1f, 0.35f, 0.35f, 1f);
+                } else if (enemy.getCombatStateMachine().getCurrentState() instanceof
                     com.cursedarchie.platformer.actors.enemies.states.combat.AttackState &&
                     enemy.getCombatStateTime() < enemy.getAttackStartup()) {
                     spriteBatch.setColor(1f, 0.6f, 0.6f, 1f);
@@ -615,6 +632,24 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 effect.y - effect.size / 2f + 0.15f * progress, effect.size, effect.size);
         }
         spriteBatch.setColor(Color.WHITE);
+    }
+
+    private void drawDamageIndicators() {
+        for (GameWorld.DamageIndicator indicator : gameWorld.getDamageIndicators()) {
+            float progress = indicator.getProgress();
+            float rise = 0.42f * (1f - (1f - progress) * (1f - progress));
+            float alpha = 1f - progress;
+            damageLayout.setText(damageFont, indicator.label);
+            float x = indicator.x - damageLayout.width / 2f;
+            float y = indicator.y + rise;
+            damageFont.setColor(0f, 0f, 0f, 0.75f * alpha);
+            damageFont.draw(spriteBatch, indicator.label, x + 0.015f, y - 0.015f);
+            damageFont.setColor(1f,
+                indicator.hero ? 0.38f : 0.86f,
+                indicator.hero ? 0.38f : 0.5f, alpha);
+            damageFont.draw(spriteBatch, indicator.label, x, y);
+        }
+        damageFont.setColor(Color.WHITE);
     }
 
     private void drawViewCones() {
@@ -764,6 +799,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     }
     @Override
     public void dispose() {
+        damageFont.dispose();
         spriteBatch.dispose();
         debugRenderer.dispose();
         ruinsAtlas.dispose();

@@ -2,6 +2,7 @@ package com.cursedarchie.platformer.world;
 
 import com.cursedarchie.platformer.levels.RoomInstance;
 import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.TileMetrics;
 
 /** Selects painted stone faces from room interior space, including room seams. */
 final class StoneLighting {
@@ -50,15 +51,16 @@ final class StoneLighting {
     private static int cell(Iterable<RoomInstance> rooms, int worldX, int worldY) {
         boolean inside = false;
         for (RoomInstance room : rooms) {
-            int x = worldX - Math.round(room.getWorldX());
-            int y = worldY - Math.round(room.getWorldY());
-            if (x < 0 || y < 0 || x >= room.getWidth() || y >= room.getHeight()) continue;
+            int x = worldX - Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT);
+            int y = worldY - Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT);
+            if (x < 0 || y < 0 || x >= room.getTileColumns() || y >= room.getTileRows()) continue;
             inside = true;
             Tile[][] tiles = room.getTiles();
             Tile tile = tiles == null ? null : tiles[x][y];
             // Breakable masonry also fills its cell, though it is excluded
             // from merged terrain fixtures and reports isFullCellSolid false.
-            if (tile != null && tile.getBounds().width >= 1f && tile.getBounds().height >= 1f)
+            if (tile != null && tile.getBounds().width >= TileMetrics.SIZE &&
+                tile.getBounds().height >= TileMetrics.SIZE)
                 return SOLID;
         }
         return inside ? OPEN : OUTSIDE;

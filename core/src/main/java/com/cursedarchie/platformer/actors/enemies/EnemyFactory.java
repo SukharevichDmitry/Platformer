@@ -72,8 +72,8 @@ public class EnemyFactory {
 
         cfg.velocity = 1.8f;
 
-        cfg.attackLeft = new AttackConfig(0.8f, 0.8f, -2.5f, 0f);
-        cfg.attackRight = new AttackConfig(0.8f, 0.8f, 2.5f, 0f);
+        cfg.attackLeft = new AttackConfig(0.8f, 1f, -1.05f, 0f);
+        cfg.attackRight = new AttackConfig(0.8f, 1f, 1.05f, 0f);
 
         return new Boss(world, pos, cfg);
     }

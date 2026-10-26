@@ -84,11 +84,38 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
             } finally {
                 restored.dispose();
             }
+            checkStartCreatesFreshRun();
             passed = true;
         } finally {
             preferences.clear();
             preferences.flush();
             Gdx.app.exit();
+        }
+    }
+
+    private void checkStartCreatesFreshRun() {
+        GameWorld first = new GameWorld();
+        long firstSeed;
+        try {
+            first.changeLocation("ruins", 0);
+            firstSeed = first.getLocation().getGenerationSeed();
+            if (first.getEnemies().size == 0)
+                throw new AssertionError("Fresh ruins run has no enemies");
+            for (Enemy enemy : first.getEnemies()) enemy.takeDamage(10000f);
+            first.update(GameWorld.FIXED_STEP);
+            if (first.getEnemies().size != 0)
+                throw new AssertionError("First run did not record defeated enemies");
+        } finally {
+            first.dispose();
+        }
+
+        GameWorld retry = new GameWorld();
+        try {
+            retry.changeLocation("ruins", 0);
+            if (retry.getLocation().getGenerationSeed() == firstSeed || retry.getEnemies().size == 0)
+                throw new AssertionError("START reused the previous ruins seed or defeated enemies");
+        } finally {
+            retry.dispose();
         }
     }
 

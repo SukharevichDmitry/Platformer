@@ -258,12 +258,12 @@ public final class GeneratedLocationTest extends ApplicationAdapter {
                     Tile tile = tiles[x][y];
                     if (!(tile instanceof HalfOfBlock)) continue;
                     Rectangle bounds = tile.getBounds();
-                    if (bounds.width != 1f || bounds.height != 0.5f)
-                        throw new AssertionError("Half tile visual bounds are not 1 x 0.5");
-                    float worldX = room.getWorldX() + bounds.x + 0.5f;
+                    if (bounds.width != 0.5f || bounds.height != 0.25f)
+                        throw new AssertionError("Half tile visual bounds are not 0.5 x 0.25");
+                    float worldX = room.getWorldX() + bounds.x + 0.25f;
                     float worldY = room.getWorldY() + bounds.y;
-                    if (hasTerrainAt(worldX, worldY + 0.25f) == false ||
-                        hasTerrainAt(worldX, worldY + 0.75f))
+                    if (hasTerrainAt(worldX, worldY + 0.125f) == false ||
+                        hasTerrainAt(worldX, worldY + 0.375f))
                         throw new AssertionError("Half tile has an invisible full-cell fixture");
                     return;
                 }
