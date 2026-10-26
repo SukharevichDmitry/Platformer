@@ -8,6 +8,7 @@
     import com.cursedarchie.platformer.world.GenerationSeedOverlay;
     import com.cursedarchie.platformer.world.MiniMapRenderer;
     import com.cursedarchie.platformer.world.LocationTitleOverlay;
+    import com.cursedarchie.platformer.world.FpsOverlay;
 
     public class GameScreen implements Screen {
 
@@ -16,6 +17,7 @@
         private final GenerationSeedOverlay seedOverlay;
         private final MiniMapRenderer miniMap;
         private final LocationTitleOverlay locationTitle;
+        private final FpsOverlay fpsOverlay;
         private final Main game;
         private final long constructionStartedNs = System.nanoTime();
         private final float initializationMs;
@@ -25,6 +27,7 @@
         private float worstRenderMs;
         private int slowStartupFrames;
         private boolean startupTimingReported;
+        private float deathFeedbackSeconds;
         private boolean disposed;
 
         public GameScreen(Main game) {
@@ -35,6 +38,7 @@
             seedOverlay = new GenerationSeedOverlay(gameWorld);
             miniMap = new MiniMapRenderer(gameWorld);
             locationTitle = new LocationTitleOverlay(gameWorld);
+            fpsOverlay = new FpsOverlay();
             initializationMs = (System.nanoTime() - constructionStartedNs) / 1_000_000f;
         }
 
@@ -70,12 +74,18 @@
             miniMap.render();
             seedOverlay.render();
             locationTitle.render();
+            fpsOverlay.render();
             float renderMs = (System.nanoTime() - renderStartedNs) / 1_000_000f;
             recordStartupTiming(delta, updateMs, renderMs);
 
             if (!gameWorld.getHero().isAlive()) {
-                Gdx.app.log("INFO", "HERO DEAD");
-                game.goToMenu();
+                deathFeedbackSeconds += Math.max(0f, delta);
+                if (deathFeedbackSeconds >= 0.25f) {
+                    Gdx.app.log("INFO", "HERO DEAD");
+                    game.goToMenu();
+                }
+            } else {
+                deathFeedbackSeconds = 0f;
             }
 
         }
@@ -101,6 +111,7 @@
             seedOverlay.resize(width, height);
             miniMap.resize(width, height);
             locationTitle.resize(width, height);
+            fpsOverlay.resize(width, height);
         }
 
         @Override
@@ -124,6 +135,7 @@
             seedOverlay.dispose();
             miniMap.dispose();
             locationTitle.dispose();
+            fpsOverlay.dispose();
             gameWorld.dispose();
         }
 

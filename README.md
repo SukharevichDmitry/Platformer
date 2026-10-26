@@ -25,7 +25,7 @@ to a seeded, generated `ruins` run. JDK 17 is used for development checks.
   visit history. Room visits last for the current run, not across saved runs.
   `LocationTitleOverlay` briefly names each location on entry.
 
-Start with `FOUNDATION_POLISH_PLAN.md` for current polish status and remaining
+Start with [FOUNDATION_POLISH_PLAN.md](documents/FOUNDATION_POLISH_PLAN.md) for current polish status and remaining
 manual feel checks. Its original audit is historical, not a description of all
 current behavior. Check `git status` before editing: this workspace may contain
 uncommitted gameplay work.
@@ -93,6 +93,12 @@ a working graphics driver/display.
 The procedural ruins pipeline generates a seeded graph, room layout, tile rows,
 and encounter spawn data. Walk right through `start` room 2 to enter ruins;
 walk left through the ruins entry to return. The layout is generated once per game run.
+Terrain now uses 0.5 × 0.5 world-unit cells while room extents and actor sizes
+remain unchanged. Legacy authored rows are subdivided when loaded. Generated
+rooms use paired ledges and ceiling ribs as whole-room motifs, with clear
+story and boss spaces and additional half-cell stone shaping. The ruins profile
+is version 7, so older generated
+runs are regenerated.
 Every ruins layout has an upper watchtower above the bell hall. Stand within its
 visible shaft and hold Up to climb; hold Down to descend. Left/Right moves
 across the ladder, including off either end, and Space jumps away from it.

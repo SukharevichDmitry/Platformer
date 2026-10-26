@@ -13,6 +13,7 @@ import com.cursedarchie.platformer.levels.wrappers.Neighbors;
 import com.cursedarchie.platformer.levels.wrappers.RoomData;
 import com.cursedarchie.platformer.physics.GameContactListener;
 import com.cursedarchie.platformer.physics.OneWaySurface;
+import com.cursedarchie.platformer.tiles.TileMetrics;
 import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.world.GameWorld;
 
@@ -67,23 +68,24 @@ public final class InteractiveTilePhysicsTest extends ApplicationAdapter {
                     throw new AssertionError("Hero could not cross the wooden slab seams");
             }
 
-            if (!hasFixture(physics, 3.5f, 1.5f))
+            if (!hasFixture(physics, 3.25f, 1.25f))
                 throw new AssertionError("Breakable tile has no starting fixture");
-            if (!location.breakTile(0, 3, 1) || hasFixture(physics, 3.5f, 1.5f) ||
-                location.getRoom(0).getTiles()[3][1] != null)
+            if (!location.breakTile(0, 6, 2) || hasFixture(physics, 3.25f, 1.25f) ||
+                location.getRoom(0).getTiles()[6][2] != null ||
+                !hasFixture(physics, 3.75f, 1.25f))
                 throw new AssertionError("Breaking tile did not remove its own art and fixture");
             if (!hasFixture(physics, 2.5f, 0.5f))
                 throw new AssertionError("Breaking tile damaged unrelated terrain");
 
             location.destroyBodies(physics);
             GeneratedRunSave save = new GeneratedRunSave();
-            save.brokenTileIds.add("0:3:1");
+            save.brokenTileIds.add("0:6:2");
             LocationInstance restored = roomWithTiles();
             restored.setGeneration(save, 0);
-            if (restored.getRoom(0).getTiles()[3][1] instanceof BreakableBlock)
+            if (restored.getRoom(0).getTiles()[6][2] instanceof BreakableBlock)
                 throw new AssertionError("Saved broken tile reappeared before terrain build");
             restored.buildBodies(physics);
-            if (hasFixture(physics, 3.5f, 1.5f))
+            if (hasFixture(physics, 3.25f, 1.25f))
                 throw new AssertionError("Saved broken tile regained a fixture");
             restored.destroyBodies(physics);
             physics.destroyBody(hero.getBody());
@@ -105,8 +107,8 @@ public final class InteractiveTilePhysicsTest extends ApplicationAdapter {
             RoomInstance targetRoom = null;
             int targetX = -1, targetY = -1;
             for (RoomInstance room : game.getLocation().getRooms()) {
-                for (int x = 1; x < room.getWidth() - 1; x++) {
-                    for (int y = 1; y < room.getHeight() - 1; y++) {
+                for (int x = 1; x < room.getTileColumns() - 1; x++) {
+                    for (int y = 1; y < room.getTileRows() - 1; y++) {
                         if (room.getTiles()[x][y] instanceof BreakableBlock &&
                             room.getTiles()[x - 1][y] == null) {
                             targetRoom = room;
@@ -120,10 +122,11 @@ public final class InteractiveTilePhysicsTest extends ApplicationAdapter {
                 if (targetRoom != null) break;
             }
             if (targetRoom == null) throw new AssertionError("Generated ruins contain no reachable breakable tile");
-            float tileX = targetRoom.getWorldX() + targetX;
-            float tileY = targetRoom.getWorldY() + targetY;
-            game.getHero().getBody().setTransform(tileX - 0.55f, tileY + 0.5f, 0f);
+            float tileX = targetRoom.getWorldX() + targetX * TileMetrics.SIZE;
+            float tileY = targetRoom.getWorldY() + targetY * TileMetrics.SIZE;
+            game.getHero().getBody().setTransform(tileX - 0.55f, tileY + 0.25f, 0f);
             game.getHero().getBody().setLinearVelocity(0f, 0f);
+            game.getHero().getBody().setGravityScale(0f);
             game.getHero().setFacingLeft(false);
             game.getHeroController().keyDown(Input.Keys.X);
             for (int i = 0; i < 16; i++) game.update(GameWorld.FIXED_STEP);

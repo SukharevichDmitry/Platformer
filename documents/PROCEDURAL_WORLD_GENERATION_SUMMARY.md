@@ -15,7 +15,7 @@ Generation runs before the current location is unloaded and outside a locked Box
 7. `GeneratedLocationFactory` opens the leftmost exterior entry, validates it, and converts the result to normal room data.
 8. `GeneratedRunStore` saves the profile version, seed, topology, placement, narrative choices, and defeated enemy IDs in libGDX Preferences.
 
-The current production profile is `assets/generation/ruins.json`, version 5. Version 5 narrows the guaranteed watchtower shaft and adds interactive platform/breakable tiles; older saved ruins runs are incompatible and start fresh. A generated seed is shown in the upper-left corner while the player is inside a generated location. In the bell hall, stand within the narrow visible ladder and hold Up or Down to traverse it; Left/Right moves along or off it, and Space jumps away. The upper release point clears the floor lip so walking out works.
+The current production profile is `assets/generation/ruins.json`, version 7. It uses 0.5 × 0.5 world-unit terrain cells while retaining room and actor dimensions. Coarse template geometry is subdivided, then generated chambers receive paired ledges, ceiling ribs, and half-cell stone shaping rather than independent random blocks. Story rooms use quieter stone side shelves around a clear center; boss rooms keep an open floor between two traversable galleries. Version 7 invalidates older generated runs. A generated seed is shown in the upper-left corner while the player is inside a generated location. In the bell hall, stand within the narrow visible ladder and hold Up or Down to traverse it; Left/Right moves along or off it, and Space jumps away. The upper release point clears the floor lip so walking out works.
 
 ## Production tuning
 

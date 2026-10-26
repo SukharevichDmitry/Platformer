@@ -4,6 +4,7 @@ import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Array;
+import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.controllers.EnemyController;
 import com.cursedarchie.platformer.controllers.HeroController;
@@ -15,9 +16,11 @@ import com.cursedarchie.platformer.physics.OneWaySurface;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
+import com.cursedarchie.platformer.tiles.TileMetrics;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -41,6 +44,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private final Map<String, Set<Integer>> visitedRooms = new HashMap<>();
     private final Array<Enemy> enemies = new Array<>();
     private final Array<DefeatEffect> defeatEffects = new Array<>();
+    private final Array<DamageIndicator> damageIndicators = new Array<>();
+    private final Map<Actor, Float> observedHealth = new IdentityHashMap<>();
     private final EnemyController enemyController;
     private boolean disposed;
     private float accumulator;
@@ -65,6 +70,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         markCurrentRoomVisited();
 
         this.hero = new Hero(new Vector2(5, 5), world);
+        observedHealth.put(hero, hero.getHealth());
         world.setContactListener(new GameContactListener());
 
         this.heroController = new HeroController(this);
@@ -84,6 +90,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private void simulateStep(float delta) {
         updateDefeatEffects(delta);
+        updateDamageIndicators(delta);
+        recordDamage();
         // Body destruction must happen outside Box2D's locked world.step callback.
         removeDeadEnemies();
         heroController.update(delta);
@@ -97,7 +105,27 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
         enemyController.update(delta);
 
+        recordDamage();
         removeDeadEnemies();
+    }
+
+    private void recordDamage() {
+        recordDamage(hero);
+        for (Enemy enemy : enemies) recordDamage(enemy);
+    }
+
+    private void recordDamage(Actor actor) {
+        Float previous = observedHealth.put(actor, actor.getHealth());
+        if (previous != null && actor.getHealth() < previous)
+            damageIndicators.add(new DamageIndicator(actor, previous - actor.getHealth()));
+    }
+
+    private void updateDamageIndicators(float delta) {
+        for (int i = damageIndicators.size - 1; i >= 0; i--) {
+            DamageIndicator indicator = damageIndicators.get(i);
+            indicator.elapsed += delta;
+            if (indicator.elapsed >= DamageIndicator.DURATION) damageIndicators.removeIndex(i);
+        }
     }
 
     private void refreshHeroGrounding() {
@@ -148,11 +176,11 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             for (int x = 0; x < tiles.length; x++) {
                 for (int y = 0; y < tiles[x].length; y++) {
                     if (!(tiles[x][y] instanceof BreakableBlock)) continue;
-                    float worldX = room.getWorldX() + x;
-                    float worldY = room.getWorldY() + y;
-                    if (worldX >= attackMaxX || worldX + 1f <= attackMinX ||
-                        worldY >= attackMaxY || worldY + 1f <= attackMinY) continue;
-                    float distance = Math.abs(worldX + 0.5f - heroX);
+                    float worldX = room.getWorldX() + x * TileMetrics.SIZE;
+                    float worldY = room.getWorldY() + y * TileMetrics.SIZE;
+                    if (worldX >= attackMaxX || worldX + TileMetrics.SIZE <= attackMinX ||
+                        worldY >= attackMaxY || worldY + TileMetrics.SIZE <= attackMinY) continue;
+                    float distance = Math.abs(worldX + TileMetrics.SIZE / 2f - heroX);
                     if (distance < nearest) {
                         nearest = distance;
                         hitRoom = room;
@@ -226,6 +254,31 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         public float getProgress() { return Math.min(1f, elapsed / DURATION); }
     }
 
+    /** Transient proof of actual health loss, including a lethal hit before body cleanup. */
+    public static final class DamageIndicator {
+        public static final float DURATION = 0.65f;
+        public static final float FLASH_DURATION = 0.18f;
+        public final Actor target;
+        public final float x;
+        public final float y;
+        public final float amount;
+        public final boolean hero;
+        public final String label;
+        private float elapsed;
+
+        private DamageIndicator(Actor target, float amount) {
+            this.target = target;
+            this.x = target.getPosition().x;
+            this.y = target.getPosition().y + target.getSize() / 2f + 0.2f;
+            this.amount = amount;
+            this.hero = target instanceof Hero;
+            this.label = amount == Math.round(amount) ?
+                "-" + Math.round(amount) : "-" + amount;
+        }
+
+        public float getProgress() { return Math.min(1f, elapsed / DURATION); }
+    }
+
     private void rememberDefeatedEnemy(Enemy enemy) {
         if (!location.isGenerated() || enemy.getPersistentSpawnId() == null) return;
         GeneratedRunSave run = location.getGeneratedRun();
@@ -236,6 +289,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void forgetEnemy(Enemy enemy) {
+        observedHealth.remove(enemy);
         hero.removeAttackTarget(enemy);
         hero.removeVisibleActor(enemy);
         for (int i = 0; i < enemies.size; i++) {
@@ -253,12 +307,15 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private void unloadLocation() {
         defeatEffects.clear();
+        damageIndicators.clear();
         for (int i = enemies.size - 1; i >= 0; i--) {
             Enemy enemy = enemies.get(i);
             forgetEnemy(enemy);
             world.destroyBody(enemy.getBody());
         }
         enemies.clear();
+        observedHealth.clear();
+        observedHealth.put(hero, hero.getHealth());
         location.destroyBodies(world);
     }
 
@@ -328,6 +385,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     public void addEnemy(Enemy enemy) {
         enemies.add(enemy);
+        observedHealth.put(enemy, enemy.getHealth());
     }
 
     public void spawnEnemies() {
@@ -359,6 +417,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         return enemies;
     }
     public Array<DefeatEffect> getDefeatEffects() { return defeatEffects; }
+    public Array<DamageIndicator> getDamageIndicators() { return damageIndicators; }
+    public boolean hasRecentDamage(Actor actor) {
+        for (DamageIndicator indicator : damageIndicators)
+            if (indicator.target == actor && indicator.elapsed < DamageIndicator.FLASH_DURATION)
+                return true;
+        return false;
+    }
     public Array<Enemy> getAliveEnemies() {
         Array<Enemy> alive = new Array<>();
         for (Enemy e : enemies) {

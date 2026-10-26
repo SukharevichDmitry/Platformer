@@ -77,6 +77,7 @@ final class GeneratedLocationFactory {
             }
             RoomInstance room = new RoomInstance(data);
             room.buildTiles();
+            RoomFineDecorator.decorate(room, catalog.templates.get(placed.templateId));
             location.addRoom(room);
         }
         for (PlacedRoomGraph.DoorJoin join : layout.doorJoins) {

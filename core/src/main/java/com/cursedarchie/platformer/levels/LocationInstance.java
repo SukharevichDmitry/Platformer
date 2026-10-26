@@ -11,6 +11,7 @@ import com.badlogic.gdx.physics.box2d.World;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
 import com.cursedarchie.platformer.physics.OneWaySurface;
 import com.cursedarchie.platformer.tiles.Tile;
+import com.cursedarchie.platformer.tiles.TileMetrics;
 import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
 import com.cursedarchie.platformer.tiles.types.OneWayPlatform;
@@ -77,7 +78,7 @@ public class LocationInstance {
                 RoomInstance room = getRoom(Integer.parseInt(parts[0]));
                 int x = Integer.parseInt(parts[1]);
                 int y = Integer.parseInt(parts[2]);
-                if (room != null && x >= 0 && x < room.getWidth() && y >= 0 && y < room.getHeight() &&
+                if (room != null && x >= 0 && x < room.getTileColumns() && y >= 0 && y < room.getTileRows() &&
                     room.getTiles()[x][y] instanceof BreakableBlock) room.removeTile(x, y);
             } catch (NumberFormatException ignored) { /* Invalid stale IDs cannot affect terrain. */ }
         }
@@ -107,8 +108,8 @@ public class LocationInstance {
         // Partial tiles are deliberately excluded: their bounds are not full cells.
         Set<Long> solid = new TreeSet<>();
         for (RoomInstance room : rooms.values()) {
-            int roomX = Math.round(room.getWorldX());
-            int roomY = Math.round(room.getWorldY());
+            int roomX = Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT);
+            int roomY = Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT);
             Tile[][] tiles = room.getTiles();
             for (int x = 0; x < tiles.length; x++) {
                 for (int y = 0; y < tiles[x].length; y++) {
@@ -144,7 +145,8 @@ public class LocationInstance {
             for (int dy = 0; dy < height; dy++) {
                 for (int dx = 0; dx < width; dx++) used.add(cellKey(x + dx, y + dy));
             }
-            createRectangleFixture(x, y, width, height);
+            createRectangleFixture(x * TileMetrics.SIZE, y * TileMetrics.SIZE,
+                width * TileMetrics.SIZE, height * TileMetrics.SIZE);
         }
 
         // Merge adjacent partial ledges too. Separate rectangles leave an end edge
@@ -152,8 +154,8 @@ public class LocationInstance {
         Set<Long> halfBlocks = new TreeSet<>();
         Set<Long> oneWayPlatforms = new TreeSet<>();
         for (RoomInstance room : rooms.values()) {
-            int roomX = Math.round(room.getWorldX());
-            int roomY = Math.round(room.getWorldY());
+            int roomX = Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT);
+            int roomY = Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT);
             Tile[][] tiles = room.getTiles();
             for (int x = 0; x < tiles.length; x++) {
                 for (int y = 0; y < tiles[x].length; y++) {
@@ -193,7 +195,7 @@ public class LocationInstance {
     /** Called outside world.step after an active hero attack has hit this tile. */
     public boolean breakTile(int roomId, int x, int y) {
         RoomInstance room = getRoom(roomId);
-        if (room == null || x < 0 || x >= room.getWidth() || y < 0 || y >= room.getHeight()) return false;
+        if (room == null || x < 0 || x >= room.getTileColumns() || y < 0 || y >= room.getTileRows()) return false;
         Tile tile = room.getTiles()[x][y];
         if (!(tile instanceof BreakableBlock)) return false;
         Fixture fixture = independentFixtures.remove(tile);
@@ -218,8 +220,11 @@ public class LocationInstance {
             if (cells.contains(cellKey(x - 1, y))) continue;
             int width = 1;
             while (cells.contains(cellKey(x + width, y))) width++;
-            Fixture fixture = createRectangleFixture(x, y + bottomOffset, width, height);
-            if (oneWay) fixture.setUserData(new OneWaySurface(y + bottomOffset + height));
+            float worldX = x * TileMetrics.SIZE;
+            float worldY = y * TileMetrics.SIZE;
+            Fixture fixture = createRectangleFixture(worldX, worldY + bottomOffset,
+                width * TileMetrics.SIZE, height);
+            if (oneWay) fixture.setUserData(new OneWaySurface(worldY + bottomOffset + height));
         }
     }
 

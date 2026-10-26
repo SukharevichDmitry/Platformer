@@ -173,6 +173,37 @@ tasks.register('dist') {
   dependsOn 'jar'
 }
 
+// A self-contained Windows app image with a bundled JDK and native .exe icon.
+def desktopImageRoot = layout.buildDirectory.dir('desktop/windows-x64')
+tasks.register('desktopAppImage', Exec) {
+  dependsOn 'jar'
+  onlyIf { os.contains('windows') }
+  inputs.file(tasks.jar.archiveFile)
+  inputs.file(project.file('icons/platformer.ico'))
+  outputs.dir(desktopImageRoot)
+  doFirst {
+    delete desktopImageRoot
+    desktopImageRoot.get().asFile.mkdirs()
+  }
+  executable = new File(System.getProperty('java.home'), 'bin/jpackage.exe').absolutePath
+  args '--type', 'app-image',
+    '--input', layout.buildDirectory.dir('libs').get().asFile.absolutePath,
+    '--main-jar', tasks.jar.archiveFile.get().asFile.name,
+    '--main-class', mainClassName,
+    '--name', appName,
+    '--app-version', projectVersion,
+    '--icon', project.file('icons/platformer.ico').absolutePath,
+    '--dest', desktopImageRoot.get().asFile.absolutePath
+}
+
+tasks.register('desktopZip', Zip) {
+  dependsOn 'desktopAppImage'
+  onlyIf { os.contains('windows') }
+  from(desktopImageRoot)
+  destinationDirectory = layout.buildDirectory.dir('distributions')
+  archiveFileName = "${appName}-${projectVersion}-windows-x64.zip"
+}
+
 distributions {
   main {
     contents {

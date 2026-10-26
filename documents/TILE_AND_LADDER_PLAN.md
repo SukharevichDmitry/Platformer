@@ -1,10 +1,10 @@
 с# Ladder and tile update proposal
 
-Status: all options A–H and the one-column ladder contract approved and implemented on 2026-10-19. Automated checks pass; the remaining acceptance step is a visible, hands-on playthrough.
+Status: all options A–H and the one-column ladder contract approved and implemented on 2026-10-19. A later half-size terrain update is recorded at the end of this document.
 
 ## Current contract and observed problem
 
-- One tile is one world unit. `#` is a full solid cell, `_` is a solid lower half-cell, and a space is empty. `TileFactory`, `LocationInstance`, and `WorldRenderer` use these meanings for collision and drawing.
+- At the time of this proposal, one tile was one world unit. `#` was a full solid cell, `_` a solid lower half-cell, and a space empty. The current half-size runtime contract is recorded below.
 - The current ruins ladder is not a tile. `WorldRenderer` draws a roughly 0.38-unit-wide ladder using the `block` atlas region; `VerticalConnection.contains` accepts a hero whose center is within approximately 0.75 units of its center. Thus its usable width is far greater than its visible width.
 - The bell-hall roof and watchtower floor use matching two-cell openings (`span: 2`). The ladder is centered on the boundary between those cells, so it appears to cut across adjacent blocks. A climb can start from either side while the hero is still visibly outside the ladder.
 - The source sketch is the dark 32 × 32 stone `assets/block.png`; `assets/actor/block.png` is an identical copy. The atlas currently has one `block` region. The lower half-block reuses a crop of that region. `assets/palette.aseprite` is present, but no separate ladder or stone-variant texture exists.
@@ -81,3 +81,7 @@ The raised-platform screenshot exposed one more three-stone joint: its supportin
 ## Partial-ledge collision seams (2026-10-20)
 
 Adjacent wooden one-way slabs and stone half-blocks now share a horizontal Box2D rectangle per uninterrupted run, including runs across a room boundary. This removes internal collision edges that could catch the hero while walking. The one-way slab's merged fixture retains its top-only support rule; breakable tiles keep individual fixtures so they can still be removed. The native interactive-tile check exercises both directions across a wooden run, upward passage and landing, and a run crossing two rooms.
+
+## Half-size terrain follow-up (2026-10-26)
+
+Each runtime terrain cell is now 0.5 × 0.5 world units. Authored and generated rooms retain their world-space dimensions; legacy JSON characters expand into a 2 × 2 cell area at load time. A lower-half tile is 0.5 × 0.25, a one-way ledge is 0.5 units wide with its top at the existing world height, and breakable blocks are removed and saved by fine-grid cell coordinate. Generated chambers receive paired platform and ceiling motifs with half-cell stone ribs. The ladder opening, hero size, and room borders remain at their previous world coordinates. JDK 17 core, generated-location, interactive-tile, persistence, simulation, camera, and packaged-smoke checks pass. Judge the smaller masonry scale and each room's silhouette in a visible run before treating the art composition as final.
