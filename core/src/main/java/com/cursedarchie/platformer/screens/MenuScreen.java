@@ -13,28 +13,43 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.cursedarchie.platformer.Main;
 
 public class MenuScreen implements Screen {
-    private Stage stage;
-    private Skin skin;
+    private final Stage stage;
+    private final Skin skin;
 
     public MenuScreen(Main game) {
+
         stage = new Stage(new ScreenViewport());
-        skin = new Skin(Gdx.files.internal("uiskin.json"));
+        skin = UiSkin.create();
 
         TextButton startButton = new TextButton("START", skin);
+        TextButton resumeButton = new TextButton("CONTINUE RUN", skin);
         TextButton exitButton = new TextButton("EXIT", skin);
+        TextButton settingsButton = new TextButton("SETTINGS", skin);
+
+        resumeButton.setDisabled(!game.canContinueRun());
+        if (!resumeButton.isDisabled()) resumeButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                game.continueSavedRun();
+            }
+        });
 
         startButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 game.startGame();
-                dispose();
             }
         });
 
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                Gdx.app.exit();
+                game.exitGame();
+            }
+        });
+        settingsButton.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                game.openSettings(MenuScreen.this);
             }
         });
 
@@ -43,6 +58,10 @@ public class MenuScreen implements Screen {
         table.center();
 
         table.add(startButton).width(200).height(50).pad(10);
+        table.row();
+        table.add(resumeButton).width(200).height(50).pad(10);
+        table.row();
+        table.add(settingsButton).width(200).height(50).pad(10);
         table.row();
         table.add(exitButton).width(200).height(50).pad(10);
 

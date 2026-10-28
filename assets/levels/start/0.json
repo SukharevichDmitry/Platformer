@@ -1,0 +1,53 @@
+{
+  "location": "start",
+  "id": 0,
+  "sceneryTheme": "shelter",
+  "width": 36,
+  "height": 16,
+  "tileRows": [
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "  ######                            ",
+    "  ######                            ",
+    "##                                  ",
+    "##                                  ",
+    "##    ============                  ",
+    "##                                  ",
+    "##                                  ",
+    "##                                  ",
+    "##                                  ",
+    "##                                  ",
+    "####################################",
+    "####################################"
+  ],
+  "enemySpawns": [],
+  "interactions": [
+    {
+      "id": "sealed_note",
+      "kind": "pickup",
+      "visualId": "sealed_note",
+      "itemId": "sealed_note",
+      "eventId": "intro_note_read",
+      "position": {
+        "x": 8.8,
+        "y": 8.4
+      }
+    },
+    {
+      "id": "first_bandage",
+      "kind": "pickup",
+      "visualId": "field_bandage",
+      "itemId": "field_bandage",
+      "eventId": "first_bandage_taken",
+      "position": {
+        "x": 11.0,
+        "y": 8.4
+      }
+    }
+  ],
+  "neighbors": {
+    "right": 1
+  }
+}
