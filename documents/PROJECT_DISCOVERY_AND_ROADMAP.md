@@ -1,5 +1,7 @@
 # Platformer: discovery and route to a Steam release
 
+> Historical first-release proposal. The agreed roguelike direction, run rules, and current delivery order are in [ROGUELIKE_FOUNDATION_PLAN.md](ROGUELIKE_FOUNDATION_PLAN.md).
+
 Assessment date: 2026-10-14. This document reflects completion of the first constrained procedural-generation profile and the subsequent gameplay-foundation audit in [FOUNDATION_POLISH_PLAN.md](FOUNDATION_POLISH_PLAN.md). It is a planning document, not a claim that the game has received sufficient human playtesting. Earlier hour totals were broad scenario guesses; they should be re-estimated after a mechanics proof and one representative finished room. The project is a first attempt at game development, so keep the first release small.
 
 ## Product direction and scope decision

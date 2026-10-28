@@ -9,16 +9,16 @@ import com.cursedarchie.platformer.physics.PhysicsTags;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
 
 public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
-    public static final float BODY_SIZE = 0.5f;
-    public static final float WALK_SPEED = 6.5f;
-    public static final float GROUND_ACCELERATION = 75f;
-    public static final float GROUND_BRAKING = 85f;
-    public static final float AIR_ACCELERATION = 45f;
-    public static final float AIR_BRAKING = 22f;
-    public static final float JUMP_SPEED = 16.4f;
+    public static final float BODY_SIZE = 1f;
+    public static final float WALK_SPEED = 13f;
+    public static final float GROUND_ACCELERATION = 150f;
+    public static final float GROUND_BRAKING = 170f;
+    public static final float AIR_ACCELERATION = 90f;
+    public static final float AIR_BRAKING = 44f;
+    public static final float JUMP_SPEED = 32.8f;
     public static final float FALL_GRAVITY_SCALE = 1.25f;
     public static final float RELEASE_GRAVITY_SCALE = 1.5f;
-    public static final float MAX_FALL_SPEED = 14f;
+    public static final float MAX_FALL_SPEED = 28f;
     public static final float ATTACK_STARTUP = 0.12f;
     public static final float ATTACK_ACTIVE_END = 0.24f;
     public static final float ATTACK_DURATION = 0.36f;
@@ -65,8 +65,8 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         this.attackHandled = false;
         this.damage = 1f;
         this.attackDuration = ATTACK_DURATION;
-        this.attackLeft = new AttackConfig(0.4f, 0.4f, -0.5f, 0f);
-        this.attackRight = new AttackConfig(0.4f, 0.4f, 0.5f, 0f);
+        this.attackLeft = new AttackConfig(0.8f, 0.8f, -1f, 0f);
+        this.attackRight = new AttackConfig(0.8f, 0.8f, 1f, 0f);
 
         //BODY===================================================================
 

@@ -109,10 +109,10 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
         PolygonShape footShape = new PolygonShape();
 
         float footWidth = size / 2.5f;
-        float footHeight = 0.1f;
+        float footHeight = 0.2f;
 
         Vector2 footOffset =
-            new Vector2(0, -size / 2f + 0.1f);
+            new Vector2(0, -size / 2f + 0.2f);
 
         footShape.setAsBox(
             footWidth,

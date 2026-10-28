@@ -2,6 +2,8 @@ package com.cursedarchie.platformer.world;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
@@ -23,6 +25,7 @@ import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.levels.RoomInstance;
 import com.cursedarchie.platformer.levels.LocationInstance;
 import com.cursedarchie.platformer.levels.VerticalConnection;
+import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.tiles.TileMetrics;
 import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
@@ -42,9 +45,12 @@ import java.util.List;
 
 public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
-    private static final float CAMERA_WIDTH = 10f;
-    private static final float CAMERA_HEIGHT = 7f;
-    private static final float EDGE_MARGIN = 1f;
+    private static final float CAMERA_WIDTH = 20f;
+    private static final float CAMERA_HEIGHT = 14f;
+    private static final float BACKDROP_HEIGHT = 10.4f;
+    private static final float BACKDROP_OVERLAP = .27f;
+    private static final float EDGE_MARGIN = 2f;
+    private static final float RUINS_FLOOR_CAMERA_LIFT = 1.4f;
     private static final float VERTICAL_FOLLOW_SPEED = 8f;
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.12f;
@@ -65,6 +71,22 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final TextureRegion blockBreakable;
     private final TextureRegion ladderSegment;
     private final TextureRegion ladderCap;
+    private final Texture bandageSprite;
+    private final Texture noteSprite;
+    private final Texture keeperSprite;
+    private final Texture sceneryPixel;
+    private final Texture shelterBackdrop;
+    private final Texture redBackdrop;
+    private final Texture inkBackdrop;
+    private final Texture mechanicalBackdrop;
+    private final TextureRegion[][] sceneryRegions;
+    private final Texture wardenSprite;
+    private final Texture scavengerSprite;
+    private final Texture redCollectorSprite;
+    private final RoadSurfaceRenderer roadSurface;
+    private final ItemLabelFont itemLabelFont;
+    private static final Color BANDAGE_LABEL = new Color(0.90f, 0.85f, 0.70f, 1f);
+    private static final Color NOTE_LABEL = new Color(0.94f, 0.76f, 0.46f, 1f);
 
     private TextureRegion heroIdleLeft;
     private TextureRegion heroIdleRight;
@@ -103,6 +125,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     public void setSize (int w, int h) {
         this.width = w;
         this.height = h;
+        if (w > 0 && h > 0) {
+            cam.viewportWidth = CAMERA_HEIGHT * w / (float) h;
+            cam.viewportHeight = CAMERA_HEIGHT;
+            updateCamera(0f);
+        }
     }
 
     public WorldRenderer(GameWorld gameWorld, boolean debug) {
@@ -116,7 +143,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         this.debug = debug;
         spriteBatch = new SpriteBatch();
         damageFont = new BitmapFont();
-        damageFont.getData().setScale(0.025f);
+        damageFont.getData().setScale(0.05f);
+        // World-space glyphs are much smaller than one world unit. Integer vertex
+        // snapping can collapse them into zero-sized quads at this scale.
+        damageFont.setUseIntegerPositions(false);
         atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
         ruinsAtlas = new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas"));
         for (int i = 0; i < wallFaces.length; i++) {
@@ -130,6 +160,29 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         blockBreakable = ruinsAtlas.findRegion("block_breakable");
         ladderSegment = ruinsAtlas.findRegion("ladder_segment");
         ladderCap = ruinsAtlas.findRegion("ladder_cap");
+        bandageSprite = new Texture(Gdx.files.internal("interactions/field-bandage.png"));
+        noteSprite = new Texture(Gdx.files.internal("interactions/sealed-note.png"));
+        keeperSprite = createKeeperSprite();
+        shelterBackdrop = fadedBackdrop("scenery/shelter.png");
+        redBackdrop = fadedBackdrop("scenery/red-street.png");
+        inkBackdrop = fadedBackdrop("scenery/ink-street.png");
+        mechanicalBackdrop = fadedBackdrop("scenery/mechanical-street.png");
+        sceneryRegions = new TextureRegion[][] {
+            sceneryVariants(shelterBackdrop), sceneryVariants(redBackdrop),
+            sceneryVariants(inkBackdrop), sceneryVariants(mechanicalBackdrop)
+        };
+        wardenSprite = pixelTexture("characters/shelter-warden.png");
+        scavengerSprite = pixelTexture("characters/scavenger.png");
+        redCollectorSprite = pixelTexture("characters/red-collector.png");
+        roadSurface = new RoadSurfaceRenderer();
+        Pixmap scenery = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        scenery.setColor(Color.WHITE);
+        scenery.fill();
+        sceneryPixel = new Texture(scenery);
+        scenery.dispose();
+        bandageSprite.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        noteSprite.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        itemLabelFont = new ItemLabelFont();
         loadTextures();
     }
 
@@ -137,6 +190,45 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         TextureRegion region = atlas.findRegion(name);
         if (region == null) throw new IllegalArgumentException("Missing ruins atlas region: " + name);
         return region;
+    }
+
+    private static Texture pixelTexture(String path) {
+        Texture texture = new Texture(Gdx.files.internal(path));
+        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        return texture;
+    }
+
+    private static Texture fadedBackdrop(String path) {
+        Pixmap pixels = new Pixmap(Gdx.files.internal(path));
+        int width = pixels.getWidth();
+        int height = pixels.getHeight();
+        float sideFade = width * .18f;
+        float topFade = height * .20f;
+        for (int y = 0; y < height; y++) {
+            float vertical = Math.min(1f, y / topFade);
+            for (int x = 0; x < width; x++) {
+                float horizontal = Math.min(1f,
+                    Math.min(x, width - 1 - x) / sideFade);
+                int pixel = pixels.getPixel(x, y);
+                int alpha = Math.round((pixel & 255) * horizontal * vertical);
+                pixels.drawPixel(x, y, (pixel & 0xffffff00) | alpha);
+            }
+        }
+        Texture texture = new Texture(pixels);
+        pixels.dispose();
+        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        return texture;
+    }
+
+    private static TextureRegion[] sceneryVariants(Texture texture) {
+        TextureRegion[] variants = new TextureRegion[2];
+        // The source paintings include a road. It is now drawn by macro modules,
+        // so keep only their buildings, shelter and sky above the ground line.
+        int sceneryHeight = Math.round(texture.getHeight() * .76f);
+        variants[0] = new TextureRegion(texture, 0, 0, texture.getWidth(), sceneryHeight);
+        variants[1] = new TextureRegion(texture, 0, 0, texture.getWidth(), sceneryHeight);
+        variants[1].flip(true, false);
+        return variants;
     }
 
     private void loadTextures() {
@@ -236,9 +328,14 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         spriteBatch.setProjectionMatrix(cam.combined);
 
         spriteBatch.begin();
-            drawBackgroundMasonry();
+            if ("start".equals(gameWorld.getLocation().getLocation()) ||
+                "ruins".equals(gameWorld.getLocation().getLocation())) drawOpeningScenery();
+            else drawBackgroundMasonry();
             drawTiles();
+            roadSurface.draw(gameWorld.getLocation(), spriteBatch,
+                getVisibleLeftEdge(), getVisibleRightEdge());
             drawClimbShafts();
+            drawInteractions();
             drawHero();
             drawEnemy();
             drawDefeatEffects();
@@ -259,22 +356,114 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private void drawClimbShafts() {
         for (VerticalConnection shaft : gameWorld.getLocation().getVerticalConnections()) {
             // This is visual-only: the narrow climb grip is owned by VerticalConnection.
-            float left = shaft.centerX - 0.28f;
-            float bottom = shaft.bottomY - 0.45f;
-            float top = shaft.topY + 0.35f;
-            for (float y = bottom; y < top - 0.01f; y += 0.75f)
-                spriteBatch.draw(ladderSegment, left, y, 0.56f, Math.min(0.75f, top - y));
-            spriteBatch.draw(ladderCap, left, bottom - 0.05f, 0.56f, 0.35f);
-            spriteBatch.draw(ladderCap, left, top - 0.28f, 0.56f, 0.35f);
+            float left = shaft.centerX - 0.56f;
+            float bottom = shaft.bottomY - 0.9f;
+            float top = shaft.topY + 0.7f;
+            for (float y = bottom; y < top - 0.02f; y += 1.5f)
+                spriteBatch.draw(ladderSegment, left, y, 1.12f, Math.min(1.5f, top - y));
+            spriteBatch.draw(ladderCap, left, bottom - 0.1f, 1.12f, 0.7f);
+            spriteBatch.draw(ladderCap, left, top - 0.56f, 1.12f, 0.7f);
         }
+    }
+
+    private void drawInteractions() {
+        RoomInstance room = gameWorld.getCurrentRoom();
+        if (room == null) return;
+        InteractionData nearby = gameWorld.getNearbyInteraction();
+        for (InteractionData interaction : room.getInteractions()) {
+            if (gameWorld.isInteractionConsumed(room, interaction)) continue;
+            float x = room.getWorldX() + interaction.position.x;
+            float y = room.getWorldY() + interaction.position.y;
+            if ("npc".equals(interaction.kind)) {
+                spriteBatch.draw("warden".equals(interaction.visualId) ? wardenSprite : keeperSprite,
+                    x - .7f, y - 1f, 1.4f, 2.4f);
+                spriteBatch.setColor(Color.WHITE);
+                if (interaction == nearby)
+                    itemLabelFont.drawCentered(spriteBatch, "E", x, y + 1.96f, NOTE_LABEL);
+                continue;
+            }
+            boolean bandage = "field_bandage".equals(interaction.visualId);
+            spriteBatch.draw(bandage ? bandageSprite : noteSprite,
+                x - 0.4f, y - 0.36f, 0.8f, 0.8f);
+            if (interaction == nearby) {
+                Color labelColor = bandage ? BANDAGE_LABEL : NOTE_LABEL;
+                itemLabelFont.drawCentered(spriteBatch, "E", x, y + 1.04f, labelColor);
+                itemLabelFont.drawCentered(spriteBatch, bandage ? "BANDAGE" : "NOTE",
+                    x, y + 0.60f, labelColor);
+            }
+        }
+    }
+
+    private static Texture createKeeperSprite() {
+        Pixmap pixels = new Pixmap(16, 24, Pixmap.Format.RGBA8888);
+        pixels.setColor(.13f, .18f, .22f, 1f);
+        pixels.fillRectangle(4, 5, 8, 19);
+        pixels.setColor(.33f, .44f, .46f, 1f);
+        pixels.fillRectangle(3, 3, 10, 10);
+        pixels.setColor(.76f, .65f, .49f, 1f);
+        pixels.fillRectangle(5, 6, 6, 6);
+        pixels.setColor(.13f, .18f, .22f, 1f);
+        pixels.fillRectangle(4, 2, 8, 4);
+        pixels.setColor(.94f, .75f, .40f, 1f);
+        pixels.drawPixel(6, 9);
+        pixels.drawPixel(9, 9);
+        Texture texture = new Texture(pixels);
+        pixels.dispose();
+        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        return texture;
+    }
+
+    /** Story-themed scenery is visual only and stays behind the physical tile layer. */
+    private void drawOpeningScenery() {
+        float left = getVisibleLeftEdge() - 2f;
+        float bottom = getVisibleBottomEdge() - 2f;
+        float viewWidth = getVisibleRightEdge() - left + 2f;
+        float viewHeight = getVisibleTopEdge() - bottom + 2f;
+        fillScenery(left, bottom, viewWidth, viewHeight, .17f, .19f, .23f);
+        for (RoomInstance room : gameWorld.getLocation().getRooms()) {
+            int theme = backdropIndex(room);
+            float panelWidth = BACKDROP_HEIGHT * sceneryRegions[theme][0].getRegionWidth() /
+                sceneryRegions[theme][0].getRegionHeight();
+            float stride = panelWidth * (1f - BACKDROP_OVERLAP);
+            int panelCount = Math.max(1, (int) Math.ceil((room.getWidth() + panelWidth) / stride));
+            spriteBatch.setColor(.58f, .59f, .65f, 1f);
+            for (int panel = 0; panel < panelCount; panel++) {
+                float panelX = room.getWorldX() - panelWidth * .5f + panel * stride;
+                if (panelX > getVisibleRightEdge() || panelX + panelWidth < getVisibleLeftEdge()) continue;
+                int variant = Math.floorMod(room.getRoomId() * 3 + panel,
+                    sceneryRegions[theme].length);
+                spriteBatch.draw(sceneryRegions[theme][variant], panelX,
+                    room.getWorldY() + 2f, panelWidth, BACKDROP_HEIGHT);
+            }
+        }
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    private int backdropIndex(RoomInstance room) {
+        String theme = room.getSceneryTheme();
+        if ("shelter".equals(theme)) return 0;
+        if ("red".equals(theme)) return 1;
+        if ("ink".equals(theme)) return 2;
+        if ("mechanical".equals(theme)) return 3;
+        switch (Math.floorMod(room.getRoomId(), 3)) {
+            case 0: return 1;
+            case 1: return 2;
+            default: return 3;
+        }
+    }
+
+    private void fillScenery(float x, float y, float width, float height,
+                             float red, float green, float blue) {
+        spriteBatch.setColor(red, green, blue, 1f);
+        spriteBatch.draw(sceneryPixel, x, y, width, height);
     }
 
     /** Dark, non-solid infill hides the blank void behind room walls and doors. */
     private void drawBackgroundMasonry() {
-        int left = (int) Math.floor(getVisibleLeftEdge() * TileMetrics.CELLS_PER_UNIT) - 2;
-        int right = (int) Math.ceil(getVisibleRightEdge() * TileMetrics.CELLS_PER_UNIT) + 2;
-        int bottom = (int) Math.floor(getVisibleBottomEdge() * TileMetrics.CELLS_PER_UNIT) - 2;
-        int top = (int) Math.ceil(getVisibleTopEdge() * TileMetrics.CELLS_PER_UNIT) + 2;
+        int left = (int) Math.floor(getVisibleLeftEdge()) - 2;
+        int right = (int) Math.ceil(getVisibleRightEdge()) + 2;
+        int bottom = (int) Math.floor(getVisibleBottomEdge()) - 2;
+        int top = (int) Math.ceil(getVisibleTopEdge()) + 2;
         for (int x = left; x < right; x++) {
             for (int y = bottom; y < top; y++) {
                 float centerX = (x + 0.5f) * TileMetrics.SIZE;
@@ -294,8 +483,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 }
                 // Outside the playable rooms, masonry continues visually into
                 // darkness. It remains purely decorative, never a hidden wall.
-                float shade = withinRoom ? 0.25f : nearestRoom < 1.5f ? 0.58f :
-                    nearestRoom < 3.5f ? 0.43f : 0.28f;
+                float shade = withinRoom ? 0.25f : nearestRoom < 3f ? 0.58f :
+                    nearestRoom < 7f ? 0.43f : 0.28f;
                 spriteBatch.setColor(shade, shade * 0.94f, shade, 1f);
                 spriteBatch.draw(backgroundStone, x * TileMetrics.SIZE, y * TileMetrics.SIZE,
                     TileMetrics.SIZE, TileMetrics.SIZE);
@@ -325,8 +514,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             cameraX = clampCamera(heroPos.x,
                 levelLeft - EDGE_MARGIN + halfWidth,
                 levelRight + EDGE_MARGIN - halfWidth);
+            String locationId = gameWorld.getLocation().getLocation();
+            float floorLift = "start".equals(locationId) || "ruins".equals(locationId)
+                ? RUINS_FLOOR_CAMERA_LIFT : 0f;
             cameraY = clampCamera(heroPos.y,
-                levelBottom - EDGE_MARGIN + halfHeight,
+                levelBottom - EDGE_MARGIN + floorLift + halfHeight,
                 levelTop + EDGE_MARGIN - halfHeight);
         }
 
@@ -379,6 +571,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
                     Tile tile = tiles[x][y];
                     if (tile == null) continue;
+                    if (RoadSurfaceRenderer.covers(room, x, y)) continue;
 
                     Rectangle bounds = tile.getBounds();
 
@@ -407,8 +600,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                                     float drawX, float drawY, float width, float height) {
         // Only empty space inside a room can illuminate a stone face.
         // World coordinates let adjacent rooms share the same stone edges.
-        int worldX = Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT) + x;
-        int worldY = Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT) + y;
+        int worldX = Math.round(room.getWorldX()) + x;
+        int worldY = Math.round(room.getWorldY()) + y;
         int lighting = StoneLighting.mask(gameWorld.getLocation().getRooms(), worldX, worldY);
         spriteBatch.draw(wallFaces[lighting], drawX, drawY, width, height);
     }
@@ -608,13 +801,19 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     enemy.getCombatStateTime() < enemy.getAttackStartup()) {
                     spriteBatch.setColor(1f, 0.6f, 0.6f, 1f);
                 }
-                spriteBatch.draw(
-                    enemyFrame,
-                    (enemy.getPosition().x - enemy.getSize()/2f),
-                    (enemy.getPosition().y - enemy.getSize()/2f),
-                    enemy.getSize(),
-                    enemy.getSize()
-                );
+                Texture character = "scavenger".equals(enemy.getArchetypeId()) ? scavengerSprite :
+                    "red_collector".equals(enemy.getArchetypeId()) ? redCollectorSprite : null;
+                if (character != null) {
+                    float visualWidth = "scavenger".equals(enemy.getArchetypeId()) ? 1.32f : 1.64f;
+                    float visualHeight = "scavenger".equals(enemy.getArchetypeId()) ? 1.44f : 2.06f;
+                    float left = enemy.getPosition().x - visualWidth / 2f;
+                    float bottom = enemy.getPosition().y - enemy.getSize() / 2f;
+                    spriteBatch.draw(character, enemy.isFacingLeft() ? left + visualWidth : left,
+                        bottom, enemy.isFacingLeft() ? -visualWidth : visualWidth, visualHeight);
+                } else {
+                    spriteBatch.draw(enemyFrame, enemy.getPosition().x - enemy.getSize()/2f,
+                        enemy.getPosition().y - enemy.getSize()/2f, enemy.getSize(), enemy.getSize());
+                }
                 spriteBatch.setColor(Color.WHITE);
             }
         }
@@ -629,7 +828,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             spriteBatch.setColor(1f, 0.7f + 0.3f * progress, 0.7f + 0.3f * progress,
                 1f - progress);
             spriteBatch.draw(frame, effect.x - effect.size / 2f,
-                effect.y - effect.size / 2f + 0.15f * progress, effect.size, effect.size);
+                effect.y - effect.size / 2f + 0.3f * progress, effect.size, effect.size);
         }
         spriteBatch.setColor(Color.WHITE);
     }
@@ -637,13 +836,13 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private void drawDamageIndicators() {
         for (GameWorld.DamageIndicator indicator : gameWorld.getDamageIndicators()) {
             float progress = indicator.getProgress();
-            float rise = 0.42f * (1f - (1f - progress) * (1f - progress));
+            float rise = 0.84f * (1f - (1f - progress) * (1f - progress));
             float alpha = 1f - progress;
             damageLayout.setText(damageFont, indicator.label);
             float x = indicator.x - damageLayout.width / 2f;
             float y = indicator.y + rise;
             damageFont.setColor(0f, 0f, 0f, 0.75f * alpha);
-            damageFont.draw(spriteBatch, indicator.label, x + 0.015f, y - 0.015f);
+            damageFont.draw(spriteBatch, indicator.label, x + 0.03f, y - 0.03f);
             damageFont.setColor(1f,
                 indicator.hero ? 0.38f : 0.86f,
                 indicator.hero ? 0.38f : 0.5f, alpha);
@@ -735,7 +934,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         float dx = hp.x - x;
         float dy = hp.y - y;
 
-        return dx * dx + dy * dy <= 9f;
+        return dx * dx + dy * dy <= 36f;
     }
 
     private boolean isRoomVisible(RoomInstance room) {
@@ -800,6 +999,19 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     @Override
     public void dispose() {
         damageFont.dispose();
+        itemLabelFont.dispose();
+        bandageSprite.dispose();
+        noteSprite.dispose();
+        keeperSprite.dispose();
+        sceneryPixel.dispose();
+        shelterBackdrop.dispose();
+        redBackdrop.dispose();
+        inkBackdrop.dispose();
+        mechanicalBackdrop.dispose();
+        wardenSprite.dispose();
+        scavengerSprite.dispose();
+        redCollectorSprite.dispose();
+        roadSurface.dispose();
         spriteBatch.dispose();
         debugRenderer.dispose();
         ruinsAtlas.dispose();

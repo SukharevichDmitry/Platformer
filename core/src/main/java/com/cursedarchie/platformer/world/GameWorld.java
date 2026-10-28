@@ -16,7 +16,11 @@ import com.cursedarchie.platformer.physics.OneWaySurface;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
+import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 import com.cursedarchie.platformer.tiles.TileMetrics;
+import com.cursedarchie.platformer.run.RunCheckpoint;
+import com.cursedarchie.platformer.run.ItemCatalog;
+import com.cursedarchie.platformer.run.Inventory;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,8 +30,14 @@ import java.util.Set;
 
 /** Owns one play run: Box2D, fixed-step gameplay, rooms, enemies, and generated-run state. */
 public class GameWorld implements com.badlogic.gdx.utils.Disposable {
+    public static final String KEEPER_BARGAIN = "keeper_bargain_accepted";
+    public static final String KEEPER_REFUSAL = "keeper_bargain_refused";
+    public static final String NEIGHBOR_SEARCH = "neighbor_search_accepted";
+    public static final String NEIGHBOR_LIST_FOUND = "ruins_missing_list_found";
+    public static final String NEIGHBOR_LIST_RETURNED = "neighbor_list_returned";
+    public static final String NEIGHBOR_LIST_KEPT = "neighbor_list_kept";
     public static final float FIXED_STEP = 1f / 60f;
-    public static final float GRAVITY = 40f;
+    public static final float GRAVITY = 80f;
     private static final int MAX_STEPS_PER_FRAME = 6;
 
     private final World world;
@@ -42,6 +52,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private RoomInstance currentRoom;
     private final Map<Integer, RoomState> roomStates = new HashMap<>();
     private final Map<String, Set<Integer>> visitedRooms = new HashMap<>();
+    private final Set<String> consumedInteractionIds = new HashSet<>();
+    private final Set<String> runFlags = new HashSet<>();
+    private final Inventory inventory = new Inventory();
     private final Array<Enemy> enemies = new Array<>();
     private final Array<DefeatEffect> defeatEffects = new Array<>();
     private final Array<DamageIndicator> damageIndicators = new Array<>();
@@ -50,6 +63,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private boolean disposed;
     private float accumulator;
     private boolean breakHitThisSwing;
+    private long persistenceRevision;
 
 
     public GameWorld() { this(new RoomManager()); }
@@ -58,6 +72,15 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     public GameWorld(long seed, Preferences preferences) {
         this(new RoomManager(seed, preferences));
+    }
+
+    public GameWorld(RunCheckpoint checkpoint, Preferences preferences) {
+        this(new RoomManager(checkpoint.seed, preferences));
+        try { restore(checkpoint); }
+        catch (RuntimeException invalid) {
+            dispose();
+            throw invalid;
+        }
     }
 
     private GameWorld(RoomManager roomManager) {
@@ -69,7 +92,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         currentRoom = location.getRoom(currentRoomId);
         markCurrentRoomVisited();
 
-        this.hero = new Hero(new Vector2(5, 5), world);
+        this.hero = new Hero(new Vector2(10, 10), world);
         observedHealth.put(hero, hero.getHealth());
         world.setContactListener(new GameContactListener());
 
@@ -116,8 +139,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private void recordDamage(Actor actor) {
         Float previous = observedHealth.put(actor, actor.getHealth());
-        if (previous != null && actor.getHealth() < previous)
+        if (previous != null && actor.getHealth() < previous) {
             damageIndicators.add(new DamageIndicator(actor, previous - actor.getHealth()));
+            if (actor == hero) persistenceRevision++;
+        }
     }
 
     private void updateDamageIndicators(float delta) {
@@ -151,8 +176,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         Fixture actor = platform == a ? b : a;
         if (actor.getBody() != hero.getBody() || !"BODY".equals(actor.getUserData())) return false;
         float feet = hero.getPosition().y - Hero.BODY_SIZE / 2f;
-        return feet >= ((OneWaySurface) platform.getUserData()).topY - 0.07f &&
-            hero.getBody().getLinearVelocity().y <= 0.1f;
+        return feet >= ((OneWaySurface) platform.getUserData()).topY - 0.14f &&
+            hero.getBody().getLinearVelocity().y <= 0.2f;
     }
 
     private void updateBreakableAttack() {
@@ -164,10 +189,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         float heroX = hero.getPosition().x;
         float heroY = hero.getPosition().y;
         boolean left = hero.isLeftAttackActive();
-        float attackMinX = heroX + (left ? -0.7f : 0.3f);
-        float attackMaxX = heroX + (left ? -0.3f : 0.7f);
-        float attackMinY = heroY - 0.2f;
-        float attackMaxY = heroY + 0.2f;
+        float attackMinX = heroX + (left ? -1.4f : 0.6f);
+        float attackMaxX = heroX + (left ? -0.6f : 1.4f);
+        float attackMinY = heroY - 0.4f;
+        float attackMaxY = heroY + 0.4f;
         RoomInstance hitRoom = null;
         int hitX = -1, hitY = -1;
         float nearest = Float.MAX_VALUE;
@@ -193,6 +218,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         if (hitRoom != null && location.breakTile(hitRoom.getRoomId(), hitX, hitY)) {
             breakHitThisSwing = true;
             roomManager.saveGeneratedRun(location);
+            persistenceRevision++;
         }
     }
 
@@ -248,7 +274,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             y = enemy.getPosition().y;
             size = enemy.getSize();
             facingLeft = enemy.isFacingLeft();
-            boss = size >= 1f;
+            boss = "boss".equals(enemy.getArchetypeId());
         }
 
         public float getProgress() { return Math.min(1f, elapsed / DURATION); }
@@ -269,7 +295,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         private DamageIndicator(Actor target, float amount) {
             this.target = target;
             this.x = target.getPosition().x;
-            this.y = target.getPosition().y + target.getSize() / 2f + 0.2f;
+            this.y = target.getPosition().y + target.getSize() / 2f + 0.4f;
             this.amount = amount;
             this.hero = target instanceof Hero;
             this.label = amount == Math.round(amount) ?
@@ -285,6 +311,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         if (!run.defeatedSpawnIds.contains(enemy.getPersistentSpawnId(), false)) {
             run.defeatedSpawnIds.add(enemy.getPersistentSpawnId());
             roomManager.saveGeneratedRun(location);
+            persistenceRevision++;
         }
     }
 
@@ -327,8 +354,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         if (disposed) throw new IllegalStateException("GameWorld has been disposed");
         if (world.isLocked()) throw new IllegalStateException("Cannot change location during a physics step");
         LocationInstance nextLocation = roomManager.loadLocation(locationName);
-        RoomInstance nextRoom = nextLocation.getRoom(nextLocation.isGenerated() && roomId == 0 ?
-            nextLocation.getEntryRoomId() : roomId);
+        RoomInstance nextRoom = nextLocation.getRoom(nextLocation.isGenerated() ?
+            roomId == 0 ? nextLocation.getEntryRoomId() :
+                roomId == -1 ? nextLocation.getExitRoomId() : roomId : roomId);
         if (nextRoom == null) throw new IllegalArgumentException("Missing room " + roomId + " in " + locationName);
 
         unloadLocation();
@@ -342,8 +370,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
         buildLocation();
         Vector2 spawn = new Vector2(
-            currentRoom.getWorldX() + (enterFromRight ? currentRoom.getWidth() - 1.5f : 1f),
-            currentRoom.getWorldY() + 2
+            currentRoom.getWorldX() + (enterFromRight ? currentRoom.getWidth() - 3f : 2f),
+            currentRoom.getWorldY() + 4
         );
 
         hero.getBody().setTransform(spawn, 0);
@@ -351,6 +379,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         // The old location's endContact events are not a reliable way to reset support.
         hero.setFootContacts(0);
         hero.setGrounded(false);
+        persistenceRevision++;
     }
 
     private void updateCurrentRoom() {
@@ -370,7 +399,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         if (currentRoom == null) return;
 
         Vector2 pos = hero.getBody().getPosition();
-        float buffer = 0.2f;
+        float buffer = 0.4f;
         LocationTransition rightExit = currentRoom.getLocationExit();
         if (rightExit != null && pos.x >= currentRoom.getWorldX() + currentRoom.getWidth() - buffer) {
             changeLocation(rightExit.location, rightExit.id, false);
@@ -444,12 +473,264 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         Set<Integer> visited = visitedRooms.get(currentLocationName);
         return visited != null && visited.contains(roomId);
     }
+    public long getPersistenceRevision() { return persistenceRevision; }
+
+    public InteractionData getNearbyInteraction() {
+        if (currentRoom == null || !hero.isAlive()) return null;
+        InteractionData nearest = null;
+        float nearestDistance2 = 1.7f * 1.7f;
+        for (InteractionData interaction : currentRoom.getInteractions()) {
+            if (isInteractionConsumed(currentRoom, interaction)) continue;
+            float dx = currentRoom.getWorldX() + interaction.position.x - hero.getPosition().x;
+            float dy = currentRoom.getWorldY() + interaction.position.y - hero.getPosition().y;
+            float distance2 = dx * dx + dy * dy;
+            if (distance2 <= nearestDistance2) {
+                nearestDistance2 = distance2;
+                nearest = interaction;
+            }
+        }
+        return nearest;
+    }
+
+    public boolean interact() {
+        InteractionData interaction = getNearbyInteraction();
+        if (interaction == null) return false;
+        if ("npc".equals(interaction.kind)) return false;
+        if ("pickup".equals(interaction.kind)) {
+            if (!ItemCatalog.supports(interaction.itemId) || !inventory.add(interaction.itemId)) return false;
+        }
+        consumedInteractionIds.add(interactionId(currentRoom, interaction));
+        runFlags.add(interaction.eventId);
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean hasRunFlag(String eventId) { return runFlags.contains(eventId); }
+    public boolean hasEchoDash() { return hasRunFlag(KEEPER_BARGAIN); }
+
+    private boolean isNearWarden() {
+        InteractionData nearby = getNearbyInteraction();
+        return nearby != null && "shelter_warden".equals(nearby.id);
+    }
+
+    public boolean acceptNeighborSearch() {
+        if (!isNearWarden() || hasRunFlag(NEIGHBOR_SEARCH)) return false;
+        runFlags.add(NEIGHBOR_SEARCH);
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean resolveNeighborList(boolean returnToFamilies) {
+        if (!isNearWarden() || !hasRunFlag(NEIGHBOR_LIST_FOUND) ||
+            hasRunFlag(NEIGHBOR_LIST_RETURNED) || hasRunFlag(NEIGHBOR_LIST_KEPT)) return false;
+        runFlags.add(returnToFamilies ? NEIGHBOR_LIST_RETURNED : NEIGHBOR_LIST_KEPT);
+        persistenceRevision++;
+        return true;
+    }
+
+    private boolean isNearKeeper() {
+        InteractionData nearby = getNearbyInteraction();
+        return nearby != null && "npc".equals(nearby.kind) && "keeper".equals(nearby.id);
+    }
+
+    public boolean acceptKeeperOffer() {
+        if (!isNearKeeper() || hasEchoDash() || hasRunFlag(KEEPER_REFUSAL) || !hero.isAlive() ||
+            hero.getMaxHealth() <= 1f) return false;
+        hero.setMaxHealth(hero.getMaxHealth() - 1f);
+        hero.setHealth(Math.min(hero.getHealth(), hero.getMaxHealth()));
+        observedHealth.put(hero, hero.getHealth());
+        runFlags.add(KEEPER_BARGAIN);
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean refuseKeeperOffer() {
+        if (!isNearKeeper() || hasEchoDash() || hasRunFlag(KEEPER_REFUSAL)) return false;
+        runFlags.add(KEEPER_REFUSAL);
+        persistenceRevision++;
+        return true;
+    }
+    public Inventory getInventory() { return inventory; }
+    public int getFieldBandages() { return inventory.count(ItemCatalog.FIELD_BANDAGE); }
+
+    public boolean moveToPocket(int bagSlot, int pocket) {
+        if (!inventory.swapWithPocket(bagSlot, pocket)) return false;
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean useFieldBandage() {
+        return useFieldBandage(inventory.firstSlot(ItemCatalog.FIELD_BANDAGE));
+    }
+
+    public boolean useFieldBandage(int slot) {
+        if (!hero.isAlive() || slot < Inventory.CAPACITY || slot >= Inventory.TOTAL_SLOTS ||
+            !ItemCatalog.FIELD_BANDAGE.equals(inventory.itemId(slot)) ||
+            hero.getHealth() >= hero.getMaxHealth()) return false;
+        hero.setHealth(Math.min(hero.getMaxHealth(), hero.getHealth() + ItemCatalog.bandage().heal));
+        observedHealth.put(hero, hero.getHealth());
+        inventory.removeOne(slot);
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean isInteractionConsumed(RoomInstance room, InteractionData interaction) {
+        return consumedInteractionIds.contains(interactionId(room, interaction));
+    }
+
+    private String interactionId(RoomInstance room, InteractionData interaction) {
+        return room.getLocation() + ":" + room.getRoomId() + ":" + interaction.id;
+    }
+
+    public RunCheckpoint checkpoint() {
+        if (!hero.isAlive()) throw new IllegalStateException("Cannot save a dead run");
+        RunCheckpoint checkpoint = new RunCheckpoint();
+        checkpoint.worldLayoutVersion = 10;
+        checkpoint.seed = roomManager.getRunSeed();
+        checkpoint.locationId = currentLocationName;
+        checkpoint.roomId = currentRoomId;
+        checkpoint.heroX = hero.getPosition().x;
+        checkpoint.heroY = hero.getPosition().y;
+        checkpoint.heroHealth = hero.getHealth();
+        for (int i = 0; i < Inventory.TOTAL_SLOTS; i++) {
+            RunCheckpoint.InventorySlot slot = new RunCheckpoint.InventorySlot();
+            slot.itemId = inventory.itemId(i);
+            slot.count = inventory.count(i);
+            checkpoint.inventory.add(slot);
+        }
+        for (Map.Entry<String, Set<Integer>> locationVisits : visitedRooms.entrySet()) {
+            for (Integer roomId : locationVisits.getValue())
+                checkpoint.visitedRooms.add(locationVisits.getKey() + ":" + roomId);
+        }
+        checkpoint.visitedRooms.sort();
+        checkpoint.consumedInteractionIds.addAll(consumedInteractionIds.toArray(new String[0]));
+        checkpoint.consumedInteractionIds.sort();
+        checkpoint.runFlags.addAll(runFlags.toArray(new String[0]));
+        checkpoint.runFlags.sort();
+        for (GeneratedRunSave run : roomManager.getGeneratedRuns()) {
+            RunCheckpoint.GeneratedLocationRef ref = new RunCheckpoint.GeneratedLocationRef();
+            ref.locationId = run.locationId;
+            ref.profileVersion = run.profileVersion;
+            ref.topologySignature = run.topologySignature;
+            ref.placementSignature = run.placementSignature;
+            checkpoint.generatedLocations.add(ref);
+        }
+        return checkpoint;
+    }
+
+    private void restore(RunCheckpoint checkpoint) {
+        if (checkpoint.worldLayoutVersion != 10)
+            throw new IllegalArgumentException("Checkpoint uses an older world layout");
+        for (RunCheckpoint.GeneratedLocationRef ref : checkpoint.generatedLocations) {
+            if (ref == null || ref.locationId == null || ref.topologySignature == null ||
+                ref.placementSignature == null) throw new IllegalArgumentException("Invalid generated run reference");
+            if (!roomManager.hasSavedGeneratedReference(ref))
+                throw new IllegalArgumentException("Generated location no longer matches checkpoint");
+            LocationInstance restored = roomManager.loadLocation(ref.locationId);
+            GeneratedRunSave run = restored.getGeneratedRun();
+            boolean upgradedRuins = "ruins".equals(ref.locationId) &&
+                ref.profileVersion == 7 && run != null && run.profileVersion == 8;
+            if (run == null || (run.profileVersion != ref.profileVersion && !upgradedRuins) ||
+                !run.topologySignature.equals(ref.topologySignature) ||
+                !run.placementSignature.equals(ref.placementSignature))
+                throw new IllegalArgumentException("Generated location no longer matches checkpoint");
+        }
+        changeLocation(checkpoint.locationId, checkpoint.roomId);
+        RoomInstance room = location.getRoom(checkpoint.roomId);
+        Vector2 savedPosition = new Vector2(checkpoint.heroX, checkpoint.heroY);
+        if (checkpoint.runFlags.contains(KEEPER_BARGAIN, false)) hero.setMaxHealth(2f);
+        if (room == null || !room.contains(savedPosition) ||
+            !isRestoredPositionClear(savedPosition) ||
+            checkpoint.heroHealth > hero.getMaxHealth())
+            throw new IllegalArgumentException("Invalid saved hero state");
+        currentRoomId = checkpoint.roomId;
+        currentRoom = room;
+        hero.getBody().setTransform(savedPosition, 0);
+        hero.getBody().setLinearVelocity(0, 0);
+        hero.setHealth(checkpoint.heroHealth);
+        if (checkpoint.formatVersion < 4) {
+            inventory.setSlot(0, checkpoint.fieldBandages == 0 ? null : ItemCatalog.FIELD_BANDAGE,
+                checkpoint.fieldBandages);
+        } else {
+            if (checkpoint.inventory == null || checkpoint.inventory.size !=
+                (checkpoint.formatVersion >= 7 ? Inventory.TOTAL_SLOTS :
+                    checkpoint.formatVersion == 6 ? 18 : 16))
+                throw new IllegalArgumentException("Invalid saved inventory");
+            if (checkpoint.formatVersion >= 7) {
+                for (int i = 0; i < Inventory.TOTAL_SLOTS; i++) {
+                    RunCheckpoint.InventorySlot slot = checkpoint.inventory.get(i);
+                    if (slot == null) throw new IllegalArgumentException("Invalid saved inventory slot");
+                    inventory.setSlot(i, slot.itemId, slot.count);
+                }
+            } else restoreLegacyInventory(checkpoint);
+        }
+        observedHealth.put(hero, hero.getHealth());
+        visitedRooms.clear();
+        consumedInteractionIds.clear();
+        for (String id : checkpoint.consumedInteractionIds) consumedInteractionIds.add(id);
+        runFlags.clear();
+        for (String flag : checkpoint.runFlags) runFlags.add(flag);
+        // Earlier checkpoints recorded the note as a consumed event without an item.
+        if (checkpoint.formatVersion < 5 && runFlags.contains("intro_note_read") &&
+            inventory.count(ItemCatalog.SEALED_NOTE) == 0 &&
+            !inventory.add(ItemCatalog.SEALED_NOTE))
+            throw new IllegalArgumentException("No room to migrate the collected note");
+        for (String visited : checkpoint.visitedRooms) {
+            int separator = visited.lastIndexOf(':');
+            if (separator <= 0) throw new IllegalArgumentException("Invalid saved room visit");
+            int roomId;
+            try { roomId = Integer.parseInt(visited.substring(separator + 1)); }
+            catch (NumberFormatException invalid) { throw new IllegalArgumentException("Invalid saved room visit", invalid); }
+            visitedRooms.computeIfAbsent(visited.substring(0, separator), id -> new HashSet<>()).add(roomId);
+        }
+        markCurrentRoomVisited();
+    }
+
+    private void restoreLegacyInventory(RunCheckpoint checkpoint) {
+        // Previous runs contained at most the authored note and bandage. Compact
+        // their old 16-cell bag while retaining the two pocket contents.
+        int nextBag = 0;
+        for (int i = 0; i < 16; i++) {
+            RunCheckpoint.InventorySlot slot = checkpoint.inventory.get(i);
+            if (slot == null) throw new IllegalArgumentException("Invalid saved inventory slot");
+            if (slot.itemId == null) continue;
+            if (nextBag == Inventory.CAPACITY)
+                throw new IllegalArgumentException("Legacy inventory exceeds the new bag capacity");
+            inventory.setSlot(nextBag++, slot.itemId, slot.count);
+        }
+        if (checkpoint.formatVersion >= 6) {
+            for (int pocket = 0; pocket < Inventory.POCKETS; pocket++) {
+                RunCheckpoint.InventorySlot slot = checkpoint.inventory.get(16 + pocket);
+                if (slot == null) throw new IllegalArgumentException("Invalid saved pocket");
+                inventory.setSlot(Inventory.CAPACITY + pocket, slot.itemId, slot.count);
+            }
+        }
+    }
+
+    private boolean isRestoredPositionClear(Vector2 position) {
+        float half = Hero.BODY_SIZE / 2f - 0.04f;
+        boolean[] blocked = {false};
+        world.QueryAABB(fixture -> {
+            if (fixture.getBody().getType() != BodyDef.BodyType.StaticBody ||
+                fixture.isSensor() || fixture.getUserData() instanceof OneWaySurface) return true;
+            for (float dx : new float[]{-half, 0f, half}) {
+                for (float dy : new float[]{-half, 0f, half}) {
+                    if (fixture.testPoint(position.x + dx, position.y + dy)) {
+                        blocked[0] = true;
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }, position.x - half, position.y - half, position.x + half, position.y + half);
+        return !blocked[0];
+    }
 
     private void markCurrentRoomVisited() {
         // Room discovery belongs to the run, not to a rendered frame. Keep separate
         // sets per location so revisiting start does not reveal unseen ruins rooms.
-        visitedRooms.computeIfAbsent(currentLocationName, name -> new HashSet<>())
-            .add(currentRoomId);
+        if (visitedRooms.computeIfAbsent(currentLocationName, name -> new HashSet<>())
+            .add(currentRoomId)) persistenceRevision++;
     }
     public World getWorld() {
         return world;

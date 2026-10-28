@@ -24,42 +24,38 @@ public final class RoomTileGenerator {
                 // floor open. Combat and travel rooms use the varied ruins set.
                 int motif = template.role.equals("story") ? 3 :
                     template.encounterRole.equals("boss") ? 4 : random.nextInt(3);
-                int left = 1 + random.nextInt(2);
-                int length = Math.min((arena ? 3 : 2) + random.nextInt(2),
-                    (room.width - 2 * left - 1) / 2);
+                int left = 2 + random.nextInt(2) * 2;
+                int length = Math.min(((arena ? 3 : 2) + random.nextInt(2)) * 2,
+                    (room.width - 2 * left - 2) / 2);
                 int right = room.width - left - length;
-                int platformRow = room.height - 1 - 3;
-                int roofRow = 1;
+                int platformRow = room.height - 8;
+                int roofRow = 2;
                 // Two opposing ledges frame the center of the room. Wood is
                 // traversable from below; cracked stone marks an optional edge.
                 if (motif == 0) {
                     place(tiles, platformRow, left, length, '=', template);
                     place(tiles, platformRow, right, length, '_', template);
-                    crackEnd(tiles, platformRow, right + length - 1);
+                    crackEnd(tiles, platformRow + 1, right + length - 1);
                 } else if (motif == 1) {
                     place(tiles, platformRow, left, length, '_', template);
-                    crackEnd(tiles, platformRow, left);
+                    crackEnd(tiles, platformRow + 1, left);
                     place(tiles, platformRow, right, length, '=', template);
                 } else if (motif == 2) {
                     place(tiles, platformRow, left, length, '=', template);
                     place(tiles, platformRow, right, length, '_', template);
-                    int upperRow = room.height - 1 - 5;
-                    if (upperRow > 2)
-                        place(tiles, upperRow, room.width / 2 - 1, 2, '_', template);
+                    int upperRow = room.height - 12;
+                    if (upperRow > 4)
+                        place(tiles, upperRow, room.width / 2 - 2, 4, '_', template);
                 } else {
                     char material = motif == 3 ? '_' : '=';
                     place(tiles, platformRow, left, length, material, template);
                     place(tiles, platformRow, right, length, material, template);
                 }
-                // Matching ceiling corbels make the platforms read as part of
-                // one built chamber. A top doorway reserves the whole shaft.
-                int corbel = 1 + random.nextInt(2);
-                place(tiles, roofRow, 1, corbel, '#', template);
-                place(tiles, roofRow, room.width - 1 - corbel, corbel, '#', template);
-                if (arena && motif != 2) {
-                    place(tiles, roofRow + 1, 1, 1, '#', template);
-                    place(tiles, roofRow + 1, room.width - 2, 1, '#', template);
-                }
+                // The district is open to the sky. Broken wall fragments stay
+                // near the sides instead of forming a ceiling over the route.
+                int fragment = (1 + random.nextInt(2)) * 2;
+                place(tiles, roofRow + 4, 2, fragment, '#', template);
+                place(tiles, roofRow + 4, room.width - 2 - fragment, fragment, '#', template);
             }
             List<String> rows = new ArrayList<>();
             for (char[] row : tiles) rows.add(new String(row));
@@ -84,8 +80,9 @@ public final class RoomTileGenerator {
 
     private static void place(char[][] tiles, int row, int x, int width, char tile,
                               RoomTemplateCatalog.RoomTemplate template) {
-        if (!clear(tiles, row, x, width, template)) return;
-        for (int i = x; i < x + width; i++) tiles[row][i] = tile;
+        int drawnRow = tile == '_' ? row + 1 : row;
+        if (!clear(tiles, drawnRow, x, width, template)) return;
+        for (int i = x; i < x + width; i++) tiles[drawnRow][i] = tile;
     }
 
     private static void crackEnd(char[][] tiles, int row, int x) {

@@ -152,8 +152,8 @@ public final class GenerationQualityCheck {
         rule(seed, "transition", () -> { RoomRouteReachability.validate(opened); return opened; });
         java.util.List<String> rows = opened.roomRows(entryRoomId);
         int height = tiles.layout.room(entryRoomId).height;
-        if (rows.get(height - 2).charAt(0) != ' ' || rows.get(height - 3).charAt(0) != ' ' ||
-            rows.get(height - 1).charAt(0) != '#')
+        if (rows.get(height - 3).charAt(0) != ' ' || rows.get(height - 6).charAt(0) != ' ' ||
+            rows.get(height - 1).charAt(0) != '#' || rows.get(height - 2).charAt(0) != '#')
             throw new AssertionError("rule=transition, exterior entry is not walkable at seed " + seed);
     }
 

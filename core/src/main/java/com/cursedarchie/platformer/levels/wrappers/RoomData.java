@@ -6,6 +6,7 @@ public class RoomData {
 
     public String location;
     public int id;
+    public String sceneryTheme;
 
     public int width;
     public int height;
@@ -16,6 +17,7 @@ public class RoomData {
     public String[] tileRows;
 
     public Array<EnemySpawnData> enemySpawns = new Array<>();
+    public Array<InteractionData> interactions = new Array<>();
 
     public Neighbors neighbors;
 

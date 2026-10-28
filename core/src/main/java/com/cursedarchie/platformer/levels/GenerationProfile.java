@@ -71,6 +71,8 @@ public final class GenerationProfile {
     public final String status;
     public final String returnLocation;
     public final int returnRoomId;
+    public final String forwardLocation;
+    public final int forwardRoomId;
     public final IntRange roomCount;
     public final int difficultyBudget;
     public final Set<String> allowedEnemyTypes;
@@ -79,6 +81,7 @@ public final class GenerationProfile {
 
     private GenerationProfile(int version, String locationId, String status,
                               String returnLocation, int returnRoomId,
+                              String forwardLocation, int forwardRoomId,
                               IntRange roomCount, int difficultyBudget,
                               Set<String> allowedEnemyTypes,
                               List<RoomPattern> roomPatterns, TuningTargets tuningTargets) {
@@ -87,6 +90,8 @@ public final class GenerationProfile {
         this.status = status;
         this.returnLocation = returnLocation;
         this.returnRoomId = returnRoomId;
+        this.forwardLocation = forwardLocation;
+        this.forwardRoomId = forwardRoomId;
         this.roomCount = roomCount;
         this.difficultyBudget = difficultyBudget;
         this.allowedEnemyTypes = Collections.unmodifiableSet(allowedEnemyTypes);
@@ -120,6 +125,16 @@ public final class GenerationProfile {
         int returnRoomId = integer(transition.get("id"), file, "returnTransition.id");
         if (returnRoomId < 0 || returnRoomId >= 256 || returnLocation.equals(locationId))
             throw invalid(file, "returnTransition must target an authored room outside this location");
+        String forwardLocation = null;
+        int forwardRoomId = -1;
+        JsonValue forward = root.get("forwardTransition");
+        if (forward != null) {
+            if (!forward.isObject()) throw invalid(file, "forwardTransition must be an object");
+            forwardLocation = identifier(forward.get("location"), file, "forwardTransition.location");
+            forwardRoomId = integer(forward.get("id"), file, "forwardTransition.id");
+            if (forwardRoomId < 0 || forwardRoomId >= 256 || forwardLocation.equals(locationId))
+                throw invalid(file, "forwardTransition must target an authored room outside this location");
+        }
         IntRange roomCount = range(root.get("roomCount"), file, "roomCount", 1, 64);
         int difficultyBudget = budget(root.get("difficultyBudget"), file, "difficultyBudget");
         Set<String> enemyTypes = enemyTypes(root.get("allowedEnemyTypes"), file,
@@ -144,8 +159,8 @@ public final class GenerationProfile {
             int weight = integer(node.get("weight"), file, field + ".weight");
             if (weight < 1 || weight > 100)
                 throw invalid(file, field + ".weight must be between 1 and 100");
-            IntRange width = range(node.get("width"), file, field + ".width", 5, 64);
-            IntRange height = range(node.get("height"), file, field + ".height", 4, 64);
+            IntRange width = range(node.get("width"), file, field + ".width", 10, 128);
+            IntRange height = range(node.get("height"), file, field + ".height", 8, 128);
             IntRange roomQuota = range(node.get("roomQuota"), file, field + ".roomQuota", 0, 64);
             IntRange spawns = range(node.get("enemySpawns"), file, field + ".enemySpawns", 0, 16);
             int roomBudget = budget(node.get("difficultyBudget"), file, field + ".difficultyBudget");
@@ -162,6 +177,7 @@ public final class GenerationProfile {
             throw invalid(file, "roomQuota totals cannot satisfy roomCount");
         TuningTargets targets = tuningTargets(root.get("tuningTargets"), file, status);
         return new GenerationProfile(version, locationId, status, returnLocation, returnRoomId,
+            forwardLocation, forwardRoomId,
             roomCount, difficultyBudget, enemyTypes, parsed, targets);
     }
 

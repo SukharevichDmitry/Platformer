@@ -6,6 +6,7 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.cursedarchie.platformer.levels.wrappers.RoomData;
+import com.cursedarchie.platformer.run.RunCheckpoint;
 
 import java.util.*;
 
@@ -33,6 +34,27 @@ public class RoomManager {
     private RoomManager(long runSeed, GeneratedRunStore runStore) {
         this.runSeed = runSeed;
         this.runStore = runStore;
+    }
+
+    public long getRunSeed() { return runSeed; }
+
+    public Collection<GeneratedRunSave> getGeneratedRuns() {
+        List<GeneratedRunSave> runs = new ArrayList<>();
+        for (LocationInstance location : generatedLocations.values()) runs.add(location.getGeneratedRun());
+        return runs;
+    }
+
+    /** Continue must not regenerate a missing or incompatible saved location. */
+    public boolean hasSavedGeneratedReference(RunCheckpoint.GeneratedLocationRef ref) {
+        FileHandle profileFile = Gdx.files.internal("generation/" + ref.locationId + ".json");
+        if (!profileFile.exists()) return false;
+        int currentVersion = GenerationProfile.load(profileFile).version;
+        boolean oldDoorwayUpgrade = "ruins".equals(ref.locationId) &&
+            ref.profileVersion == 7 && currentVersion == 8;
+        if (ref.profileVersion != currentVersion && !oldDoorwayUpgrade) return false;
+        GeneratedRunSave saved = runStore.load(ref.locationId, currentVersion);
+        return saved != null && saved.topologySignature.equals(ref.topologySignature) &&
+            saved.placementSignature.equals(ref.placementSignature);
     }
 
     public LocationInstance loadLocation(String location) {

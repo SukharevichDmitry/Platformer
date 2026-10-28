@@ -1,23 +1,42 @@
-  {
-    "location": "start",
-    "id": 1,
-
-    "width": 10,
-    "height": 6,
-
-    "tileRows": [
-      "##########",
-      "      ### ",
-      "##==   #  ",
-      "          ",
-      "  BB      ",
-      "##########"
-    ],
-
-    "enemySpawns": [],
-
-    "neighbors": {
-      "left": 0,
-      "right": 2
+{
+  "location": "start",
+  "id": 1,
+  "sceneryTheme": "shelter",
+  "width": 40,
+  "height": 16,
+  "tileRows": [
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "          ==========                    ",
+    "                                        ",
+    "                                        ",
+    "                          ______        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "########################################",
+    "########################################"
+  ],
+  "enemySpawns": [],
+  "neighbors": {
+    "left": 0,
+    "right": 2
+  },
+  "interactions": [
+    {
+      "id": "shelter_warden",
+      "kind": "npc",
+      "visualId": "warden",
+      "eventId": "neighbor_search",
+      "position": {
+        "x": 12,
+        "y": 3.0
+      }
     }
-  }
+  ]
+}

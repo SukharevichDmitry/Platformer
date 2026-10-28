@@ -24,9 +24,11 @@ final class UiSkin {
         TextButton.TextButtonStyle button = new TextButton.TextButtonStyle();
         button.font = skin.getFont("default-font");
         button.fontColor = Color.WHITE;
+        button.disabledFontColor = Color.GRAY;
         button.up = skin.newDrawable("white", new Color(0.18f, 0.23f, 0.32f, 1));
         button.over = skin.newDrawable("white", new Color(0.28f, 0.36f, 0.48f, 1));
         button.down = skin.newDrawable("white", new Color(0.10f, 0.14f, 0.21f, 1));
+        button.disabled = skin.newDrawable("white", new Color(0.10f, 0.12f, 0.17f, 1));
         skin.add("default", button);
         return skin;
     }

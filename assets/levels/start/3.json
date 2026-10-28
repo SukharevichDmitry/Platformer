@@ -1,0 +1,47 @@
+{
+  "location": "start",
+  "id": 3,
+  "sceneryTheme": "red",
+  "width": 60,
+  "height": 18,
+  "enemySpawns": [],
+  "neighbors": {
+    "left": 2
+  },
+  "locationExit": {
+    "location": "ruins",
+    "id": 0
+  },
+  "tileRows": [
+    "                                                            ",
+    "                                                            ",
+    "                                                            ",
+    "                                                            ",
+    "                                                            ",
+    "                                                            ",
+    "                                    ============            ",
+    "                                                            ",
+    "                                                            ",
+    "          __________                                        ",
+    "                                                            ",
+    "                                                  ______    ",
+    "                                                            ",
+    "                                                            ",
+    "                                                            ",
+    "                                                            ",
+    "############################################################",
+    "############################################################"
+  ],
+  "interactions": [
+    {
+      "id": "missing_list",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "ruins_missing_list_found",
+      "position": {
+        "x": 44,
+        "y": 3.0
+      }
+    }
+  ]
+}

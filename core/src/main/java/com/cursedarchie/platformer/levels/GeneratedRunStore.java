@@ -24,13 +24,18 @@ public final class GeneratedRunStore {
         if (!preferences.contains(key)) return null;
         try {
             GeneratedRunSave save = json.fromJson(GeneratedRunSave.class, preferences.getString(key));
+            boolean olderRuinsRoute = save != null && "ruins".equals(locationId) &&
+                save.profileVersion == 7 && profileVersion == 8;
             if (save == null || save.formatVersion != FORMAT_VERSION ||
-                save.profileVersion != profileVersion || !locationId.equals(save.locationId) ||
+                (save.profileVersion != profileVersion && !olderRuinsRoute) || !locationId.equals(save.locationId) ||
                 save.topologySignature == null || save.placementSignature == null ||
                 save.narrativeChoices == null || save.defeatedSpawnIds == null || save.brokenTileIds == null) {
                 remove(locationId);
                 return null;
             }
+            // Version 8 only opens the exterior exit of the existing final room.
+            // Graph and placement signatures are checked before this is written back.
+            if (olderRuinsRoute) save.profileVersion = profileVersion;
             return save;
         } catch (RuntimeException invalid) {
             remove(locationId);

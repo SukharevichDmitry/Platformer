@@ -41,12 +41,7 @@ public final class RoomLayoutPlacementCheck {
         int cacheStart = source.indexOf("\"id\": \"cache\"");
         int ambushStart = source.indexOf("\"id\": \"ambush\"");
         String cache = source.substring(cacheStart, ambushStart);
-        int opening = -1;
-        for (int i = 0; i < 3; i++) opening = cache.indexOf("\"#       #\"", opening + 1);
-        cache = cache.substring(0, opening) + "\"#        \"" +
-            cache.substring(opening + "\"#       #\"".length());
-        cache = cache.replace("\"side\": \"right\", \"offset\": 1, \"span\": 2",
-            "\"side\": \"right\", \"offset\": 1, \"span\": 3");
+        cache = cache.replaceFirst("\"span\"\\s*:\\s*4", "\"span\": 5");
         String invalid = source.substring(0, cacheStart) + cache + source.substring(ambushStart);
         fixture.writeString(invalid, false);
         RoomTemplateCatalog mismatched = RoomTemplateCatalog.load(fixture, profile);
@@ -126,7 +121,7 @@ public final class RoomLayoutPlacementCheck {
                 if (join.worldX != seamX || seamX != otherX ||
                     join.worldY != a.worldY + aDoor.offset ||
                     join.worldY != b.worldY + bDoor.offset ||
-                    a.worldY != b.worldY || join.worldY != a.worldY + 1)
+                    a.worldY != b.worldY || join.worldY != a.worldY + 2)
                     throw new AssertionError("Walking-height doorway or floor seam is misaligned");
             } else {
                 int seamY = join.fromSide.equals("top") ? a.worldY + a.height : a.worldY;

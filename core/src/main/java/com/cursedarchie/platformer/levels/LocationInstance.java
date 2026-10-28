@@ -37,6 +37,7 @@ public class LocationInstance {
     private Body levelBody;
     private Long generationSeed;
     private int entryRoomId;
+    private int exitRoomId;
     private GeneratedRunSave generatedRun;
     private final List<VerticalConnection> verticalConnections = new ArrayList<>();
     private final Map<Tile, Fixture> independentFixtures = new IdentityHashMap<>();
@@ -52,6 +53,7 @@ public class LocationInstance {
     public boolean isGenerated() { return generationSeed != null; }
     public Long getGenerationSeed() { return generationSeed; }
     public int getEntryRoomId() { return entryRoomId; }
+    public int getExitRoomId() { return exitRoomId; }
     public GeneratedRunSave getGeneratedRun() { return generatedRun; }
     public List<VerticalConnection> getVerticalConnections() {
         return Collections.unmodifiableList(verticalConnections);
@@ -68,9 +70,14 @@ public class LocationInstance {
     }
 
     void setGeneration(GeneratedRunSave save, int entryRoomId) {
+        setGeneration(save, entryRoomId, entryRoomId);
+    }
+
+    void setGeneration(GeneratedRunSave save, int entryRoomId, int exitRoomId) {
         this.generatedRun = save;
         this.generationSeed = save.seed;
         this.entryRoomId = entryRoomId;
+        this.exitRoomId = exitRoomId;
         for (String id : save.brokenTileIds) {
             String[] parts = id.split(":");
             if (parts.length != 3) continue;
@@ -108,8 +115,8 @@ public class LocationInstance {
         // Partial tiles are deliberately excluded: their bounds are not full cells.
         Set<Long> solid = new TreeSet<>();
         for (RoomInstance room : rooms.values()) {
-            int roomX = Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT);
-            int roomY = Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT);
+            int roomX = Math.round(room.getWorldX());
+            int roomY = Math.round(room.getWorldY());
             Tile[][] tiles = room.getTiles();
             for (int x = 0; x < tiles.length; x++) {
                 for (int y = 0; y < tiles[x].length; y++) {
@@ -154,8 +161,8 @@ public class LocationInstance {
         Set<Long> halfBlocks = new TreeSet<>();
         Set<Long> oneWayPlatforms = new TreeSet<>();
         for (RoomInstance room : rooms.values()) {
-            int roomX = Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT);
-            int roomY = Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT);
+            int roomX = Math.round(room.getWorldX());
+            int roomY = Math.round(room.getWorldY());
             Tile[][] tiles = room.getTiles();
             for (int x = 0; x < tiles.length; x++) {
                 for (int y = 0; y < tiles[x].length; y++) {

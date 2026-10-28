@@ -1,28 +1,30 @@
-  {
-    "location": "start",
-    "id": 2,
-
-    "width": 10,
-    "height": 7,
-
-    "tileRows": [
-      "##########",
-      "#        #",
-      "         #",
-      "         #",
-      "          ",
-      "    ###   ",
-      "##########"
-    ],
-
-    "enemySpawns": [],
-
-    "neighbors": {
-      "left": 1
-    },
-
-    "locationExit": {
-      "location": "ruins",
-      "id": 0
-    }
+{
+  "location": "start",
+  "id": 2,
+  "sceneryTheme": "ink",
+  "width": 36,
+  "height": 16,
+  "tileRows": [
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "              ==========            ",
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "                                    ",
+    "      ______                        ",
+    "                                    ",
+    "                                    ",
+    "####################################",
+    "####################################"
+  ],
+  "enemySpawns": [],
+  "neighbors": {
+    "left": 1,
+    "right": 3
   }
+}

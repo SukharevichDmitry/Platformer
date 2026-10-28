@@ -83,7 +83,7 @@ public final class RoomEncounterGenerator {
                 for (GeneratedRoomEncounters.Spawn previous : spawns) {
                     if (previous == spawn) break;
                     float spacing = (EnemyFactory.definition(previous.type).bodySize +
-                        EnemyFactory.definition(spawn.type).bodySize) / 2f + 1f;
+                        EnemyFactory.definition(spawn.type).bodySize) / 2f + 2f;
                     if (Math.abs(previous.x - spawn.x) < spacing)
                         throw invalid(encounters.tiles, room.id, "enemy spawns overlap");
                 }
@@ -104,16 +104,16 @@ public final class RoomEncounterGenerator {
             PlacedRoomGraph.PlacedRoom room, RoomTemplateCatalog.RoomTemplate template,
             List<GeneratedRoomEncounters.Spawn> existing, String type, Random random) {
         List<Integer> positions = new ArrayList<>();
-        for (int x = 3; x <= room.width - 4; x++) positions.add(x);
+        for (int x = 6; x <= room.width - 8; x++) positions.add(x);
         Collections.shuffle(positions, random);
         float size = EnemyFactory.definition(type).bodySize;
         for (int tileX : positions) {
             GeneratedRoomEncounters.Spawn spawn = new GeneratedRoomEncounters.Spawn(
-                type, tileX + 0.5f, 1f + size / 2f + 0.05f);
+                type, tileX + 0.5f, 2f + size / 2f + 0.1f);
             if (!safePosition(tiles, room, template, spawn)) continue;
             boolean separated = true;
             for (GeneratedRoomEncounters.Spawn previous : existing) {
-                float spacing = (EnemyFactory.definition(previous.type).bodySize + size) / 2f + 1f;
+                float spacing = (EnemyFactory.definition(previous.type).bodySize + size) / 2f + 2f;
                 if (Math.abs(previous.x - spawn.x) < spacing) separated = false;
             }
             if (separated) return spawn;
@@ -125,18 +125,19 @@ public final class RoomEncounterGenerator {
                                         RoomTemplateCatalog.RoomTemplate template,
                                         GeneratedRoomEncounters.Spawn spawn) {
         float size = EnemyFactory.definition(spawn.type).bodySize;
-        if (spawn.x < 3.5f || spawn.x > room.width - 3.5f ||
-            Math.abs(spawn.y - (1f + size / 2f + 0.05f)) > 0.001f ||
+        if (spawn.x < 7f || spawn.x > room.width - 7f ||
+            Math.abs(spawn.y - (2f + size / 2f + 0.1f)) > 0.001f ||
             (template.narrativeEventId != null &&
-                Math.abs(spawn.x - room.width / 2f) < 2f + size / 2f)) return false;
+                Math.abs(spawn.x - room.width / 2f) < 4f + size / 2f)) return false;
         int left = (int) Math.floor(spawn.x - size / 2f);
         int right = (int) Math.floor(spawn.x + size / 2f);
         int top = (int) Math.floor(spawn.y + size / 2f);
         if (left < 1 || right >= room.width - 1 || top >= room.height) return false;
         List<String> rows = tiles.roomRows(room.id);
         for (int x = left; x <= right; x++) {
-            if (rows.get(room.height - 1).charAt(x) != '#') return false;
-            for (int y = 1; y <= top; y++)
+            if (rows.get(room.height - 1).charAt(x) != '#' ||
+                rows.get(room.height - 2).charAt(x) != '#') return false;
+            for (int y = 2; y <= top; y++)
                 if (rows.get(room.height - 1 - y).charAt(x) != ' ') return false;
         }
         return true;

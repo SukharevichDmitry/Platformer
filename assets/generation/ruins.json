@@ -1,40 +1,99 @@
 {
-  "version": 7,
+  "version": 10,
   "status": "production",
   "locationId": "ruins",
-  "returnTransition": {"location": "start", "id": 2},
-  "roomCount": {"min": 5, "max": 10},
-  "difficultyBudget": 12,
-  "allowedEnemyTypes": ["default", "boss"],
+  "returnTransition": {
+    "location": "start",
+    "id": 3
+  },
+  "forwardTransition": {
+    "location": "keeper_chamber",
+    "id": 0
+  },
+  "roomCount": {
+    "min": 11,
+    "max": 14
+  },
+  "difficultyBudget": 23,
+  "allowedEnemyTypes": [
+    "default",
+    "scavenger",
+    "red_collector",
+    "boss"
+  ],
   "roomPatterns": [
     {
       "id": "passage",
       "form": "flat",
       "weight": 4,
-      "width": {"min": 9, "max": 12},
-      "height": {"min": 7, "max": 8},
-      "roomQuota": {"min": 2, "max": 7},
-      "enemySpawns": {"min": 0, "max": 1},
+      "width": {
+        "min": 40,
+        "max": 52
+      },
+      "height": {
+        "min": 16,
+        "max": 18
+      },
+      "roomQuota": {
+        "min": 5,
+        "max": 10
+      },
+      "enemySpawns": {
+        "min": 0,
+        "max": 1
+      },
       "difficultyBudget": 1,
-      "allowedEnemyTypes": ["default"]
+      "allowedEnemyTypes": [
+        "default",
+        "scavenger"
+      ]
     },
     {
       "id": "arena",
       "form": "platforms",
       "weight": 3,
-      "width": {"min": 13, "max": 16},
-      "height": {"min": 8, "max": 10},
-      "roomQuota": {"min": 3, "max": 5},
-      "enemySpawns": {"min": 1, "max": 2},
+      "width": {
+        "min": 56,
+        "max": 68
+      },
+      "height": {
+        "min": 18,
+        "max": 20
+      },
+      "roomQuota": {
+        "min": 4,
+        "max": 9
+      },
+      "enemySpawns": {
+        "min": 1,
+        "max": 2
+      },
       "difficultyBudget": 4,
-      "allowedEnemyTypes": ["default", "boss"]
+      "allowedEnemyTypes": [
+        "default",
+        "scavenger",
+        "red_collector",
+        "boss"
+      ]
     }
   ],
   "tuningTargets": {
-    "averageRooms": {"min": 7, "max": 8},
-    "averageEnemies": {"min": 4, "max": 6},
-    "combatRoomPercent": {"min": 50, "max": 55},
-    "optionalBranchPercent": {"min": 40, "max": 60},
+    "averageRooms": {
+      "min": 12,
+      "max": 14
+    },
+    "averageEnemies": {
+      "min": 7,
+      "max": 13
+    },
+    "combatRoomPercent": {
+      "min": 40,
+      "max": 65
+    },
+    "optionalBranchPercent": {
+      "min": 40,
+      "max": 60
+    },
     "maxConsecutiveSafeRooms": 4
   }
 }

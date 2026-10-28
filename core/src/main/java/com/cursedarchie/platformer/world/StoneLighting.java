@@ -51,8 +51,8 @@ final class StoneLighting {
     private static int cell(Iterable<RoomInstance> rooms, int worldX, int worldY) {
         boolean inside = false;
         for (RoomInstance room : rooms) {
-            int x = worldX - Math.round(room.getWorldX() * TileMetrics.CELLS_PER_UNIT);
-            int y = worldY - Math.round(room.getWorldY() * TileMetrics.CELLS_PER_UNIT);
+            int x = worldX - Math.round(room.getWorldX());
+            int y = worldY - Math.round(room.getWorldY());
             if (x < 0 || y < 0 || x >= room.getTileColumns() || y >= room.getTileRows()) continue;
             inside = true;
             Tile[][] tiles = room.getTiles();
