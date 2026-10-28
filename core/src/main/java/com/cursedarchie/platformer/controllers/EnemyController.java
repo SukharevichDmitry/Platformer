@@ -38,6 +38,14 @@ public class EnemyController {
                 enemy = EnemyFactory.createBoss(world, worldPos);
                 enemy.setBrain(new SimpleEnemyBrain(gameWorld));
                 break;
+            case "scavenger":
+                enemy = EnemyFactory.createScavenger(world, worldPos);
+                enemy.setBrain(new SimpleEnemyBrain(gameWorld));
+                break;
+            case "red_collector":
+                enemy = EnemyFactory.createRedCollector(world, worldPos);
+                enemy.setBrain(new SimpleEnemyBrain(gameWorld));
+                break;
         }
 
         if (enemy != null) {

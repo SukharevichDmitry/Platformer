@@ -21,22 +21,24 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         CameraBoundaryTest test = new CameraBoundaryTest();
         new Lwjgl3Application(test, config);
         if (!test.passed) throw new AssertionError("Camera boundary test did not complete");
-        System.out.println("CAMERA BOUNDARY PASSED: start and forest stop one block past all four edges");
+        System.out.println("CAMERA BOUNDARY PASSED: raised opening floor framing and bounded location edges");
     }
 
     @Override public void create() {
         world = new GameWorld();
         renderer = new WorldRenderer(world, false);
         renderer.setSize(640, 480);
-        checkRightEdge("start", 2);
+        checkRightEdge("start", 3);
         checkRightEdge("forest", 0);
-        checkRightEdge("start", 2);
+        checkRightEdge("start", 3);
         checkLeftEdge("start", 0);
         checkLeftEdge("forest", 0);
         checkLeftEdge("start", 0);
         checkVerticalEdges("start");
+        checkVerticalEdges("ruins");
         checkVerticalEdges("forest");
         checkVerticalEdges("start");
+        checkWideAspect();
         passed = true;
         Gdx.app.exit();
     }
@@ -48,17 +50,28 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
             levelRight = Math.max(levelRight, room.getWorldX() + room.getWidth());
         }
         float roomLeft = world.getCurrentRoom().getWorldX();
-        world.getHero().getBody().setTransform(roomLeft + 5f, 2, 0);
+        world.getHero().getBody().setTransform(roomLeft + 10f, 4, 0);
         renderSettled();
-        if (Math.abs(renderer.getVisibleRightEdge() - (roomLeft + 10f)) > 0.001f) {
+        float expectedFollowEdge = roomLeft + 10f + 14f * (640f / 480f) / 2f;
+        if (Math.abs(renderer.getVisibleRightEdge() - expectedFollowEdge) > 0.001f) {
             throw new AssertionError(location + " camera stopped following before the boundary");
         }
-        world.getHero().getBody().setTransform(levelRight - 0.1f, 2, 0);
+        world.getHero().getBody().setTransform(levelRight - 0.2f, 4, 0);
         renderSettled();
-        assertRightEdge(location, levelRight + 1f);
-        world.getHero().getBody().setTransform(levelRight + 3f, 2, 0);
+        assertRightEdge(location, levelRight + 2f);
+        world.getHero().getBody().setTransform(levelRight + 6f, 4, 0);
         renderSettled();
-        assertRightEdge(location, levelRight + 1f);
+        assertRightEdge(location, levelRight + 2f);
+    }
+
+    private void checkWideAspect() {
+        renderer.setSize(1920, 1080);
+        renderer.render(0f);
+        float worldWidth = renderer.getVisibleRightEdge() - renderer.getVisibleLeftEdge();
+        float worldHeight = renderer.getVisibleTopEdge() - renderer.getVisibleBottomEdge();
+        if (Math.abs(worldWidth / worldHeight - 16f / 9f) > 0.001f)
+            throw new AssertionError("World pixels stretch at 1920x1080");
+        renderer.setSize(640, 480);
     }
 
     private void checkLeftEdge(String location, int roomId) {
@@ -67,15 +80,15 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         for (RoomInstance room : world.getLocation().getRooms()) {
             levelLeft = Math.min(levelLeft, room.getWorldX());
         }
-        world.getHero().getBody().setTransform(levelLeft + 5f, 2, 0);
+        world.getHero().getBody().setTransform(levelLeft + 14f * (640f / 480f) / 2f, 4, 0);
         renderSettled();
         assertLeftEdge(location, levelLeft);
-        world.getHero().getBody().setTransform(levelLeft + 0.1f, 2, 0);
+        world.getHero().getBody().setTransform(levelLeft + 0.2f, 4, 0);
         renderSettled();
-        assertLeftEdge(location, levelLeft - 1f);
-        world.getHero().getBody().setTransform(levelLeft - 3f, 2, 0);
+        assertLeftEdge(location, levelLeft - 2f);
+        world.getHero().getBody().setTransform(levelLeft - 6f, 4, 0);
         renderSettled();
-        assertLeftEdge(location, levelLeft - 1f);
+        assertLeftEdge(location, levelLeft - 2f);
     }
 
     private void assertLeftEdge(String location, float expectedLeft) {
@@ -100,36 +113,37 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         }
         float middle = (bottom + top) / 2f;
         moveHeroVertically(middle);
-        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), middle - 3.5f, "following");
+        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), middle - 7f, "following");
         float beforeJump = renderer.getVisibleBottomEdge();
-        world.getHero().getBody().setTransform(5, middle + 2f, 0);
+        world.getHero().getBody().setTransform(10, middle + 4f, 0);
         renderer.render(GameWorld.FIXED_STEP);
         float firstJumpFrame = renderer.getVisibleBottomEdge();
-        if (firstJumpFrame <= beforeJump || firstJumpFrame >= beforeJump + 1f)
+        if (firstJumpFrame <= beforeJump || firstJumpFrame >= beforeJump + 2f)
             throw new AssertionError(location + " vertical camera did not ease toward a jump");
         float atSixty = followForOneSecond(middle, 60);
         float atThirty = followForOneSecond(middle, 30);
         float atOneTwenty = followForOneSecond(middle, 120);
         if (Math.abs(atSixty - atThirty) > 0.001f || Math.abs(atSixty - atOneTwenty) > 0.001f)
             throw new AssertionError(location + " vertical smoothing depends on render FPS");
-        moveHeroVertically(bottom + 0.1f);
-        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), bottom - 1f, "bottom");
-        moveHeroVertically(bottom - 3f);
-        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), bottom - 1f, "past bottom");
-        moveHeroVertically(top - 0.1f);
-        assertVerticalEdge(location, renderer.getVisibleTopEdge(), top + 1f, "top");
-        moveHeroVertically(top + 3f);
-        assertVerticalEdge(location, renderer.getVisibleTopEdge(), top + 1f, "past top");
+        moveHeroVertically(bottom + 0.2f);
+        float expectedBottom = bottom - ("start".equals(location) || "ruins".equals(location) ? .6f : 2f);
+        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), expectedBottom, "bottom");
+        moveHeroVertically(bottom - 6f);
+        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), expectedBottom, "past bottom");
+        moveHeroVertically(top - 0.2f);
+        assertVerticalEdge(location, renderer.getVisibleTopEdge(), top + 2f, "top");
+        moveHeroVertically(top + 6f);
+        assertVerticalEdge(location, renderer.getVisibleTopEdge(), top + 2f, "past top");
     }
 
     private void moveHeroVertically(float y) {
-        world.getHero().getBody().setTransform(5, y, 0);
+        world.getHero().getBody().setTransform(10, y, 0);
         renderSettled();
     }
 
     private float followForOneSecond(float middle, int fps) {
         moveHeroVertically(middle);
-        world.getHero().getBody().setTransform(5, middle + 2f, 0);
+        world.getHero().getBody().setTransform(10, middle + 4f, 0);
         for (int i = 0; i < fps; i++) renderer.render(1f / fps);
         return renderer.getVisibleBottomEdge();
     }

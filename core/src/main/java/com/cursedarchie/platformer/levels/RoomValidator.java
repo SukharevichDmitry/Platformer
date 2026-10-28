@@ -4,6 +4,7 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
+import com.cursedarchie.platformer.run.ItemCatalog;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,6 +16,8 @@ public final class RoomValidator {
     private static final int MAX_ROOMS = 256;
     private static final int MAX_DIMENSION = 256;
     private static final int MAX_SPAWNS = 256;
+    private static final int MAX_INTERACTIONS = 32;
+    private static final double INTERACTION_HALF_WIDTH = 0.4;
     private static final long MAX_FILE_BYTES = 1024 * 1024;
 
     private RoomValidator() { }
@@ -38,6 +41,7 @@ public final class RoomValidator {
                 throw invalid(roomFile, "width and height must be between 1 and " + MAX_DIMENSION);
             checkTiles(room.get("tileRows"), roomFile, width, height);
             checkSpawns(room.get("enemySpawns"), roomFile, width, height);
+            checkInteractions(room.get("interactions"), room.get("tileRows"), roomFile, width, height);
             if (room.get("neighbors") == null || !room.get("neighbors").isObject())
                 throw invalid(roomFile, "neighbors must be an object");
             rooms.put(id, room);
@@ -108,6 +112,54 @@ public final class RoomValidator {
         }
     }
 
+    private static void checkInteractions(JsonValue interactions, JsonValue tileRows,
+                                          FileHandle file, int width, int height) {
+        if (interactions == null) return;
+        if (!interactions.isArray() || interactions.size > MAX_INTERACTIONS)
+            throw invalid(file, "interactions must be an array of at most " + MAX_INTERACTIONS);
+        Set<String> ids = new HashSet<>();
+        int index = 0;
+        for (JsonValue interaction : interactions) {
+            String field = "interactions[" + index + "]";
+            if (!interaction.isObject()) throw invalid(file, field + " must be an object");
+            String id = string(interaction.get("id"), file, field + ".id");
+            if (!id.matches("[A-Za-z0-9_-]{1,64}") || !ids.add(id))
+                throw invalid(file, field + ".id is invalid or duplicated");
+            String kind = string(interaction.get("kind"), file, field + ".kind");
+            if (!"evidence".equals(kind) && !"pickup".equals(kind) && !"npc".equals(kind))
+                throw invalid(file, field + ".kind is unsupported");
+            String visualId = string(interaction.get("visualId"), file, field + ".visualId");
+            if (!("evidence".equals(kind) && "sealed_note".equals(visualId)) &&
+                !("pickup".equals(kind) && "field_bandage".equals(visualId)) &&
+                !("pickup".equals(kind) && "sealed_note".equals(visualId)) &&
+                !("npc".equals(kind) && ("keeper".equals(visualId) || "warden".equals(visualId))))
+                throw invalid(file, field + ".visualId is unsupported for " + kind);
+            JsonValue itemId = interaction.get("itemId");
+            if ("pickup".equals(kind)) {
+                if (!ItemCatalog.supports(string(itemId, file, field + ".itemId")) ||
+                    !visualId.equals(itemId.asString()))
+                    throw invalid(file, field + ".itemId is unsupported");
+            } else if (itemId != null) throw invalid(file, field + ".itemId requires a pickup");
+            String eventId = string(interaction.get("eventId"), file, field + ".eventId");
+            if (!eventId.matches("[A-Za-z0-9_-]{1,64}"))
+                throw invalid(file, field + ".eventId is invalid");
+            JsonValue position = interaction.get("position");
+            if (position == null || !position.isObject())
+                throw invalid(file, field + ".position must be an object");
+            double x = number(position.get("x"), file, field + ".position.x");
+            double y = number(position.get("y"), file, field + ".position.y");
+            if (x < 0 || x >= width || y < 0 || y >= height ||
+                tileRows.get(height - 1 - (int) y).asString().charAt((int) x) != ' ')
+                throw invalid(file, field + " must be placed in empty room space");
+            String row = tileRows.get(height - 1 - (int) y).asString();
+            if (x - INTERACTION_HALF_WIDTH < 0 || x + INTERACTION_HALF_WIDTH >= width ||
+                row.charAt((int) (x - INTERACTION_HALF_WIDTH)) != ' ' ||
+                row.charAt((int) (x + INTERACTION_HALF_WIDTH)) != ' ')
+                throw invalid(file, field + " needs clearance from walls for its sprite");
+            index++;
+        }
+    }
+
     private static void checkTransition(JsonValue transition, FileHandle file, FileHandle directory,
                                         Set<Integer> ownIds, String field) {
         if (transition == null || transition.isNull()) return;
@@ -116,13 +168,13 @@ public final class RoomValidator {
         if (!location.matches("[A-Za-z0-9_-]{1,64}"))
             throw invalid(file, field + ".location has an invalid name");
         int id = integer(transition.get("id"), file, field + ".id");
-        if (id < 0 || id >= MAX_ROOMS) throw invalid(file, field + ".id is out of range");
+        if (id < -1 || id >= MAX_ROOMS) throw invalid(file, field + ".id is out of range");
         FileHandle generatedProfile = directory.parent().parent().child("generation").child(location + ".json");
         if (generatedProfile.exists()) {
             GenerationProfile profile = GenerationProfile.load(generatedProfile);
             RoomTemplateCatalog.load(generatedProfile.parent().child(location + ".templates.json"), profile);
-            if (!profile.locationId.equals(location) || id != 0)
-                throw invalid(file, field + " must target generated location " + location + " entry 0");
+            if (!profile.locationId.equals(location) || (id != 0 && id != -1))
+                throw invalid(file, field + " must target generated location " + location + " entry 0 or exit -1");
             return;
         }
         FileHandle target = directory.parent().child(location);

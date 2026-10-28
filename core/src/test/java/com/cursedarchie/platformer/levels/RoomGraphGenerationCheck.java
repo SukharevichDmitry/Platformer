@@ -24,8 +24,8 @@ public final class RoomGraphGenerationCheck {
         Set<Integer> roomCounts = new HashSet<>();
         Set<String> layouts = new HashSet<>();
         boolean sawBranch = false;
-        boolean sawSideBranch = false;
-        for (long seed = 0; seed < 1000; seed++) {
+        for (long sample = 0; sample < 1000; sample++) {
+            long seed = sample * 0x9E3779B97F4A7C15L;
             GeneratedRoomGraph graph = generator.generate(profile, catalog, seed);
             GeneratedRoomGraph repeated = generator.generate(profile, catalog, seed);
             if (graph.seed != seed || !graph.topologySignature().equals(repeated.topologySignature()))
@@ -34,14 +34,14 @@ public final class RoomGraphGenerationCheck {
             roomCounts.add(graph.rooms.size());
             layouts.add(graph.topologySignature());
             if (graph.rooms.size() > graph.mainRoute.size()) sawBranch = true;
-            if (graph.rooms.size() > graph.mainRoute.size() + 1) sawSideBranch = true;
         }
         for (long seed : new long[]{-1L, Long.MIN_VALUE, Long.MAX_VALUE})
             checkGraph(generator.generate(profile, catalog, seed), profile, catalog);
-        if (!roomCounts.equals(new HashSet<>(Arrays.asList(5, 6, 7, 8, 9, 10))) ||
-            layouts.size() < 20 || !sawBranch || !sawSideBranch)
-            throw new AssertionError("Seeds did not explore the permitted counts, branches, and template choices");
-        System.out.println("ROOM GRAPH PASSED: 1000 reproducible seeds, 5-10 rooms, quotas, story order and connectivity");
+        if (!roomCounts.equals(new HashSet<>(Arrays.asList(11, 12, 13, 14))) ||
+            layouts.size() < 20 || !sawBranch)
+            throw new AssertionError("Seeds did not explore the permitted counts, branches, and template choices: " +
+                roomCounts + ", layouts=" + layouts.size() + ", branch=" + sawBranch);
+        System.out.println("ROOM GRAPH PASSED: 1000 varied seeds, 11-14 rooms, quotas, story order and connectivity");
     }
 
     private static void checkGraph(GeneratedRoomGraph graph, GenerationProfile profile, RoomTemplateCatalog catalog) {
@@ -89,11 +89,9 @@ public final class RoomGraphGenerationCheck {
         }
         if (!anchors.equals(catalog.requiredRoute))
             throw new AssertionError("Required story order changed: " + anchors);
-        int bellId = -1;
-        for (int id : graph.mainRoute)
-            if (graph.room(id).templateId.equals("bell_hall")) bellId = id;
-        if (bellId < 0 || !graph.room(graph.room(bellId).neighbors.get("top")).templateId.equals("watchtower"))
-            throw new AssertionError("Generated ruins lack the reachable upper room");
+        for (GeneratedRoomGraph.RoomNode room : graph.rooms)
+            if (room.neighbors.containsKey("top") || room.neighbors.containsKey("bottom"))
+                throw new AssertionError("Open-air ruins gained a vertical room stack");
         for (int i = graph.mainRoute.size(); i < graph.rooms.size(); i++) {
             GeneratedRoomGraph.RoomNode branch = graph.room(i);
             if (!branch.role.equals("optional") || branch.neighbors.size() != 1)

@@ -1,6 +1,5 @@
 package com.cursedarchie.platformer.controllers;
 
-import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
 import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MotionIdleState;
@@ -9,15 +8,20 @@ import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.world.GameWorld;
 import com.cursedarchie.platformer.levels.VerticalConnection;
+import com.cursedarchie.platformer.run.Inventory;
+import com.cursedarchie.platformer.controllers.ControlBindings.Action;
 
 /** Collects input events and applies them only during GameWorld's fixed simulation steps. */
 public class HeroController implements InputProcessor {
     private final Hero hero;
     private final GameWorld gameWorld;
-    private static final float CLIMB_SPEED = 4.5f;
-    private static final float CLIMB_HORIZONTAL_SPEED = 4f;
+    private static final float CLIMB_SPEED = 9f;
+    private static final float CLIMB_HORIZONTAL_SPEED = 8f;
     private static final float ATTACK_BUFFER_SECONDS = 0.12f;
     private static final float JUMP_BUFFER_SECONDS = 0.1f;
+    private static final float DASH_SECONDS = 0.15f;
+    private static final float DASH_SPEED = 26f;
+    private static final float DASH_COOLDOWN = 0.8f;
     private boolean leftHeld;
     private boolean rightHeld;
     private boolean upHeld;
@@ -25,62 +29,56 @@ public class HeroController implements InputProcessor {
     private boolean climbing;
     private boolean climbRegrabBlocked;
     private boolean attackHeld;
+    private boolean interactHeld;
+    private boolean interactQueued;
+    private int pocketQueued = -1;
+    private ControlBindings bindings = new ControlBindings(null);
     private float attackBufferRemaining;
     private boolean jumpHeld;
     private float jumpBufferRemaining;
+    private boolean dashQueued;
+    private boolean dashHeld;
+    private float dashRemaining;
+    private float dashCooldownRemaining;
     public HeroController(GameWorld gameWorld) {
         this.gameWorld = gameWorld;
         this.hero = gameWorld.getHero();
     }
 
+    public void setBindings(ControlBindings bindings) { this.bindings = bindings; clearInput(); }
+
     @Override
     public boolean keyDown(int keycode) {
-        switch (keycode) {
-            case Input.Keys.LEFT:
-                leftHeld = true;
-                break;
-            case Input.Keys.RIGHT:
-                rightHeld = true;
-                break;
-            case Input.Keys.UP:
-                upHeld = true;
-                break;
-            case Input.Keys.DOWN:
-                downHeld = true;
-                break;
-            case Input.Keys.SPACE:
-                if (!jumpHeld) jumpBufferRemaining = JUMP_BUFFER_SECONDS;
-                jumpHeld = true;
-                break;
-            case Input.Keys.X:
-                if (!attackHeld) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
-                attackHeld = true;
-                break;
-        }
+        if (bindings.matches(Action.LEFT, keycode)) leftHeld = true;
+        else if (bindings.matches(Action.RIGHT, keycode)) rightHeld = true;
+        else if (bindings.matches(Action.UP, keycode)) upHeld = true;
+        else if (bindings.matches(Action.DOWN, keycode)) downHeld = true;
+        else if (bindings.matches(Action.JUMP, keycode)) {
+            if (!jumpHeld) jumpBufferRemaining = JUMP_BUFFER_SECONDS;
+            jumpHeld = true;
+        } else if (bindings.matches(Action.ATTACK, keycode)) {
+            if (!attackHeld) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
+            attackHeld = true;
+        } else if (bindings.matches(Action.DASH, keycode)) {
+            if (!dashHeld) dashQueued = true;
+            dashHeld = true;
+        } else if (bindings.matches(Action.INTERACT, keycode)) {
+            if (!interactHeld) interactQueued = true;
+            interactHeld = true;
+        } else if (bindings.matches(Action.POCKET_1, keycode)) pocketQueued = 0;
+        else if (bindings.matches(Action.POCKET_2, keycode)) pocketQueued = 1;
         return true;
     }
     @Override
     public boolean keyUp(int keycode) {
-        switch (keycode) {
-            case Input.Keys.LEFT:
-                leftHeld = false;
-                break;
-            case Input.Keys.RIGHT:
-                rightHeld = false;
-                break;
-            case Input.Keys.UP:
-                upHeld = false;
-                break;
-            case Input.Keys.DOWN:
-                downHeld = false;
-                break;
-            case Input.Keys.SPACE:
-                jumpHeld = false;
-                break;
-            case Input.Keys.X:
-                attackHeld = false;
-                break;
-        }
+        if (bindings.matches(Action.LEFT, keycode)) leftHeld = false;
+        else if (bindings.matches(Action.RIGHT, keycode)) rightHeld = false;
+        else if (bindings.matches(Action.UP, keycode)) upHeld = false;
+        else if (bindings.matches(Action.DOWN, keycode)) downHeld = false;
+        else if (bindings.matches(Action.JUMP, keycode)) jumpHeld = false;
+        else if (bindings.matches(Action.ATTACK, keycode)) attackHeld = false;
+        else if (bindings.matches(Action.DASH, keycode)) dashHeld = false;
+        else if (bindings.matches(Action.INTERACT, keycode)) interactHeld = false;
         return true;
     }
     @Override
@@ -117,6 +115,7 @@ public class HeroController implements InputProcessor {
             return;
         }
 
+        dashCooldownRemaining = Math.max(0f, dashCooldownRemaining - delta);
         processInput(delta);
 
         checkHeroPositionForDeathFall();
@@ -134,8 +133,15 @@ public class HeroController implements InputProcessor {
         climbRegrabBlocked = false;
         jumpHeld = false;
         jumpBufferRemaining = 0f;
+        dashQueued = false;
+        dashHeld = false;
+        dashRemaining = 0f;
+        if (hero.getBody() != null) hero.getBody().setGravityScale(1f);
         attackHeld = false;
         attackBufferRemaining = 0f;
+        interactHeld = false;
+        interactQueued = false;
+        pocketQueued = -1;
     }
 
 
@@ -146,11 +152,32 @@ public class HeroController implements InputProcessor {
     }
 
     private void processInput(float delta) {
+        if (interactQueued) {
+            gameWorld.interact();
+            interactQueued = false;
+        }
+        if (pocketQueued >= 0) {
+            gameWorld.useFieldBandage(Inventory.CAPACITY + pocketQueued);
+            pocketQueued = -1;
+        }
         handleMovementInput(delta);
         handleCombatInput(delta);
     }
 
     private void handleMovementInput(float delta) {
+        if (dashQueued && gameWorld.hasEchoDash() && dashCooldownRemaining <= 0f) {
+            dashRemaining = DASH_SECONDS;
+            dashCooldownRemaining = DASH_COOLDOWN;
+            climbing = false;
+        }
+        dashQueued = false;
+        if (dashRemaining > 0f) {
+            dashRemaining = Math.max(0f, dashRemaining - delta);
+            hero.getBody().setGravityScale(0f);
+            hero.getBody().setLinearVelocity(hero.isFacingLeft() ? -DASH_SPEED : DASH_SPEED, 0f);
+            if (dashRemaining == 0f) hero.getBody().setGravityScale(1f);
+            return;
+        }
         float direction = 0f;
         boolean isJumpState = hero.getMotionStateMachine().getCurrentState() instanceof JumpState;
 
@@ -185,7 +212,7 @@ public class HeroController implements InputProcessor {
             if (upHeld != downHeld) {
                 float targetY = upHeld ? shaft.topY : shaft.bottomY;
                 float distance = targetY - hero.getPosition().y;
-                if (Math.abs(distance) >= 0.02f)
+                if (Math.abs(distance) >= 0.04f)
                     climbY = Math.copySign(Math.min(CLIMB_SPEED, Math.abs(distance) / delta), distance);
             }
             // Releasing Up/Down grips the shaft; Left/Right can traverse or leave it.

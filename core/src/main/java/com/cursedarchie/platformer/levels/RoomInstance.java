@@ -6,6 +6,7 @@ import com.cursedarchie.platformer.levels.wrappers.LocationTransition;
 import com.cursedarchie.platformer.levels.wrappers.RoomData;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
+import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 import com.cursedarchie.platformer.tiles.TileFactory;
 import com.cursedarchie.platformer.tiles.TileMetrics;
 
@@ -26,6 +27,7 @@ public class RoomInstance {
     public Integer getUpNeighbor() { return data.neighbors.up; }
     public Integer getDownNeighbor() { return data.neighbors.down; }
     public String getLocation() { return data.location; }
+    public String getSceneryTheme() { return data.sceneryTheme; }
     public LocationTransition getLocationExit() { return data.locationExit; }
     public LocationTransition getLocationEntry() { return data.locationEntry; }
 
@@ -68,6 +70,7 @@ public class RoomInstance {
 
 
     public Array<EnemySpawnData> getSpawns() { return data.enemySpawns; }
+    public Array<InteractionData> getInteractions() { return data.interactions; }
     public Vector2 getWorldSpawnPosition(EnemySpawnData spawn) {
         return new Vector2(
             getWorldX() + spawn.position.x,
@@ -75,8 +78,8 @@ public class RoomInstance {
         );
     }
     public Tile[][] getTiles() { return tiles; }
-    public int getTileColumns() { return data.width * TileMetrics.CELLS_PER_UNIT; }
-    public int getTileRows() { return data.height * TileMetrics.CELLS_PER_UNIT; }
+    public int getTileColumns() { return data.width; }
+    public int getTileRows() { return data.height; }
 
     public void removeTile(int x, int y) { tiles[x][y] = null; }
 
@@ -92,22 +95,9 @@ public class RoomInstance {
 
                 char c = row.charAt(x);
 
-                int baseX = x * TileMetrics.CELLS_PER_UNIT;
-                int baseY = (data.height - y - 1) * TileMetrics.CELLS_PER_UNIT;
-                for (int fineY = 0; fineY < TileMetrics.CELLS_PER_UNIT; fineY++) {
-                    for (int fineX = 0; fineX < TileMetrics.CELLS_PER_UNIT; fineX++) {
-                        char fineTile = c;
-                        // Partial tiles occupy one row of the finer grid;
-                        // wood remains flush with the old one-way top surface.
-                        if (c == '_') fineTile = fineY == 0 ? '_' : ' ';
-                        if (c == '=') fineTile = fineY == 1 ? '=' : ' ';
-                        if (fineTile == ' ') continue;
-                        int cellX = baseX + fineX;
-                        int cellY = baseY + fineY;
-                        tiles[cellX][cellY] = TileFactory.create(fineTile,
-                            new Vector2(cellX * TileMetrics.SIZE, cellY * TileMetrics.SIZE));
-                    }
-                }
+                if (c == ' ') continue;
+                int cellY = data.height - y - 1;
+                tiles[x][cellY] = TileFactory.create(c, new Vector2(x, cellY));
             }
         }
     }

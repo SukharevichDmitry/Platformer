@@ -22,6 +22,13 @@ final class GeneratedLocationFactory {
         if (!returnRoom.exists())
             throw new IllegalArgumentException(profileFile.path() + ": returnTransition references missing " +
                 profile.returnLocation + "/" + profile.returnRoomId);
+        if (profile.forwardLocation != null) {
+            FileHandle forwardRoom = profileFile.parent().parent().child("levels")
+                .child(profile.forwardLocation).child(profile.forwardRoomId + ".json");
+            if (!forwardRoom.exists())
+                throw new IllegalArgumentException(profileFile.path() + ": forwardTransition references missing " +
+                    profile.forwardLocation + "/" + profile.forwardRoomId);
+        }
         long seed = restored == null ? requestedSeed : restored.seed;
         try {
             return generate(profile, catalog, seed, restored);
@@ -43,6 +50,8 @@ final class GeneratedLocationFactory {
         GeneratedRoomTiles tiles = new RoomTileGenerator().generate(layout, catalog);
         int entryRoomId = entryRoomId(layout);
         tiles = openExteriorEntry(tiles, entryRoomId);
+        int exitRoomId = graph.mainRoute.get(graph.mainRoute.size() - 1);
+        if (profile.forwardLocation != null) tiles = openExteriorExit(tiles, exitRoomId);
         RoomRouteReachability.validate(tiles);
         GeneratedRoomEncounters encounters = new RoomEncounterGenerator().generate(tiles, catalog, profile);
         GeneratedRunSave run = describeRun(profile, catalog, graph, layout, restored);
@@ -53,6 +62,7 @@ final class GeneratedLocationFactory {
             RoomData data = new RoomData();
             data.location = profile.locationId;
             data.id = placed.id;
+            data.sceneryTheme = sceneryTheme(placed.templateId, placed.id);
             data.width = placed.width;
             data.height = placed.height;
             data.worldX = placed.worldX;
@@ -75,6 +85,12 @@ final class GeneratedLocationFactory {
                 transition.id = profile.returnRoomId;
                 data.locationEntry = transition;
             }
+            if (profile.forwardLocation != null && placed.id == exitRoomId) {
+                LocationTransition transition = new LocationTransition();
+                transition.location = profile.forwardLocation;
+                transition.id = profile.forwardRoomId;
+                data.locationExit = transition;
+            }
             RoomInstance room = new RoomInstance(data);
             room.buildTiles();
             RoomFineDecorator.decorate(room, catalog.templates.get(placed.templateId));
@@ -88,8 +104,19 @@ final class GeneratedLocationFactory {
                 join.fromSide.equals("top") ? from : to,
                 join.fromSide.equals("top") ? to : from));
         }
-        location.setGeneration(run, entryRoomId);
+        location.setGeneration(run, entryRoomId, exitRoomId);
         return location;
+    }
+
+    private static String sceneryTheme(String templateId, int roomId) {
+        switch (templateId) {
+            case "red_registry": case "bell_hall": case "guarded_hall": return "red";
+            case "story_shrine": case "ink_house": return "ink";
+            case "ruined_workshop": return "mechanical";
+            case "entry": return "shelter";
+            default:
+                return new String[]{"ink", "mechanical", "red"}[Math.floorMod(roomId, 3)];
+        }
     }
 
     private GeneratedRunSave describeRun(GenerationProfile profile, RoomTemplateCatalog catalog,
@@ -132,13 +159,27 @@ final class GeneratedLocationFactory {
         List<List<String>> rooms = new ArrayList<>(tiles.rooms);
         PlacedRoomGraph.PlacedRoom room = tiles.layout.room(entryRoomId);
         List<String> rows = new ArrayList<>(tiles.roomRows(entryRoomId));
-        for (int y = 1; y <= 2; y++) {
+        for (int y = 2; y <= 5; y++) {
             int index = room.height - 1 - y;
             char[] row = rows.get(index).toCharArray();
             row[0] = ' ';
             rows.set(index, new String(row));
         }
         rooms.set(entryRoomId, rows);
+        return new GeneratedRoomTiles(tiles.layout, rooms);
+    }
+
+    static GeneratedRoomTiles openExteriorExit(GeneratedRoomTiles tiles, int exitRoomId) {
+        List<List<String>> rooms = new ArrayList<>(tiles.rooms);
+        PlacedRoomGraph.PlacedRoom room = tiles.layout.room(exitRoomId);
+        List<String> rows = new ArrayList<>(tiles.roomRows(exitRoomId));
+        for (int y = 2; y <= 5; y++) {
+            int index = room.height - 1 - y;
+            char[] row = rows.get(index).toCharArray();
+            row[room.width - 1] = ' ';
+            rows.set(index, new String(row));
+        }
+        rooms.set(exitRoomId, rows);
         return new GeneratedRoomTiles(tiles.layout, rooms);
     }
 }

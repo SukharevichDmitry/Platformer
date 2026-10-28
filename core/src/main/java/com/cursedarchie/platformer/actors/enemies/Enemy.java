@@ -49,6 +49,10 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private boolean active = true;
     private int roomId;
     private String persistentSpawnId;
+    private String archetypeId = "default";
+
+    public String getArchetypeId() { return archetypeId; }
+    public void setArchetypeId(String archetypeId) { this.archetypeId = archetypeId; }
 
     /*===========================================CONSTRUCTOR=======================================================*/
 

@@ -181,7 +181,7 @@ public final class RoomLayoutPlacer {
                                           RoomShape a, RoomShape b,
                                           RoomTemplateCatalog.Door aDoor,
                                           RoomTemplateCatalog.Door bDoor) {
-        if (aDoor.offset != 1 || bDoor.offset != 1)
+        if (aDoor.offset != 2 || bDoor.offset != 2)
             throw invalid(graph, "rooms " + aId + " and " + bId + " have different walking floor height");
         int aX = aDoor.side.equals("left") ? 0 : a.width - 1;
         int bX = bDoor.side.equals("left") ? 0 : b.width - 1;

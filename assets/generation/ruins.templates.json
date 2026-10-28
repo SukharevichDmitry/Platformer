@@ -1,18 +1,26 @@
 {
   "locationId": "ruins",
-  "requiredRoute": ["entry", "bell_hall", "story_shrine", "exit_gate"],
-  "routeFillers": ["collapsed_passage", "guarded_hall"],
+  "requiredRoute": [
+    "entry",
+    "red_registry",
+    "bell_hall",
+    "story_shrine",
+    "ink_house",
+    "exit_gate"
+  ],
+  "routeFillers": [
+    "collapsed_passage",
+    "guarded_hall",
+    "ruined_workshop"
+  ],
   "optionalBranches": [
-    {
-      "anchorTemplate": "bell_hall",
-      "anchorSide": "top",
-      "required": true,
-      "templateIds": ["watchtower"]
-    },
     {
       "anchorTemplate": "entry",
       "anchorSide": "left",
-      "templateIds": ["cache", "ambush"]
+      "templateIds": [
+        "cache",
+        "ambush"
+      ]
     }
   ],
   "templates": [
@@ -23,20 +31,77 @@
       "biome": "ruins",
       "encounterRole": "safe",
       "narrativeEventId": "ruins_arrival",
-      "width": 9,
-      "height": 7,
+      "width": 40,
+      "height": 16,
       "tileRows": [
-        "#########",
-        "#       #",
-        "#       #",
-        "#       #",
-        "         ",
-        "         ",
-        "#########"
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "##                                    ##",
+        "##                                    ##",
+        "##                                    ##",
+        "##                                    ##",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "########################################",
+        "########################################"
       ],
       "doors": [
-        {"side": "right", "offset": 1, "span": 2},
-        {"side": "left", "offset": 1, "span": 2}
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
+      ]
+    },
+    {
+      "id": "red_registry",
+      "patternId": "passage",
+      "role": "landmark",
+      "biome": "ruins",
+      "encounterRole": "safe",
+      "narrativeEventId": "red_registry",
+      "width": 40,
+      "height": 16,
+      "tileRows": [
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "##      ##########                    ##",
+        "##      ##########                    ##",
+        "##      ##      ##                    ##",
+        "##      ##      ##                    ##",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "########################################",
+        "########################################"
+      ],
+      "doors": [
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
       ]
     },
     {
@@ -46,22 +111,39 @@
       "biome": "ruins",
       "encounterRole": "combat",
       "narrativeEventId": "ruins_bell",
-      "width": 13,
-      "height": 8,
+      "width": 56,
+      "height": 18,
       "tileRows": [
-        "###### ######",
-        "#           #",
-        "#           #",
-        "#           #",
-        "#   #  #    #",
-        "             ",
-        "             ",
-        "#############"
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##      ________                      ________        ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "########################################################",
+        "########################################################"
       ],
       "doors": [
-        {"side": "left", "offset": 1, "span": 2},
-        {"side": "right", "offset": 1, "span": 2},
-        {"side": "top", "offset": 6, "span": 1}
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
       ]
     },
     {
@@ -71,20 +153,79 @@
       "biome": "ruins",
       "encounterRole": "safe",
       "narrativeEventId": "ruins_revelation",
-      "width": 9,
-      "height": 7,
+      "width": 40,
+      "height": 16,
       "tileRows": [
-        "#########",
-        "#       #",
-        "#       #",
-        "#       #",
-        "         ",
-        "         ",
-        "#########"
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "##                                    ##",
+        "##              ________              ##",
+        "##                                    ##",
+        "##                                    ##",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "########################################",
+        "########################################"
       ],
       "doors": [
-        {"side": "left", "offset": 1, "span": 2},
-        {"side": "right", "offset": 1, "span": 2}
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
+      ]
+    },
+    {
+      "id": "ink_house",
+      "patternId": "arena",
+      "role": "story",
+      "biome": "ruins",
+      "encounterRole": "combat",
+      "narrativeEventId": "ink_house",
+      "width": 56,
+      "height": 18,
+      "tileRows": [
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##        ==========                                  ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##                                    __________      ##",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "########################################################",
+        "########################################################"
+      ],
+      "doors": [
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
       ]
     },
     {
@@ -94,40 +235,35 @@
       "biome": "ruins",
       "encounterRole": "boss",
       "narrativeEventId": "ruins_departure",
-      "width": 13,
-      "height": 8,
+      "width": 56,
+      "height": 18,
       "tileRows": [
-        "#############",
-        "#           #",
-        "#           #",
-        "#           #",
-        "#           #",
-        "            #",
-        "            #",
-        "#############"
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##          ============                              ##",
+        "##                                                    ##",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "########################################################",
+        "########################################################"
       ],
-      "doors": [{"side": "left", "offset": 1, "span": 2}]
-    },
-    {
-      "id": "watchtower",
-      "patternId": "arena",
-      "role": "optional",
-      "biome": "ruins",
-      "encounterRole": "combat",
-      "narrativeEventId": null,
-      "width": 13,
-      "height": 8,
-      "tileRows": [
-        "#############",
-        "#           #",
-        "#           #",
-        "#           #",
-        "#  =    B   #",
-        "#           #",
-        "#           #",
-        "###### ######"
-      ],
-      "doors": [{"side": "bottom", "offset": 6, "span": 1}]
+      "doors": [
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
+      ]
     },
     {
       "id": "cache",
@@ -136,18 +272,33 @@
       "biome": "ruins",
       "encounterRole": "safe",
       "narrativeEventId": "ruins_cache",
-      "width": 9,
-      "height": 7,
+      "width": 40,
+      "height": 16,
       "tileRows": [
-        "#########",
-        "#       #",
-        "#       #",
-        "#       #",
-        "#        ",
-        "#        ",
-        "#########"
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "##                                    ##",
+        "##                                    ##",
+        "##                                    ##",
+        "##    ________                        ##",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "########################################",
+        "########################################"
       ],
-      "doors": [{"side": "right", "offset": 1, "span": 2}]
+      "doors": [
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        }
+      ]
     },
     {
       "id": "ambush",
@@ -156,19 +307,35 @@
       "biome": "ruins",
       "encounterRole": "combat",
       "narrativeEventId": null,
-      "width": 13,
-      "height": 8,
+      "width": 56,
+      "height": 18,
       "tileRows": [
-        "#############",
-        "#           #",
-        "#           #",
-        "#           #",
-        "#           #",
-        "#            ",
-        "#            ",
-        "#############"
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##        ==========                                  ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##                                  __________        ##",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "########################################################",
+        "########################################################"
       ],
-      "doors": [{"side": "right", "offset": 1, "span": 2}]
+      "doors": [
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        }
+      ]
     },
     {
       "id": "collapsed_passage",
@@ -177,20 +344,37 @@
       "biome": "ruins",
       "encounterRole": "safe",
       "narrativeEventId": null,
-      "width": 9,
-      "height": 7,
+      "width": 40,
+      "height": 16,
       "tileRows": [
-        "#########",
-        "#       #",
-        "#       #",
-        "#  ##   #",
-        "         ",
-        "         ",
-        "#########"
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "##                                    ##",
+        "##                                    ##",
+        "##              BBBBBBBB              ##",
+        "##              BBBBBBBB              ##",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "########################################",
+        "########################################"
       ],
       "doors": [
-        {"side": "left", "offset": 1, "span": 2},
-        {"side": "right", "offset": 1, "span": 2}
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
       ]
     },
     {
@@ -200,21 +384,79 @@
       "biome": "ruins",
       "encounterRole": "combat",
       "narrativeEventId": null,
-      "width": 13,
-      "height": 8,
+      "width": 56,
+      "height": 18,
       "tileRows": [
-        "#############",
-        "#           #",
-        "#           #",
-        "#           #",
-        "#   ####    #",
-        "             ",
-        "             ",
-        "#############"
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##        ==========                                  ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "##                                                    ##",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "                                                        ",
+        "########################################################",
+        "########################################################"
       ],
       "doors": [
-        {"side": "left", "offset": 1, "span": 2},
-        {"side": "right", "offset": 1, "span": 2}
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
+      ]
+    },
+    {
+      "id": "ruined_workshop",
+      "patternId": "passage",
+      "role": "optional",
+      "biome": "ruins",
+      "encounterRole": "combat",
+      "narrativeEventId": null,
+      "width": 40,
+      "height": 16,
+      "tileRows": [
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "##                                    ##",
+        "##            __________              ##",
+        "##                                    ##",
+        "##                                    ##",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "                                        ",
+        "########################################",
+        "########################################"
+      ],
+      "doors": [
+        {
+          "side": "right",
+          "offset": 2,
+          "span": 4
+        },
+        {
+          "side": "left",
+          "offset": 2,
+          "span": 4
+        }
       ]
     }
   ]

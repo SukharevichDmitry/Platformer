@@ -31,9 +31,8 @@ public final class RoomTileGenerationCheck {
         int addedOneWay = 0;
         int addedBreakable = 0;
         int addedCover = 0;
-        int addedFineStone = 0;
         float nominalJumpRise = Hero.JUMP_SPEED * Hero.JUMP_SPEED / (2f * GameWorld.GRAVITY);
-        if (nominalJumpRise < 3f)
+        if (nominalJumpRise < 6f)
             throw new AssertionError("Jump cannot reach the highest intended template ledges");
         for (long seed = 0; seed < 1000; seed++) {
             PlacedRoomGraph layout = placer.place(graphGenerator.generate(profile, catalog, seed), catalog, profile);
@@ -51,11 +50,25 @@ public final class RoomTileGenerationCheck {
                 data.tileRows = tiles.roomRows(room.id).toArray(new String[0]);
                 RoomInstance physicalRoom = new RoomInstance(data);
                 physicalRoom.buildTiles();
-                if (physicalRoom.getTiles().length != room.width * TileMetrics.CELLS_PER_UNIT ||
-                    physicalRoom.getTiles()[0].length != room.height * TileMetrics.CELLS_PER_UNIT)
-                    throw new AssertionError("Room did not keep its world size on the finer grid");
-                addedFineStone += RoomFineDecorator.decorate(physicalRoom,
-                    catalog.templates.get(room.templateId));
+                if (seed == 0) {
+                    for (int row = 0; row < room.height; row++) {
+                        for (int x = 0; x < room.width; x++) {
+                            char symbol = data.tileRows[row].charAt(x);
+                            Tile cell = physicalRoom.getTiles()[x][room.height - 1 - row];
+                            if ((symbol == ' ') != (cell == null))
+                                throw new AssertionError("One map character did not map to one tile");
+                            if (symbol == '#' && (cell.getBounds().x != x ||
+                                cell.getBounds().width != 1f))
+                                throw new AssertionError("Stone is not aligned to its map cell");
+                        }
+                    }
+                }
+                if (physicalRoom.getTiles().length != room.width ||
+                    physicalRoom.getTiles()[0].length != room.height)
+                    throw new AssertionError("Room tile grid differs from its world dimensions");
+                if (RoomFineDecorator.decorate(physicalRoom,
+                    catalog.templates.get(room.templateId)) != 0)
+                    throw new AssertionError("Open-air room gained a ceiling rib");
                 for (int fineX = 2; fineX < physicalRoom.getTileColumns() - 2; fineX++)
                     for (int fineY = 2; fineY < 6; fineY++)
                         if (physicalRoom.getTiles()[fineX][fineY] != null)
@@ -75,11 +88,11 @@ public final class RoomTileGenerationCheck {
                         if (before.charAt(x) != ' ' ||
                             (after.charAt(x) != '_' && after.charAt(x) != '#' &&
                                 after.charAt(x) != '=' && after.charAt(x) != 'B') ||
-                            y >= room.height - 3)
+                            y >= room.height - 6)
                             throw new AssertionError("Seed " + seed + " changed a protected tile");
                         if (after.charAt(x) == '_' || after.charAt(x) == '=' || after.charAt(x) == 'B') {
                             int ledgeHeight = room.height - 1 - y;
-                            if (ledgeHeight != 3 && ledgeHeight != 5)
+                            if (ledgeHeight != 6 && ledgeHeight != 7 && ledgeHeight != 10)
                                 throw new AssertionError("Generated ledge is outside the reachable tiers");
                             addedPlatforms++;
                             if (after.charAt(x) == '=') addedOneWay++;
@@ -92,7 +105,7 @@ public final class RoomTileGenerationCheck {
             if (seed == 0) {
                 List<List<String>> blocked = new ArrayList<>(tiles.rooms);
                 List<String> rows = new ArrayList<>(blocked.get(0));
-                int rowIndex = layout.room(0).height - 2;
+                int rowIndex = layout.room(0).height - 3;
                 char[] row = rows.get(rowIndex).toCharArray();
                 row[2] = '#';
                 rows.set(rowIndex, new String(row));
@@ -107,10 +120,10 @@ public final class RoomTileGenerationCheck {
         }
         if (!varied || entryLayouts.size() < 8 || storyLayouts.size() < 4 ||
             addedPlatforms == 0 || addedOneWay == 0 ||
-            addedBreakable == 0 || addedCover == 0 || addedFineStone == 0)
+            addedBreakable == 0 || addedCover == 0)
             throw new AssertionError("Seeded rooms lack visible layout variation");
         System.out.println("ROOM TILES PASSED: 1000 seeds, " + entryLayouts.size() +
             " entry and " + storyLayouts.size() +
-            " story layouts, room motifs, half-cell ribs and reachable routes");
+            " story layouts, open-air motifs and reachable routes");
     }
 }

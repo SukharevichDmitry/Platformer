@@ -14,6 +14,7 @@ public final class RoomValidationCheck {
         FileHandle levels = new FileHandle(new File(args[0], "levels"));
         RoomValidator.validateLocation(levels.child("start"));
         RoomValidator.validateLocation(levels.child("forest"));
+        RoomValidator.validateLocation(levels.child("keeper_chamber"));
 
         FileHandle sample = new FileHandle(new File(args[1], "levels/sample"));
         sample.mkdirs();
@@ -29,6 +30,16 @@ public final class RoomValidationCheck {
 
         sample.child("0.json").writeString(VALID_ROOM.replace("\"enemySpawns\":[]", "\"enemySpawns\":[{\"type\":\"default\",\"position\":{\"x\":3,\"y\":0}}]"), false);
         expectError(sample, "0.json", "position is outside the room");
+
+        String interaction = "{\"id\":\"note\",\"kind\":\"evidence\",\"visualId\":\"sealed_note\",\"eventId\":\"note_read\",\"position\":{\"x\":1.5,\"y\":0.5}}";
+        sample.child("0.json").writeString(VALID_ROOM.replace("\"neighbors\":{}", "\"interactions\":[" + interaction + "],\"neighbors\":{}"), false);
+        RoomValidator.validateLocation(sample);
+        sample.child("0.json").writeString(VALID_ROOM.replace("\"neighbors\":{}", "\"interactions\":[" + interaction + "," + interaction + "],\"neighbors\":{}"), false);
+        expectError(sample, "0.json", "id is invalid or duplicated");
+        sample.child("0.json").writeString(VALID_ROOM.replace("\"neighbors\":{}", "\"interactions\":[" + interaction.replace("\"x\":1.5", "\"x\":0") + "],\"neighbors\":{}"), false);
+        expectError(sample, "0.json", "must be placed in empty room space");
+        sample.child("0.json").writeString(VALID_ROOM.replace("\"neighbors\":{}", "\"interactions\":[" + interaction.replace("\"x\":1.5", "\"x\":1.1") + "],\"neighbors\":{}"), false);
+        expectError(sample, "0.json", "needs clearance from walls");
 
         sample.child("0.json").writeString("{\"id\":0,\"tileRows\":[", false);
         expectError(sample, "0.json", "invalid JSON");

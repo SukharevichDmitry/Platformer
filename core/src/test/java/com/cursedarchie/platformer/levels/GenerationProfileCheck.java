@@ -1,66 +1,50 @@
 package com.cursedarchie.platformer.levels;
 
 import com.badlogic.gdx.files.FileHandle;
-
 import java.io.File;
 
-/** Standalone profile check that needs no graphics context. */
+/** Checks the production profile and rejects malformed generation contracts. */
 public final class GenerationProfileCheck {
     public static void main(String[] args) {
         if (args.length != 2) throw new IllegalArgumentException("Expected assets and fixture directories");
         FileHandle sample = new FileHandle(new File(args[0], "generation/ruins.json"));
         GenerationProfile profile = GenerationProfile.load(sample);
-        if (profile.version != 7 || !"ruins".equals(profile.locationId) ||
+        if (profile.version != 10 || !"ruins".equals(profile.locationId) ||
+            !"start".equals(profile.returnLocation) || profile.returnRoomId != 3 ||
+            !"keeper_chamber".equals(profile.forwardLocation) || profile.forwardRoomId != 0 ||
             !"production".equals(profile.status) || profile.tuningTargets == null ||
-            profile.tuningTargets.combatRoomPercent.min != 50 || profile.roomCount.min != 5 ||
-            profile.tuningTargets.maxConsecutiveSafeRooms != 4 ||
-            profile.roomCount.max != 10 || profile.allowedEnemyTypes.size() != 2 ||
-            profile.roomPatterns.size() != 2 || profile.roomPatterns.get(0).width.max != 12 ||
-            profile.roomPatterns.get(0).roomQuota.max != 7 ||
-            profile.difficultyBudget != 12 || profile.roomPatterns.get(1).difficultyBudget != 4)
-            throw new AssertionError("Sample generation profile did not load its constraints");
+            profile.roomCount.min != 11 || profile.roomCount.max != 14 ||
+            profile.roomPatterns.size() != 2 || profile.roomPatterns.get(0).width.min != 40 ||
+            profile.roomPatterns.get(1).width.min != 56 || profile.difficultyBudget != 23)
+            throw new AssertionError("Production ruins profile lost its larger open-air constraints");
 
         FileHandle fixture = new FileHandle(new File(args[1], "generation/profile.json"));
         fixture.parent().mkdirs();
-        String valid = sample.readString();
-        fixture.writeString(valid.replace("\"min\": 5, \"max\": 10", "\"min\": 11, \"max\": 10"), false);
-        expectError(fixture, "roomCount");
-
-        fixture.writeString(valid.replace("\"version\": 7", "\"version\": 0"), false);
-        expectError(fixture, "version");
-
-        fixture.writeString(valid.replace("\"status\": \"production\"", "\"status\": \"released\""), false);
-        expectError(fixture, "status");
-
-        fixture.writeString(valid.replace("\"combatRoomPercent\": {\"min\": 50, \"max\": 55}",
-            "\"combatRoomPercent\": {\"min\": 56, \"max\": 55}"), false);
-        expectError(fixture, "tuningTargets.combatRoomPercent");
-
-        fixture.writeString(valid.replace("\"default\", \"boss\"", "\"default\", \"enemy2\""), false);
-        expectError(fixture, "unsupported type enemy2");
-
-        fixture.writeString(valid.replace("\"id\": \"arena\"", "\"id\": \"passage\""), false);
-        expectError(fixture, "duplicates passage");
-
-        fixture.writeString(valid.replace("\"min\": 0, \"max\": 1", "\"min\": 2, \"max\": 1"), false);
-        expectError(fixture, "enemySpawns");
-
-        fixture.writeString(valid.replace("\"difficultyBudget\": 12", "\"difficultyBudget\": -1"), false);
-        expectError(fixture, "difficultyBudget");
-
-        fixture.writeString(valid.replace("\"difficultyBudget\": 4", "\"difficultyBudget\": 0"), false);
-        expectError(fixture, "difficultyBudget cannot satisfy enemySpawns");
-
-        fixture.writeString(valid.replace("\"returnTransition\": {\"location\": \"start\", \"id\": 2}",
-            "\"returnTransition\": {\"location\": \"ruins\", \"id\": 0}"), false);
-        expectError(fixture, "returnTransition");
-
-        fixture.writeString(valid.replace("\"min\": 2, \"max\": 7", "\"min\": 11, \"max\": 11"), false);
-        expectError(fixture, "roomQuota totals cannot satisfy roomCount");
-
+        String valid = sample.readString().replaceAll("\\s+", "");
+        check(fixture, valid, "\"roomCount\":{\"min\":11,\"max\":14",
+            "\"roomCount\":{\"min\":15,\"max\":14", "roomCount");
+        check(fixture, valid, "\"version\":10", "\"version\":0", "version");
+        check(fixture, valid, "\"forwardTransition\":{\"location\":\"keeper_chamber\",\"id\":0}",
+            "\"forwardTransition\":{\"location\":\"ruins\",\"id\":0}", "forwardTransition");
+        check(fixture, valid, "\"status\":\"production\"", "\"status\":\"released\"", "status");
+        check(fixture, valid, "\"combatRoomPercent\":{\"min\":40,\"max\":65}",
+            "\"combatRoomPercent\":{\"min\":66,\"max\":65}", "tuningTargets.combatRoomPercent");
+        check(fixture, valid, "\"default\",\"scavenger\"", "\"default\",\"enemy2\"", "unsupported type enemy2");
+        check(fixture, valid, "\"id\":\"arena\"", "\"id\":\"passage\"", "duplicates passage");
+        check(fixture, valid, "\"enemySpawns\":{\"min\":0,\"max\":1}",
+            "\"enemySpawns\":{\"min\":2,\"max\":1}", "enemySpawns");
+        check(fixture, valid, "\"difficultyBudget\":23", "\"difficultyBudget\":-1", "difficultyBudget");
+        check(fixture, valid, "\"returnTransition\":{\"location\":\"start\",\"id\":3}",
+            "\"returnTransition\":{\"location\":\"ruins\",\"id\":0}", "returnTransition");
         fixture.writeString("{broken", false);
         expectError(fixture, "invalid JSON");
-        System.out.println("GENERATION PROFILE PASSED: constrained sample and malformed profile diagnostics");
+        System.out.println("GENERATION PROFILE PASSED: expanded ruins and malformed profile diagnostics");
+    }
+
+    private static void check(FileHandle fixture, String valid, String before, String after, String error) {
+        if (!valid.contains(before)) throw new AssertionError("Missing fixture target: " + before);
+        fixture.writeString(valid.replace(before, after), false);
+        expectError(fixture, error);
     }
 
     private static void expectError(FileHandle file, String detail) {
