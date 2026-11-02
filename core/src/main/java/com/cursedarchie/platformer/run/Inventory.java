@@ -21,7 +21,7 @@ public final class Inventory {
 
     public boolean add(String id) {
         if (!ItemCatalog.supports(id)) throw new IllegalArgumentException("Unknown item: " + id);
-        if (ItemCatalog.SEALED_NOTE.equals(id) && count(id) > 0) return false;
+        if (ItemCatalog.maxStack(id) == 1 && count(id) > 0) return false;
         int max = ItemCatalog.maxStack(id);
         for (int i = 0; i < CAPACITY; i++) {
             if (id.equals(ids[i]) && counts[i] < max) { counts[i]++; return true; }
@@ -39,6 +39,24 @@ public final class Inventory {
         return true;
     }
 
+    public String combinationResult(int first, int second) {
+        checkSlot(first);
+        checkSlot(second);
+        if (first == second) return null;
+        return (ItemCatalog.BLADE_SHARD.equals(ids[first]) && ItemCatalog.IMPACT_CORE.equals(ids[second])) ||
+            (ItemCatalog.IMPACT_CORE.equals(ids[first]) && ItemCatalog.BLADE_SHARD.equals(ids[second]))
+            ? ItemCatalog.FUSED_RELIC : null;
+    }
+
+    public boolean combine(int first, int second) {
+        String result = combinationResult(first, second);
+        if (result == null || count(result) != 0) return false;
+        ids[first] = result;
+        counts[first] = 1;
+        removeOne(second);
+        return true;
+    }
+
     public int firstSlot(String id) {
         for (int i = CAPACITY; i < TOTAL_SLOTS; i++) if (id.equals(ids[i])) return i;
         return -1;
@@ -48,13 +66,20 @@ public final class Inventory {
         if (bagSlot < 0 || bagSlot >= CAPACITY || pocket < 0 || pocket >= POCKETS)
             throw new IndexOutOfBoundsException("Bag or pocket slot");
         int pocketSlot = CAPACITY + pocket;
-        if (ids[bagSlot] == null && ids[pocketSlot] == null) return false;
-        String id = ids[bagSlot];
-        int count = counts[bagSlot];
-        ids[bagSlot] = ids[pocketSlot];
-        counts[bagSlot] = counts[pocketSlot];
-        ids[pocketSlot] = id;
-        counts[pocketSlot] = count;
+        return ids[bagSlot] == null ? swapSlots(pocketSlot, bagSlot) :
+            swapSlots(bagSlot, pocketSlot);
+    }
+
+    public boolean swapSlots(int source, int destination) {
+        checkSlot(source);
+        checkSlot(destination);
+        if (source == destination || ids[source] == null) return false;
+        String id = ids[source];
+        int count = counts[source];
+        ids[source] = ids[destination];
+        counts[source] = counts[destination];
+        ids[destination] = id;
+        counts[destination] = count;
         return true;
     }
 

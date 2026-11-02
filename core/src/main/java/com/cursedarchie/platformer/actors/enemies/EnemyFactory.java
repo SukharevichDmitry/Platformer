@@ -43,8 +43,8 @@ public class EnemyFactory {
         cfg.size = DEFAULT.bodySize;
         cfg.maxHealth = 3f;
 
-        cfg.viewDistance = 10f;
-        cfg.viewAngle = 45f;
+        cfg.viewDistance = 5.5f;
+        cfg.viewAngle = 110f;
 
         cfg.damage = 1f;
         cfg.attackDuration = 0.65f;
@@ -65,14 +65,14 @@ public class EnemyFactory {
         EnemyConfig cfg = new EnemyConfig();
         cfg.size = SCAVENGER.bodySize;
         cfg.maxHealth = 2f;
-        cfg.viewDistance = 12f;
-        cfg.viewAngle = 70f;
+        cfg.viewDistance = 6f;
+        cfg.viewAngle = 125f;
         cfg.damage = 1f;
         cfg.attackDuration = .55f;
         cfg.attackStartup = .20f;
         cfg.attackActiveEnd = .31f;
         cfg.attackCooldown = .8f;
-        cfg.velocity = 8.6f;
+        cfg.velocity = 6.2f;
         cfg.attackLeft = new AttackConfig(.7f, .7f, -.86f, 0f);
         cfg.attackRight = new AttackConfig(.7f, .7f, .86f, 0f);
         Enemy enemy = new DefaultEnemy(world, pos, cfg);
@@ -85,8 +85,8 @@ public class EnemyFactory {
         EnemyConfig cfg = new EnemyConfig();
         cfg.size = RED_COLLECTOR.bodySize;
         cfg.maxHealth = 5f;
-        cfg.viewDistance = 10f;
-        cfg.viewAngle = 55f;
+        cfg.viewDistance = 5.5f;
+        cfg.viewAngle = 105f;
         cfg.damage = 1.5f;
         cfg.attackDuration = 1f;
         cfg.attackStartup = .46f;
@@ -106,8 +106,8 @@ public class EnemyFactory {
         cfg.size = BOSS.bodySize;
         cfg.maxHealth = 8f;
 
-        cfg.viewDistance = 8f;
-        cfg.viewAngle = 90f;
+        cfg.viewDistance = 5f;
+        cfg.viewAngle = 115f;
 
         cfg.damage = 2f;
         cfg.attackDuration = 1.1f;

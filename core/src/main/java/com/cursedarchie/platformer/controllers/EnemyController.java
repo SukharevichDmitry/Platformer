@@ -24,6 +24,7 @@ public class EnemyController {
             if (!enemy.isAlive()) continue;
 
             enemy.update(delta);
+            enemy.updateSpecialActions(gameWorld.getHero(), enemies, delta);
         }
     }
 

@@ -12,7 +12,18 @@ public class PatrolState implements EnemyState {
 
     @Override
     public void update (Enemy enemy, float delta) {
-        enemy.moveStop();
+        if (enemy.isStaggered() || !enemy.isGrounded()) return;
+        if (enemy.getPatrolPauseRemaining() > 0f) { enemy.moveStop(); return; }
+        float x = enemy.getPosition().x;
+        float direction = enemy.getPatrolDirection();
+        if ((direction < 0f && x < enemy.getPatrolOriginX() - 1.6f) ||
+            (direction > 0f && x > enemy.getPatrolOriginX() + 1.6f) ||
+            !enemy.hasGroundAhead(direction)) {
+            enemy.reversePatrol();
+            enemy.moveStop();
+            return;
+        }
+        enemy.moveHorizontal(direction * .45f);
     }
 
     @Override

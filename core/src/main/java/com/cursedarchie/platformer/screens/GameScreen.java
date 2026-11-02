@@ -61,7 +61,13 @@
             multiplexer.addProcessor(new InputAdapter() {
                 @Override
                 public boolean keyDown(int keycode) {
-                    if (dialogue.isOpen()) return dialogue.keyDown(keycode);
+                    if (dialogue.isOpen()) {
+                        if (game.getControls().matches(Action.INTERACT, keycode)) {
+                            if (npcInteractHeld) return true;
+                            npcInteractHeld = true;
+                        }
+                        return dialogue.keyDown(keycode);
+                    }
                     if (!bagOpen && game.getControls().matches(Action.INTERACT, keycode)) {
                         if (npcInteractHeld) return true;
                         InteractionData nearby = gameWorld.getNearbyInteraction();
@@ -75,6 +81,7 @@
                     if (game.getControls().matches(Action.BAG, keycode) ||
                         (bagOpen && game.getControls().matches(Action.PAUSE, keycode))) {
                         bagOpen = !bagOpen;
+                        if (!bagOpen) bagOverlay.cancelSelection();
                         pocketTransferHeld[0] = false;
                         pocketTransferHeld[1] = false;
                         gameWorld.getHeroController().clearInput();
@@ -86,15 +93,27 @@
                             return true;
                         }
                         if (bagOverlay.isAbilitiesPage()) return true;
+                        if (game.getControls().matches(Action.INTERACT, keycode)) {
+                            bagOverlay.confirm(gameWorld);
+                            return true;
+                        }
+                        if (keycode == Input.Keys.C) {
+                            bagOverlay.combine(gameWorld);
+                            return true;
+                        }
                         if (game.getControls().matches(Action.LEFT, keycode)) bagOverlay.move(-1, 0);
                         else if (game.getControls().matches(Action.RIGHT, keycode)) bagOverlay.move(1, 0);
                         else if (game.getControls().matches(Action.UP, keycode)) bagOverlay.move(0, -1);
                         else if (game.getControls().matches(Action.DOWN, keycode)) bagOverlay.move(0, 1);
                         else if (game.getControls().matches(Action.POCKET_1, keycode)) {
-                            if (!pocketTransferHeld[0]) gameWorld.moveToPocket(bagOverlay.selectedSlot(), 0);
+                            if (!pocketTransferHeld[0] && bagOverlay.selectedSlot() <
+                                com.cursedarchie.platformer.run.Inventory.CAPACITY)
+                                gameWorld.moveToPocket(bagOverlay.selectedSlot(), 0);
                             pocketTransferHeld[0] = true;
                         } else if (game.getControls().matches(Action.POCKET_2, keycode)) {
-                            if (!pocketTransferHeld[1]) gameWorld.moveToPocket(bagOverlay.selectedSlot(), 1);
+                            if (!pocketTransferHeld[1] && bagOverlay.selectedSlot() <
+                                com.cursedarchie.platformer.run.Inventory.CAPACITY)
+                                gameWorld.moveToPocket(bagOverlay.selectedSlot(), 1);
                             pocketTransferHeld[1] = true;
                         }
                         return true;
@@ -111,6 +130,16 @@
                     if (game.getControls().matches(Action.POCKET_1, keycode)) pocketTransferHeld[0] = false;
                     if (game.getControls().matches(Action.POCKET_2, keycode)) pocketTransferHeld[1] = false;
                     return bagOpen;
+                }
+                @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                    if (!bagOpen || pointer != 0 || button != Input.Buttons.LEFT) return false;
+                    if (!bagOverlay.isAbilitiesPage()) bagOverlay.pointerDown(screenX, screenY);
+                    return true;
+                }
+                @Override public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+                    if (!bagOpen || pointer != 0 || button != Input.Buttons.LEFT) return false;
+                    if (!bagOverlay.isAbilitiesPage()) bagOverlay.pointerUp(screenX, screenY, gameWorld);
+                    return true;
                 }
             });
             multiplexer.addProcessor(dialogue.stage());
@@ -146,7 +175,7 @@
             locationTitle.render();
             fpsOverlay.render();
             if (!bagOpen) bagOverlay.renderPockets(gameWorld);
-            if (bagOpen) bagOverlay.render(gameWorld, game.getControls().keyName(Action.DASH));
+            if (bagOpen) bagOverlay.render(gameWorld, game.getControls());
             dialogue.render(delta);
             float renderMs = (System.nanoTime() - renderStartedNs) / 1_000_000f;
             recordStartupTiming(delta, updateMs, renderMs);

@@ -5,6 +5,7 @@ import com.cursedarchie.platformer.actors.enemies.states.EnemyState;
 import com.cursedarchie.platformer.actors.enemies.states.motion.ChaseState;
 import com.cursedarchie.platformer.actors.enemies.states.motion.MotionIdleState;
 import com.cursedarchie.platformer.actors.enemies.states.motion.PatrolState;
+import com.cursedarchie.platformer.actors.enemies.states.motion.RetreatState;
 
 public class MotionStateMachine {
     private final Enemy enemy;
@@ -29,6 +30,10 @@ public class MotionStateMachine {
 
             case CHASE:
                 changeState(new ChaseState());
+                break;
+
+            case RETREAT:
+                changeState(new RetreatState());
                 break;
 
             case PATROL:

@@ -7,14 +7,14 @@ import com.cursedarchie.platformer.actors.hero.machines.MotionStateMachine;
 import com.cursedarchie.platformer.physics.AttackConfig;
 import com.cursedarchie.platformer.physics.PhysicsTags;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
+import com.cursedarchie.platformer.run.Inventory;
+import com.cursedarchie.platformer.run.ItemCatalog;
 
 public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public static final float BODY_SIZE = 1f;
     public static final float WALK_SPEED = 13f;
-    public static final float GROUND_ACCELERATION = 150f;
-    public static final float GROUND_BRAKING = 170f;
-    public static final float AIR_ACCELERATION = 90f;
-    public static final float AIR_BRAKING = 44f;
+    public static final float AIR_ACCELERATION = 150f;
+    public static final float AIR_BRAKING = 100f;
     public static final float JUMP_SPEED = 32.8f;
     public static final float FALL_GRAVITY_SCALE = 1.25f;
     public static final float RELEASE_GRAVITY_SCALE = 1.5f;
@@ -22,6 +22,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public static final float ATTACK_STARTUP = 0.12f;
     public static final float ATTACK_ACTIVE_END = 0.24f;
     public static final float ATTACK_DURATION = 0.36f;
+    public static final float HEAVY_ATTACK_DURATION = 0.92f;
     public static final float DAMAGE_INVULNERABILITY = 0.5f;
 
     /*===========================================PARAMETERS===========================================================*/
@@ -41,6 +42,10 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     protected MotionStateMachine motionStateMachine;
     protected CombatStateMachine combatStateMachine;
     private float invulnerabilityRemaining;
+    private float platformDropRemaining;
+    public float getPlatformDropRemaining() { return platformDropRemaining; }
+    public void setPlatformDropRemaining(float seconds) { platformDropRemaining = Math.max(0f, seconds); }
+    private Inventory inventory;
 
     /*===========================================CONSTRUCTOR==========================================================*/
 
@@ -113,6 +118,21 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         return combatStateMachine;
     }
     public float getInvulnerabilityRemaining() { return invulnerabilityRemaining; }
+    public void setInventory(Inventory inventory) { this.inventory = inventory; }
+    public float meleeDamageMultiplier(boolean heavy, int comboStep) {
+        if (inventory == null) return 1f;
+        boolean fused = inventory.count(ItemCatalog.FUSED_RELIC) > 0;
+        if (!fused && inventory.count(ItemCatalog.BLADE_SHARD) == 0) return 1f;
+        float base = ItemCatalog.bladeShard().bonus;
+        float bonus = heavy ? base * 3f : comboStep == 2 ? base * 2f : base;
+        if (fused && heavy) bonus += ItemCatalog.fusedRelic().bonus;
+        return 1f + bonus;
+    }
+    public float meleeRecoilBonus() {
+        return inventory != null && (inventory.count(ItemCatalog.IMPACT_CORE) > 0 ||
+            inventory.count(ItemCatalog.FUSED_RELIC) > 0) ?
+            ItemCatalog.impactCore().bonus : 0f;
+    }
 
     /*==========================================CONTROLLERS===========================================================*/
 

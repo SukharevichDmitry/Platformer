@@ -23,7 +23,7 @@ import com.cursedarchie.platformer.controllers.ControlBindings.Action;
 import java.util.HashSet;
 import java.util.Set;
 
-/** Two settings tabs. Enter saves both drafts; Escape leaves without saving. */
+/** Controls save immediately; display changes remain staged until Save. */
 public final class SettingsScreen implements Screen {
     private static final int[][] RESOLUTIONS = {
         {640, 480}, {800, 600}, {960, 540}, {1024, 768},
@@ -55,7 +55,7 @@ public final class SettingsScreen implements Screen {
         draftHeight = windowedResolution[1];
         draftFullscreen = Gdx.graphics.isFullscreen();
         skin.add("default", new Label.LabelStyle(skin.getFont("default-font"), Color.WHITE));
-        status = new Label("Enter: save   Esc: back without saving", skin);
+        status = new Label("Controls save immediately; Enter saves display", skin);
         resolutionLabel = new Label("", skin);
 
         buildControls();
@@ -118,8 +118,9 @@ public final class SettingsScreen implements Screen {
         TextButton reset = button("RESET DEFAULTS", () -> {
             waiting = null;
             draft.resetToDefaults();
+            game.getControls().apply(draft);
             refreshKeys();
-            status.setText("Defaults selected. Enter to save");
+            status.setText("Default controls saved");
         });
         controlsTable.add(reset).colspan(4).width(180f).height(36f).padTop(7f);
     }
@@ -164,7 +165,7 @@ public final class SettingsScreen implements Screen {
         refreshKeys();
         controlsTable.setVisible(controls);
         displayTable.setVisible(!controls);
-        status.setText(controls ? "Controls: Enter to save, Esc to back" :
+        status.setText(controls ? "Controls save immediately; Esc to back" :
             "Display: Enter to save, Esc to back");
     }
 
@@ -185,9 +186,8 @@ public final class SettingsScreen implements Screen {
             refreshKeys();
             return;
         }
-        game.getControls().apply(draft);
         refreshKeys();
-        status.setText("Settings saved");
+        status.setText("Display settings saved");
     }
 
     @Override public void show() {
@@ -197,18 +197,21 @@ public final class SettingsScreen implements Screen {
                     game.closeSettings(returnTo);
                     return true;
                 }
+                if (waiting != null) {
+                    Action action = waiting;
+                    if (draft.rebind(action, keycode)) {
+                        game.getControls().apply(draft);
+                        waiting = null;
+                        status.setText(action.label + " saved");
+                    } else status.setText("Key already assigned or unavailable");
+                    refreshKeys();
+                    return true;
+                }
                 if (keycode == Keys.ENTER || keycode == Keys.NUMPAD_ENTER) {
                     save();
                     return true;
                 }
-                if (waiting == null) return false;
-                Action action = waiting;
-                if (draft.rebind(action, keycode)) {
-                    waiting = null;
-                    status.setText(action.label + " selected. Enter to save");
-                } else status.setText("Key already assigned or unavailable");
-                refreshKeys();
-                return true;
+                return false;
             }
         }, stage));
     }

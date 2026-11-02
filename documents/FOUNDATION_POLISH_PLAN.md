@@ -1,5 +1,51 @@
 # Foundation polish plan for the first game
 
+## Combat core pass — 2026-11-02
+
+Input and inventory follow-up: Interact opens dialogue and confirms replies;
+Space reveals and continues text or closes the finished conversation. The opening
+key press is consumed and held-key repeats cannot confirm a reply. Control remaps and defaults save
+immediately, while display changes remain staged. Attack direction is captured
+on entry for the animation, lunge, and hit test while movement may retreat.
+Bag stacks can move or swap among all eight slots by mouse or keyboard, with
+live control hints and distinct source/destination highlights. Simulation and
+packaged smoke regressions cover direction, dialogue, remapping, transfers, and
+checkpoint slot positions. Bag fusion now requires selecting two ingredients,
+previewing the result, and confirming. Down drops the hero through wooden
+one-way platforms.
+
+Ground walking now starts, stops, and reverses in one fixed simulation step; air
+control still uses acceleration. Light attacks chain into a second pose, higher
+slash, different sound, and stronger recoil. Z has a 0.52-second visible windup,
+slower movement during preparation, and longer recovery after a miss. Active frames give a small forward motion,
+damage and recoil are applied once per target, and a short slash cue uses the
+existing rendering assets. The Red collector periodically raises a visible guard;
+front light hits are reduced, while rear hits and heavy attacks bypass it. The boss resists knockback.
+
+Enemies patrol near their spawn with a ground probe, search the last seen hero
+position for 1.8 seconds, notice nearby movement behind or above, and jump toward
+a reachable elevated target. The scavenger retreats when crowded and fires a
+directionally telegraphed shot. Regular enemies alternate quick strikes with
+punishable lunges; the Red collector heals wounded allies nearby. Blade shard and impact core pickups
+add damage and recoil.
+They can be fused in the bag into one persistent relic that retains both bonuses
+and gains a heavy-strike bonus. Enemy sight radii were shortened and an alert
+pause was added after visible playtest feedback. Their definitions and inventory
+state remain independent of the reused temporary
+sprites. The existing ruins generation profile and checkpoint format stay at
+version 10 and 7 respectively because generated layouts and save structure did
+not change.
+
+JDK 17 `core:check`, simulation regression, generated-location, generated-run
+persistence, and packaged smoke checks passed. The regression covers movement
+reversal, search memory, chained/heavy strikes, heavy miss recovery, scavenger
+retreat, ranged and support actions, collector front/rear guard behavior, item
+pickup, synergy, and checkpoint restore. For the first visible combat playtest,
+fight one regular enemy, one scavenger, and one Red collector separately. Record
+whether each encounter changes the player's timing or positioning, and whether
+the heavy windup, lunge tell, shot direction, and raised guard are readable without
+explanation. Tune the numbers only after that test.
+
 Assessment: 2026-10-14. Target: a complete **3–6 hour first game**, with the final length chosen after the movement, combat, and content workflow are stable. This is a code and asset audit plus an implementation plan. Passing automated checks establishes that tested invariants hold; it does not establish that movement feels good, combat reads clearly, or art is coherent.
 
 ## Room composition and half-size terrain — 2026-10-26

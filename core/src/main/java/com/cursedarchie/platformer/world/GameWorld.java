@@ -93,6 +93,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         markCurrentRoomVisited();
 
         this.hero = new Hero(new Vector2(10, 10), world);
+        hero.setInventory(inventory);
         observedHealth.put(hero, hero.getHealth());
         world.setContactListener(new GameContactListener());
 
@@ -178,6 +179,12 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         float feet = hero.getPosition().y - Hero.BODY_SIZE / 2f;
         return feet >= ((OneWaySurface) platform.getUserData()).topY - 0.14f &&
             hero.getBody().getLinearVelocity().y <= 0.2f;
+    }
+
+    public boolean isHeroOnOneWaySurface() {
+        for (Contact contact : world.getContactList())
+            if (isOneWaySupport(contact)) return true;
+        return false;
     }
 
     private void updateBreakableAttack() {
@@ -552,10 +559,21 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         return true;
     }
     public Inventory getInventory() { return inventory; }
+    public boolean combineItems(int first, int second) {
+        if (!inventory.combine(first, second)) return false;
+        persistenceRevision++;
+        return true;
+    }
     public int getFieldBandages() { return inventory.count(ItemCatalog.FIELD_BANDAGE); }
 
     public boolean moveToPocket(int bagSlot, int pocket) {
         if (!inventory.swapWithPocket(bagSlot, pocket)) return false;
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean moveInventorySlot(int source, int destination) {
+        if (!inventory.swapSlots(source, destination)) return false;
         persistenceRevision++;
         return true;
     }

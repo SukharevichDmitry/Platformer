@@ -61,9 +61,10 @@ public final class PackagedSmokeTest extends Main {
                 getScreen().render(0f);
                 click("Left");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.A);
-                if (getControls().key(Action.LEFT) != Input.Keys.LEFT)
-                    throw new AssertionError("Draft control was applied before Enter");
-                Gdx.input.getInputProcessor().keyDown(Input.Keys.ENTER);
+                if (getControls().key(Action.LEFT) != Input.Keys.A)
+                    throw new AssertionError("Control was not applied immediately");
+                click("BACK (ESC)");
+                expect(MenuScreen.class);
                 int liveKey = getControls().key(Action.LEFT);
                 int restoredKey = new ControlBindings(
                     Gdx.app.getPreferences(getClass().getName() + ".settings")).key(Action.LEFT);
@@ -73,6 +74,20 @@ public final class PackagedSmokeTest extends Main {
                 if (getControls().rebind(Action.LEFT, Input.Keys.RIGHT) ||
                     getControls().key(Action.LEFT) != Input.Keys.A)
                     throw new AssertionError("Duplicate control binding was accepted");
+                click("SETTINGS");
+                expect(SettingsScreen.class);
+                getScreen().render(0f);
+                click("E");
+                Gdx.input.getInputProcessor().keyDown(Input.Keys.ENTER);
+                if (getControls().key(Action.INTERACT) != Input.Keys.ENTER)
+                    throw new AssertionError("Enter interaction binding was not saved immediately");
+                Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
+                expect(MenuScreen.class);
+                if (new ControlBindings(Gdx.app.getPreferences(getClass().getName() + ".settings"))
+                    .key(Action.INTERACT) != Input.Keys.ENTER)
+                    throw new AssertionError("Interaction binding disappeared after Esc");
+                click("SETTINGS");
+                expect(SettingsScreen.class);
                 if (getDisplaySettings().supported(800, 600)) {
                     click("DISPLAY");
                     getScreen().render(0f);
@@ -122,6 +137,7 @@ public final class PackagedSmokeTest extends Main {
                 exerciseGroundSeam(((GameScreen) getScreen()).getGameWorld());
                 exerciseNeighborQuest(((GameScreen) getScreen()).getGameWorld());
                 exerciseKeeperDialogue(((GameScreen) getScreen()).getGameWorld());
+                exerciseBagTransfers(((GameScreen) getScreen()).getGameWorld());
                 GameWorld autosaveWorld = ((GameScreen) getScreen()).getGameWorld();
                 autosaveWorld.getHero().setHealth(2.5f);
                 ((GameScreen) getScreen()).render(5.1f);
@@ -351,18 +367,22 @@ public final class PackagedSmokeTest extends Main {
         world.changeLocation("keeper_chamber", 0);
         world.getHero().getBody().setTransform(12f, 3f, 0f);
         getScreen().render(0f);
-        Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
-        Gdx.input.getInputProcessor().keyUp(Input.Keys.E);
+        getControls().rebind(Action.INTERACT, Input.Keys.F);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.F);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.F);
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.F);
         getScreen().render(0f);
-        Gdx.input.getInputProcessor().keyDown(Input.Keys.ENTER);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
         if (world.hasRunFlag(GameWorld.KEEPER_REFUSAL))
             throw new AssertionError("Choice was applied before dialogue text completed");
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.DOWN);
-        Gdx.input.getInputProcessor().keyDown(Input.Keys.ENTER);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.F);
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.F);
         if (!world.hasRunFlag(GameWorld.KEEPER_REFUSAL) || world.hasEchoDash())
             throw new AssertionError("Keyboard dialogue refusal was not applied");
         Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
+        getControls().resetToDefaults();
         expect(GameScreen.class);
         world.changeLocation("start", 0);
     }
@@ -374,7 +394,8 @@ public final class PackagedSmokeTest extends Main {
         Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
         Gdx.input.getInputProcessor().keyUp(Input.Keys.E);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
-        Gdx.input.getInputProcessor().keyDown(Input.Keys.ENTER);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.E);
         if (!world.hasRunFlag(GameWorld.NEIGHBOR_SEARCH))
             throw new AssertionError("Warden quest was not accepted");
         Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
@@ -387,7 +408,8 @@ public final class PackagedSmokeTest extends Main {
         Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
         Gdx.input.getInputProcessor().keyUp(Input.Keys.E);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
-        Gdx.input.getInputProcessor().keyDown(Input.Keys.ENTER);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.E);
         if (!world.hasRunFlag(GameWorld.NEIGHBOR_LIST_RETURNED) ||
             world.hasRunFlag(GameWorld.NEIGHBOR_LIST_KEPT))
             throw new AssertionError("Warden quest choice was not applied once");
@@ -395,8 +417,52 @@ public final class PackagedSmokeTest extends Main {
         world.changeLocation("start", 0);
     }
 
+    private void exerciseBagTransfers(GameWorld world) {
+        world.getInventory().setSlot(0, com.cursedarchie.platformer.run.ItemCatalog.SEALED_NOTE, 1);
+        world.getInventory().setSlot(1, com.cursedarchie.platformer.run.ItemCatalog.FIELD_BANDAGE, 2);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.I);
+        getScreen().render(0f);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.RIGHT);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
+        if (!com.cursedarchie.platformer.run.ItemCatalog.FIELD_BANDAGE.equals(
+            world.getInventory().itemId(0)) ||
+            !com.cursedarchie.platformer.run.ItemCatalog.SEALED_NOTE.equals(
+                world.getInventory().itemId(1)))
+            throw new AssertionError("Keyboard bag exchange failed");
+        Gdx.input.getInputProcessor().touchDown(244, 210, 0, Input.Buttons.LEFT);
+        Gdx.input.getInputProcessor().touchUp(586, 358, 0, Input.Buttons.LEFT);
+        if (!com.cursedarchie.platformer.run.ItemCatalog.FIELD_BANDAGE.equals(
+            world.getInventory().itemId(7)) || world.getInventory().count(7) != 2)
+            throw new AssertionError("Mouse transfer to right pocket failed");
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.DOWN);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.DOWN);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.UP);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.E);
+        if (!com.cursedarchie.platformer.run.ItemCatalog.FIELD_BANDAGE.equals(
+            world.getInventory().itemId(5)) || world.getInventory().count(5) != 2 ||
+            world.getInventory().itemId(7) != null)
+            throw new AssertionError("Keyboard return from pocket failed");
+        world.getInventory().setSlot(2, com.cursedarchie.platformer.run.ItemCatalog.BLADE_SHARD, 1);
+        world.getInventory().setSlot(4, com.cursedarchie.platformer.run.ItemCatalog.IMPACT_CORE, 1);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.UP); // slot 2
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.C);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.DOWN);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.LEFT); // slot 4
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.E); // preview only
+        if (world.getInventory().count(com.cursedarchie.platformer.run.ItemCatalog.FUSED_RELIC) != 0)
+            throw new AssertionError("Fusion occurred before preview confirmation");
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.C);
+        if (world.getInventory().count(com.cursedarchie.platformer.run.ItemCatalog.FUSED_RELIC) != 1 ||
+            world.getInventory().itemId(4) != null)
+            throw new AssertionError("Selected ingredients did not fuse");
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.I);
+    }
+
     private void expect(Class<? extends Screen> type) {
-        if (!type.isInstance(getScreen())) throw new AssertionError("Expected " + type.getSimpleName());
+        if (!type.isInstance(getScreen())) throw new AssertionError("Expected " + type.getSimpleName()
+            + ", got " + getScreen().getClass().getSimpleName());
     }
 
     private void click(String label) {

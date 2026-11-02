@@ -29,11 +29,15 @@ public class HeroController implements InputProcessor {
     private boolean climbing;
     private boolean climbRegrabBlocked;
     private boolean attackHeld;
+    private boolean heavyAttackHeld;
     private boolean interactHeld;
     private boolean interactQueued;
     private int pocketQueued = -1;
     private ControlBindings bindings = new ControlBindings(null);
     private float attackBufferRemaining;
+    private float heavyAttackBufferRemaining;
+    private int comboStep;
+    private float comboWindowRemaining;
     private boolean jumpHeld;
     private float jumpBufferRemaining;
     private boolean dashQueued;
@@ -52,13 +56,29 @@ public class HeroController implements InputProcessor {
         if (bindings.matches(Action.LEFT, keycode)) leftHeld = true;
         else if (bindings.matches(Action.RIGHT, keycode)) rightHeld = true;
         else if (bindings.matches(Action.UP, keycode)) upHeld = true;
-        else if (bindings.matches(Action.DOWN, keycode)) downHeld = true;
+        else if (bindings.matches(Action.DOWN, keycode)) {
+            if (!downHeld && gameWorld.isHeroOnOneWaySurface()) {
+                hero.setPlatformDropRemaining(0.32f);
+                hero.setGrounded(false);
+                climbing = false;
+                climbRegrabBlocked = true;
+                hero.getBody().setLinearVelocity(hero.getBody().getLinearVelocity().x, -4f);
+            }
+            downHeld = true;
+        }
         else if (bindings.matches(Action.JUMP, keycode)) {
             if (!jumpHeld) jumpBufferRemaining = JUMP_BUFFER_SECONDS;
             jumpHeld = true;
         } else if (bindings.matches(Action.ATTACK, keycode)) {
-            if (!attackHeld) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
+            if (!attackHeld) attackBufferRemaining =
+                hero.getCombatStateMachine().getCurrentState() instanceof AttackState
+                    ? Hero.ATTACK_DURATION + ATTACK_BUFFER_SECONDS : ATTACK_BUFFER_SECONDS;
             attackHeld = true;
+        } else if (bindings.matches(Action.HEAVY_ATTACK, keycode)) {
+            if (!heavyAttackHeld) heavyAttackBufferRemaining =
+                hero.getCombatStateMachine().getCurrentState() instanceof AttackState
+                    ? 1.12f + ATTACK_BUFFER_SECONDS : ATTACK_BUFFER_SECONDS;
+            heavyAttackHeld = true;
         } else if (bindings.matches(Action.DASH, keycode)) {
             if (!dashHeld) dashQueued = true;
             dashHeld = true;
@@ -77,6 +97,7 @@ public class HeroController implements InputProcessor {
         else if (bindings.matches(Action.DOWN, keycode)) downHeld = false;
         else if (bindings.matches(Action.JUMP, keycode)) jumpHeld = false;
         else if (bindings.matches(Action.ATTACK, keycode)) attackHeld = false;
+        else if (bindings.matches(Action.HEAVY_ATTACK, keycode)) heavyAttackHeld = false;
         else if (bindings.matches(Action.DASH, keycode)) dashHeld = false;
         else if (bindings.matches(Action.INTERACT, keycode)) interactHeld = false;
         return true;
@@ -116,6 +137,7 @@ public class HeroController implements InputProcessor {
         }
 
         dashCooldownRemaining = Math.max(0f, dashCooldownRemaining - delta);
+        hero.setPlatformDropRemaining(hero.getPlatformDropRemaining() - delta);
         processInput(delta);
 
         checkHeroPositionForDeathFall();
@@ -129,6 +151,7 @@ public class HeroController implements InputProcessor {
         rightHeld = false;
         upHeld = false;
         downHeld = false;
+        hero.setPlatformDropRemaining(0f);
         climbing = false;
         climbRegrabBlocked = false;
         jumpHeld = false;
@@ -138,7 +161,11 @@ public class HeroController implements InputProcessor {
         dashRemaining = 0f;
         if (hero.getBody() != null) hero.getBody().setGravityScale(1f);
         attackHeld = false;
+        heavyAttackHeld = false;
         attackBufferRemaining = 0f;
+        heavyAttackBufferRemaining = 0f;
+        comboWindowRemaining = 0f;
+        comboStep = 0;
         interactHeld = false;
         interactQueued = false;
         pocketQueued = -1;
@@ -181,12 +208,13 @@ public class HeroController implements InputProcessor {
         float direction = 0f;
         boolean isJumpState = hero.getMotionStateMachine().getCurrentState() instanceof JumpState;
 
+        boolean facingLocked = hero.getCombatStateMachine().getCurrentState() instanceof AttackState;
         if (leftHeld && !rightHeld) {
             direction = -1f;
-            hero.setFacingLeft(true);
+            if (!facingLocked) hero.setFacingLeft(true);
         } else if (rightHeld && !leftHeld) {
             direction = 1f;
-            hero.setFacingLeft(false);
+            if (!facingLocked) hero.setFacingLeft(false);
         }
 
         float currentX = hero.getBody().getLinearVelocity().x;
@@ -223,11 +251,15 @@ public class HeroController implements InputProcessor {
             jumpBufferRemaining = Math.max(0f, jumpBufferRemaining - delta);
             return;
         }
-        float targetX = direction * hero.getVelocity();
-        float acceleration = hero.isGrounded()
-            ? (direction == 0f ? Hero.GROUND_BRAKING : Hero.GROUND_ACCELERATION)
-            : (direction == 0f ? Hero.AIR_BRAKING : Hero.AIR_ACCELERATION);
-        float moveX = approach(currentX, targetX, acceleration * delta);
+        AttackState attack = hero.getCombatStateMachine().getCurrentState() instanceof AttackState ?
+            (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
+        float attackSpeed = attack != null && attack.isHeavy() ?
+            hero.getCombatStateTime() < attack.getStartup() ? .35f :
+                attack.isInRecovery(hero) ? .50f : 1f : 1f;
+        float targetX = direction * hero.getVelocity() * attackSpeed;
+        // Ground input is direct: reversing or releasing a key takes effect in this step.
+        float acceleration = direction == 0f ? Hero.AIR_BRAKING : Hero.AIR_ACCELERATION;
+        float moveX = hero.isGrounded() ? targetX : approach(currentX, targetX, acceleration * delta);
         float moveY = Math.max(currentY, -Hero.MAX_FALL_SPEED);
         hero.getBody().setLinearVelocity(moveX, moveY);
 
@@ -262,12 +294,22 @@ public class HeroController implements InputProcessor {
         return Math.max(current - step, target);
     }
     private void handleCombatInput(float delta) {
-        if (attackBufferRemaining > 0f &&
-            !(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
-            hero.getCombatStateMachine().changeState(new AttackState());
-            attackBufferRemaining = 0f;
-        } else {
-            attackBufferRemaining = Math.max(0f, attackBufferRemaining - delta);
+        comboWindowRemaining = Math.max(0f, comboWindowRemaining - delta);
+        if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
+            if (heavyAttackBufferRemaining > 0f) {
+                hero.getCombatStateMachine().changeState(new AttackState(true, 0));
+                heavyAttackBufferRemaining = 0f;
+                attackBufferRemaining = 0f;
+                comboWindowRemaining = 0f;
+                comboStep = 0;
+            } else if (attackBufferRemaining > 0f) {
+                comboStep = comboWindowRemaining > 0f ? (comboStep % 2) + 1 : 1;
+                hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
+                attackBufferRemaining = 0f;
+                comboWindowRemaining = 0.7f;
+            }
         }
+        attackBufferRemaining = Math.max(0f, attackBufferRemaining - delta);
+        heavyAttackBufferRemaining = Math.max(0f, heavyAttackBufferRemaining - delta);
     }
 }

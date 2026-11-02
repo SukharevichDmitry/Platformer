@@ -132,6 +132,8 @@ public final class RoomValidator {
             if (!("evidence".equals(kind) && "sealed_note".equals(visualId)) &&
                 !("pickup".equals(kind) && "field_bandage".equals(visualId)) &&
                 !("pickup".equals(kind) && "sealed_note".equals(visualId)) &&
+                !("pickup".equals(kind) && "blade_shard".equals(visualId)) &&
+                !("pickup".equals(kind) && "impact_core".equals(visualId)) &&
                 !("npc".equals(kind) && ("keeper".equals(visualId) || "warden".equals(visualId))))
                 throw invalid(file, field + ".visualId is unsupported for " + kind);
             JsonValue itemId = interaction.get("itemId");

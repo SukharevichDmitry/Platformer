@@ -12,9 +12,12 @@ import com.badlogic.gdx.math.Vector2;
 import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.enemies.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.enemies.states.motion.MotionIdleState;
+import com.cursedarchie.platformer.actors.enemies.states.motion.ChaseState;
+import com.cursedarchie.platformer.actors.enemies.states.motion.PatrolState;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
+import com.cursedarchie.platformer.run.ItemCatalog;
 import com.cursedarchie.platformer.world.GameWorld;
 import com.cursedarchie.platformer.world.LocationTitleOverlay;
 
@@ -57,12 +60,18 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             throw new AssertionError("Held movement reset the motion state");
         closeTo(hero.getMotionStateTime(), GameWorld.FIXED_STEP * 2f, "motion timing is inconsistent");
         checkEnemyAwareness();
+        checkEnemySearchMemory();
         checkEnemyStopsAtAttackRange();
         checkHeroMovementAndContacts();
+        checkDropThroughPlatform();
         checkJumpBuffer();
         checkEnemyHeadJump();
         checkRenderRateConsistency();
         checkHeroAttackTimingAndDirection();
+        checkCombatExtensions();
+        checkLockedAttackDirection();
+        checkSpecialEnemyRoles();
+        checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
         checkInteractionInput();
@@ -161,6 +170,53 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             interactionWorld.update(GameWorld.FIXED_STEP);
             if (interactionWorld.getFieldBandages() != 0 || interactionWorld.getHero().getHealth() != 3f)
                 throw new AssertionError("Pocket 1 did not use the bandage once");
+            interactionWorld.getHeroController().keyUp(Input.Keys.E);
+            interactionWorld.changeLocation("start", 1);
+            interactionWorld.getHero().getBody().setTransform(
+                interactionWorld.getCurrentRoom().getWorldX() + 19f, 3f, 0f);
+            interactionWorld.getHeroController().keyDown(Input.Keys.E);
+            interactionWorld.update(GameWorld.FIXED_STEP);
+            if (interactionWorld.getInventory().count(ItemCatalog.BLADE_SHARD) != 1)
+                throw new AssertionError("Blade shard pickup did not enter the bag");
+            interactionWorld.getHeroController().keyUp(Input.Keys.E);
+            interactionWorld.changeLocation("start", 3);
+            interactionWorld.getHero().getBody().setTransform(
+                interactionWorld.getCurrentRoom().getWorldX() + 22f, 3f, 0f);
+            interactionWorld.getHeroController().keyDown(Input.Keys.E);
+            interactionWorld.update(GameWorld.FIXED_STEP);
+            int bladeSlot = inventorySlot(interactionWorld, ItemCatalog.BLADE_SHARD);
+            int impactSlot = inventorySlot(interactionWorld, ItemCatalog.IMPACT_CORE);
+            if (interactionWorld.combineItems(bladeSlot, bladeSlot) ||
+                interactionWorld.getInventory().count(ItemCatalog.BLADE_SHARD) != 1 ||
+                interactionWorld.getInventory().count(ItemCatalog.IMPACT_CORE) != 1)
+                throw new AssertionError("Invalid fusion consumed an ingredient");
+            if (interactionWorld.getInventory().count(ItemCatalog.IMPACT_CORE) != 1 ||
+                !interactionWorld.combineItems(bladeSlot, impactSlot) ||
+                interactionWorld.getInventory().count(ItemCatalog.FUSED_RELIC) != 1 ||
+                interactionWorld.getHero().meleeDamageMultiplier(true, 0) <= 1.3f)
+                throw new AssertionError("Relics did not combine into the upgraded item");
+            if (!interactionWorld.moveInventorySlot(0, 1) ||
+                !ItemCatalog.SEALED_NOTE.equals(interactionWorld.getInventory().itemId(1)) ||
+                !ItemCatalog.FUSED_RELIC.equals(interactionWorld.getInventory().itemId(0)))
+                throw new AssertionError("Bag cell exchange lost item identities");
+            if (!interactionWorld.moveInventorySlot(0, 7) ||
+                !interactionWorld.moveInventorySlot(7, 2) ||
+                !ItemCatalog.FUSED_RELIC.equals(interactionWorld.getInventory().itemId(2)))
+                throw new AssertionError("Pocket transfer or return lost the relic");
+            com.cursedarchie.platformer.run.RunCheckpoint saved = interactionWorld.checkpoint();
+            saved.formatVersion = 7;
+            GameWorld resumed = new GameWorld(saved, null);
+            try {
+                if (resumed.getInventory().count(ItemCatalog.BLADE_SHARD) != 0 ||
+                    resumed.getInventory().count(ItemCatalog.IMPACT_CORE) != 0 ||
+                    resumed.getInventory().count(ItemCatalog.FUSED_RELIC) != 1 ||
+                    !ItemCatalog.SEALED_NOTE.equals(resumed.getInventory().itemId(1)) ||
+                    !ItemCatalog.FUSED_RELIC.equals(resumed.getInventory().itemId(2)) ||
+                    resumed.getHero().meleeDamageMultiplier(true, 0) <= 1.3f)
+                    throw new AssertionError("Relic synergy did not survive a checkpoint restore");
+            } finally {
+                resumed.dispose();
+            }
         } finally {
             interactionWorld.dispose();
         }
@@ -183,19 +239,40 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             attackWorld.update(GameWorld.FIXED_STEP);
             if (!enemy.getAttackTargets().contains(target))
                 throw new AssertionError("Behind approach did not enter the attack range sensor");
-            if (enemy.isCanSeeHero() || enemy.isCanAttackHero() ||
-                enemy.getCombatStateMachine().getCurrentState() instanceof AttackState ||
-                !(enemy.getMotionStateMachine().getCurrentState() instanceof MotionIdleState))
-                throw new AssertionError("Enemy attacked or animated walking without seeing the hero behind it");
+            if (!enemy.isCanSeeHero())
+                throw new AssertionError("Enemy lost the nearby hero solely because it was behind him");
 
             target.getBody().setTransform(17f, 4f, 0);
             target.getBody().setLinearVelocity(0, 0);
-            for (int i = 0; i < 3; i++) attackWorld.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 35; i++) attackWorld.update(GameWorld.FIXED_STEP);
             if (!enemy.isCanSeeHero() || !enemy.isCanAttackHero() ||
                 !(enemy.getCombatStateMachine().getCurrentState() instanceof AttackState))
                 throw new AssertionError("Enemy did not attack the hero inside its front range");
         } finally {
             attackWorld.dispose();
+        }
+    }
+
+    private void checkEnemySearchMemory() {
+        GameWorld search = new GameWorld();
+        try {
+            Enemy enemy = EnemyFactory.createDefaultEnemy(search.getWorld(), new Vector2(17f, 2.5f));
+            enemy.setBrain(new SimpleEnemyBrain(search));
+            search.addEnemy(enemy);
+            Hero hero = search.getHero();
+            hero.getBody().setTransform(11f, 2.5f, 0f);
+            enemy.setFacingLeft(true);
+            for (int i = 0; i < 3; i++) search.update(GameWorld.FIXED_STEP);
+            if (!enemy.isCanSeeHero()) throw new AssertionError("Enemy never acquired search target");
+            hero.getBody().setTransform(32f, 2.5f, 0f);
+            search.update(GameWorld.FIXED_STEP);
+            if (!(enemy.getMotionStateMachine().getCurrentState() instanceof ChaseState))
+                throw new AssertionError("Enemy forgot the hero immediately after losing sight");
+            for (int i = 0; i < 120; i++) search.update(GameWorld.FIXED_STEP);
+            if (!(enemy.getMotionStateMachine().getCurrentState() instanceof PatrolState))
+                throw new AssertionError("Enemy did not resume patrol after searching");
+        } finally {
+            search.dispose();
         }
     }
 
@@ -247,6 +324,39 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         }
     }
 
+    private void checkDropThroughPlatform() {
+        GameWorld dropWorld = combatFixture();
+        try {
+            dropWorld.changeLocation("forest", 0);
+            com.badlogic.gdx.physics.box2d.BodyDef bodyDef = new com.badlogic.gdx.physics.box2d.BodyDef();
+            bodyDef.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
+            bodyDef.position.set(4f, 8.9f);
+            com.badlogic.gdx.physics.box2d.Body ledge = dropWorld.getWorld().createBody(bodyDef);
+            ledge.setUserData("level");
+            com.badlogic.gdx.physics.box2d.PolygonShape shape = new com.badlogic.gdx.physics.box2d.PolygonShape();
+            shape.setAsBox(2f, .1f);
+            com.badlogic.gdx.physics.box2d.Fixture fixture = ledge.createFixture(shape, 0f);
+            com.badlogic.gdx.physics.box2d.Filter filter = fixture.getFilterData();
+            filter.categoryBits = com.cursedarchie.platformer.physics.PhysicsCategories.GROUND;
+            filter.maskBits = com.cursedarchie.platformer.physics.PhysicsCategories.HERO;
+            fixture.setFilterData(filter);
+            fixture.setUserData(new com.cursedarchie.platformer.physics.OneWaySurface(9f));
+            shape.dispose();
+            Hero hero = dropWorld.getHero();
+            hero.getBody().setTransform(4f, 10.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            for (int i = 0; i < 30; i++) dropWorld.update(GameWorld.FIXED_STEP);
+            if (!dropWorld.isHeroOnOneWaySurface())
+                throw new AssertionError("Hero did not settle on a one-way platform");
+            dropWorld.getHeroController().keyDown(Input.Keys.DOWN);
+            for (int i = 0; i < 15; i++) dropWorld.update(GameWorld.FIXED_STEP);
+            if (hero.getPosition().y >= 9f || dropWorld.isHeroOnOneWaySurface())
+                throw new AssertionError("Down did not drop through the one-way platform");
+        } finally {
+            dropWorld.dispose();
+        }
+    }
+
     private void checkHeroMovementAndContacts() {
         GameWorld movementWorld = combatFixture();
         try {
@@ -278,6 +388,16 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.getBody().setTransform(3f, 2.5f, 0f);
             hero.getBody().setLinearVelocity(0f, 0f);
             for (int i = 0; i < 5; i++) movementWorld.update(GameWorld.FIXED_STEP);
+            movementWorld.getHeroController().keyDown(Input.Keys.RIGHT);
+            movementWorld.update(GameWorld.FIXED_STEP);
+            closeTo(hero.getBody().getLinearVelocity().x, Hero.WALK_SPEED,
+                "ground movement did not start immediately");
+            movementWorld.getHeroController().keyUp(Input.Keys.RIGHT);
+            movementWorld.getHeroController().keyDown(Input.Keys.LEFT);
+            movementWorld.update(GameWorld.FIXED_STEP);
+            closeTo(hero.getBody().getLinearVelocity().x, -Hero.WALK_SPEED,
+                "ground movement did not reverse immediately");
+            movementWorld.getHeroController().keyUp(Input.Keys.LEFT);
             movementWorld.getHeroController().keyDown(Input.Keys.RIGHT);
             for (int i = 0; i < 10; i++) movementWorld.update(GameWorld.FIXED_STEP);
             movementWorld.getHeroController().keyUp(Input.Keys.RIGHT);
@@ -549,10 +669,230 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         }
     }
 
+    private void checkCombatExtensions() {
+        GameWorld fight = combatFixture();
+        try {
+            Enemy target = null;
+            for (Enemy enemy : fight.getEnemies()) {
+                if (enemy.getSize() < 2f) target = enemy;
+                else enemy.setAlive(false);
+            }
+            if (target == null) throw new AssertionError("Missing combo target");
+            target.setActive(false);
+            target.setMaxHealth(10f);
+            target.setHealth(10f);
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            target.getBody().setTransform(11.2f, 2.5f, 0f);
+            fight.update(GameWorld.FIXED_STEP);
+            fight.getHeroController().keyDown(Input.Keys.X);
+            for (int i = 0; i < 10; i++) fight.update(GameWorld.FIXED_STEP);
+            closeTo(target.getHealth(), 9f, "first strike damage");
+            fight.getHeroController().keyUp(Input.Keys.X);
+            fight.getHeroController().keyDown(Input.Keys.X);
+            for (int i = 0; i < 12; i++) fight.update(GameWorld.FIXED_STEP);
+            target.getBody().setTransform(hero.getPosition().x + 1.2f, hero.getPosition().y, 0f);
+            target.getBody().setLinearVelocity(0f, 0f);
+            for (int i = 0; i < 12; i++) fight.update(GameWorld.FIXED_STEP);
+            if (target.getHealth() > 7.5f)
+                throw new AssertionError("Buffered second combo strike did not land");
+            fight.getHeroController().keyUp(Input.Keys.X);
+
+            fight.getInventory().add(ItemCatalog.BLADE_SHARD);
+            fight.getInventory().add(ItemCatalog.IMPACT_CORE);
+            if (!fight.combineItems(inventorySlot(fight, ItemCatalog.BLADE_SHARD),
+                inventorySlot(fight, ItemCatalog.IMPACT_CORE)))
+                throw new AssertionError("Relic fusion failed");
+            closeTo(hero.meleeDamageMultiplier(true, 0), 1.55f,
+                "two relics did not synergize on a heavy strike");
+            target.getBody().setTransform(hero.getPosition().x + 1.2f, hero.getPosition().y, 0f);
+            target.getBody().setLinearVelocity(0f, 0f);
+            for (int i = 0; i < 20; i++) fight.update(GameWorld.FIXED_STEP);
+            float before = target.getHealth();
+            fight.getHeroController().keyDown(Input.Keys.Z);
+            fight.update(GameWorld.FIXED_STEP);
+            fight.getHeroController().keyDown(Input.Keys.RIGHT);
+            fight.update(GameWorld.FIXED_STEP);
+            if (hero.getBody().getLinearVelocity().x > Hero.WALK_SPEED * .35f + .1f)
+                throw new AssertionError("Heavy windup did not restrict movement");
+            fight.getHeroController().keyUp(Input.Keys.RIGHT);
+            for (int i = 2; i < 28; i++) fight.update(GameWorld.FIXED_STEP);
+            closeTo(target.getHealth(), before, "heavy attack hit before windup");
+            for (int i = 0; i < 10; i++) fight.update(GameWorld.FIXED_STEP);
+            if (target.getHealth() >= before - 2f)
+                throw new AssertionError("Heavy strike missed or ignored the relic synergy");
+            target.getBody().setTransform(30f, 2.5f, 0f);
+            hero.getCombatStateMachine().changeState(
+                new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(true, 0));
+            for (int i = 0; i < 57; i++) fight.update(GameWorld.FIXED_STEP);
+            if (!(hero.getCombatStateMachine().getCurrentState() instanceof
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState))
+                throw new AssertionError("Missed heavy strike recovered too early");
+            for (int i = 0; i < 14; i++) fight.update(GameWorld.FIXED_STEP);
+            if (hero.getCombatStateMachine().getCurrentState() instanceof
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState)
+                throw new AssertionError("Missed heavy strike recovery never ended");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkSpecialEnemyRoles() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy ranged = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(15f, 2.5f));
+            ranged.setBrain(new SimpleEnemyBrain(fight));
+            fight.addEnemy(ranged);
+            for (int i = 0; i < 70 && !ranged.isRangedWindingUp(); i++)
+                fight.update(GameWorld.FIXED_STEP);
+            if (!ranged.isRangedWindingUp())
+                throw new AssertionError("Scavenger did not telegraph a distant shot");
+            float health = hero.getHealth();
+            for (int i = 0; i < 50; i++) fight.update(GameWorld.FIXED_STEP);
+            if (hero.getHealth() >= health)
+                throw new AssertionError("Telegraphed ranged shot did not deal damage");
+            hero.getBody().setTransform(ranged.getPosition().x - 2f, 2.5f, 0f);
+            fight.update(GameWorld.FIXED_STEP);
+            if (ranged.getCurrentIntent() != Enemy.Intent.RETREAT)
+                throw new AssertionError("Scavenger did not retreat when approached");
+
+            Enemy support = EnemyFactory.createRedCollector(fight.getWorld(), new Vector2(16f, 2.5f));
+            support.setBrain(new SimpleEnemyBrain(fight));
+            ranged.setBrain(null);
+            ranged.setIntent(Enemy.Intent.IDLE);
+            ranged.getBody().setTransform(15f, 2.5f, 0f);
+            ranged.getBody().setLinearVelocity(0f, 0f);
+            ranged.setHealth(1f);
+            fight.addEnemy(support);
+            fight.update(GameWorld.FIXED_STEP);
+            if (ranged.getHealth() <= 1f || support.getSupportFlashRemaining() <= 0f)
+                throw new AssertionError("Collector did not heal a wounded nearby ally");
+            support.getBody().setTransform(hero.getPosition().x + 1.5f, 2.5f, 0f);
+            support.setFacingLeft(true);
+            support.setCanSeeHero(true);
+            for (int i = 0; i < 9; i++)
+                support.updateSpecialActions(hero, fight.getAliveEnemies(), .1f);
+            if (!support.isBlocking()) throw new AssertionError("Collector did not raise its guard");
+            float guardHealth = support.getHealth();
+            support.takeMeleeHit(2f, hero.getPosition().x, 0f, false);
+            closeTo(support.getHealth(), guardHealth - 1f, "raised guard did not reduce frontal light hit");
+            if (support.isBlocking()) throw new AssertionError("Guard did not react to a light hit");
+            Enemy bypass = EnemyFactory.createRedCollector(fight.getWorld(),
+                new Vector2(hero.getPosition().x + 2f, 2.5f));
+            bypass.setFacingLeft(true);
+            bypass.setCanSeeHero(true);
+            fight.addEnemy(bypass);
+            for (int i = 0; i < 9; i++)
+                bypass.updateSpecialActions(hero, fight.getAliveEnemies(), .1f);
+            if (!bypass.isBlocking()) throw new AssertionError("Second collector did not raise its guard");
+            bypass.takeMeleeHit(2f, hero.getPosition().x, 0f, true);
+            closeTo(bypass.getHealth(), bypass.getMaxHealth() - 2f,
+                "Heavy strike did not break frontal guard");
+            Enemy flank = EnemyFactory.createRedCollector(fight.getWorld(),
+                new Vector2(hero.getPosition().x + 2.3f, 2.5f));
+            flank.setFacingLeft(true);
+            flank.setCanSeeHero(true);
+            fight.addEnemy(flank);
+            for (int i = 0; i < 9; i++)
+                flank.updateSpecialActions(hero, fight.getAliveEnemies(), .1f);
+            if (!flank.isBlocking()) throw new AssertionError("Flank target did not raise its guard");
+            flank.takeMeleeHit(2f, flank.getPosition().x + 1f, 0f, false);
+            closeTo(flank.getHealth(), flank.getMaxHealth() - 2f,
+                "Rear light strike did not bypass guard");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkEnemyLungeRecovery() {
+        GameWorld fight = combatFixture();
+        try {
+            Enemy enemy = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(18f, 2.5f));
+            enemy.setIntent(Enemy.Intent.IDLE);
+            enemy.requestAttack();
+            enemy.processCombatRequests();
+            if (!enemy.isAttacking() || ((AttackState) enemy.getCombatStateMachine()
+                .getCurrentState()).isLunge())
+                throw new AssertionError("First regular enemy attack was not quick");
+            for (int i = 0; i < 80; i++) enemy.update(GameWorld.FIXED_STEP);
+            enemy.requestAttack();
+            enemy.processCombatRequests();
+            if (!enemy.isAttacking() || !((AttackState) enemy.getCombatStateMachine()
+                .getCurrentState()).isLunge())
+                throw new AssertionError("Regular enemy did not alternate to a lunge");
+            for (int i = 0; i < 56; i++) enemy.update(GameWorld.FIXED_STEP);
+            enemy.requestAttack();
+            enemy.processCombatRequests();
+            if (enemy.isAttacking())
+                throw new AssertionError("Missed lunge had no punishable recovery");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkLockedAttackDirection() {
+        for (int variant = 0; variant < 3; variant++) {
+            GameWorld fight = combatFixture();
+            try {
+                Enemy target = null;
+                for (Enemy enemy : fight.getEnemies()) {
+                    if (enemy.getSize() < 2f) target = enemy;
+                    else enemy.setAlive(false);
+                }
+                target.setActive(false);
+                target.setMaxHealth(20f);
+                target.setHealth(20f);
+                Hero hero = fight.getHero();
+                hero.getBody().setTransform(20f, 2.5f, 0f);
+                hero.getBody().setLinearVelocity(0f, 0f);
+                hero.setFacingLeft(false);
+                target.getBody().setTransform(21.2f, 2.5f, 0f);
+                fight.update(GameWorld.FIXED_STEP);
+                hero.getCombatStateMachine().changeState(
+                    new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(
+                        variant == 1, variant == 2 ? 2 : 1));
+                fight.getHeroController().keyDown(Input.Keys.LEFT);
+                int beforeActive = variant == 1 ? 30 : variant == 2 ? 4 : 7;
+                for (int i = 0; i < beforeActive; i++) fight.update(GameWorld.FIXED_STEP);
+                target.getBody().setTransform(hero.getPosition().x + 1.2f,
+                    hero.getPosition().y, 0f);
+                for (int i = beforeActive; i < (variant == 1 ? 40 : 20); i++)
+                    fight.update(GameWorld.FIXED_STEP);
+                if (target.getHealth() >= 20f || hero.isFacingLeft())
+                    throw new AssertionError("Attack turned with retreat input, variant=" + variant);
+                for (int i = 0; i < 22; i++) fight.update(GameWorld.FIXED_STEP);
+                if (!hero.isFacingLeft())
+                    throw new AssertionError("Hero did not face retreat direction after attack");
+                hero.getBody().setTransform(20f, 2.5f, 0f);
+                hero.setFacingLeft(false);
+                target.getBody().setTransform(25f, 2.5f, 0f);
+                target.setHealth(20f);
+                hero.getCombatStateMachine().changeState(
+                    new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(
+                        variant == 1, variant == 2 ? 2 : 1));
+                for (int i = 0; i < (variant == 1 ? 44 : 20); i++)
+                    fight.update(GameWorld.FIXED_STEP);
+                if (target.getHealth() != 20f)
+                    throw new AssertionError("Distant target was hit, variant=" + variant);
+            } finally {
+                fight.dispose();
+            }
+        }
+    }
+
     private static GameWorld.DamageIndicator indicatorFor(GameWorld world, Actor target) {
         for (GameWorld.DamageIndicator indicator : world.getDamageIndicators())
             if (indicator.target == target) return indicator;
         return null;
+    }
+
+    private static int inventorySlot(GameWorld world, String id) {
+        for (int i = 0; i < com.cursedarchie.platformer.run.Inventory.TOTAL_SLOTS; i++)
+            if (id.equals(world.getInventory().itemId(i))) return i;
+        throw new AssertionError("Missing inventory item: " + id);
     }
 
     private static void closeTo(float actual, float expected, String failure) {

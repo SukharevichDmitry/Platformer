@@ -37,6 +37,14 @@
         "x": 12,
         "y": 3.0
       }
+    },
+    {
+      "id": "blade_shard",
+      "kind": "pickup",
+      "visualId": "blade_shard",
+      "itemId": "blade_shard",
+      "eventId": "blade_shard_taken",
+      "position": { "x": 19.0, "y": 3.0 }
     }
   ]
 }

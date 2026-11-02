@@ -43,6 +43,7 @@ final class DialogueOverlay implements Disposable {
     private final TextureRegionDrawable[] npcDrawables = new TextureRegionDrawable[3];
     private final Label name;
     private final Label message;
+    private final Label hint;
     private final TextButton accept;
     private final TextButton refuse;
     private String fullText = "";
@@ -58,6 +59,7 @@ final class DialogueOverlay implements Disposable {
         this.world = world;
         this.bindings = bindings;
         skin.add("dialogue", new Label.LabelStyle(skin.getFont("default-font"), INK));
+        skin.add("dialogue-hint", new Label.LabelStyle(skin.getFont("default-font"), PARCHMENT));
         TextButton.TextButtonStyle choiceStyle = new TextButton.TextButtonStyle();
         choiceStyle.font = skin.getFont("default-font");
         choiceStyle.fontColor = new Color(.97f, .88f, .69f, 1f);
@@ -81,6 +83,8 @@ final class DialogueOverlay implements Disposable {
         message.setWrap(true);
         root.addActor(name);
         root.addActor(message);
+        hint = new Label("", skin, "dialogue-hint");
+        root.addActor(hint);
 
         accept = choice("ACCEPT (-1 MAX HP)", true);
         refuse = choice("REFUSE", false);
@@ -127,14 +131,15 @@ final class DialogueOverlay implements Disposable {
 
     boolean keyDown(int keycode) {
         if (!open) return false;
-        if (bindings.matches(Action.PAUSE, keycode) || keycode == Keys.ESCAPE) close();
-        else if (keycode == Keys.SPACE) revealAll();
+        if (keycode == Keys.ESCAPE) close();
+        else if ((keycode == Keys.SPACE || keycode == Keys.ENTER) && !textComplete()) revealAll();
         else if (textComplete() && accept.isVisible()) {
             if (bindings.matches(Action.UP, keycode)) selected = 0;
             else if (bindings.matches(Action.DOWN, keycode)) selected = 1;
-            else if (keycode == Keys.ENTER || keycode == Keys.NUMPAD_ENTER) choose(selected == 0);
+            else if (bindings.matches(Action.INTERACT, keycode)) choose(selected == 0);
             refreshSelection();
-        } else if (textComplete() && (keycode == Keys.ENTER || keycode == Keys.NUMPAD_ENTER)) close();
+        } else if (textComplete() && (keycode == Keys.SPACE || keycode == Keys.ENTER)) close();
+        refreshHint();
         return true;
     }
 
@@ -149,6 +154,7 @@ final class DialogueOverlay implements Disposable {
         visibleCharacters = fullText.length();
         message.setText(fullText);
         refreshChoices();
+        refreshHint();
     }
 
     private void setDialogue(String text) {
@@ -157,6 +163,13 @@ final class DialogueOverlay implements Disposable {
         letterProgress = 0f;
         message.setText("");
         refreshChoices();
+        refreshHint();
+    }
+
+    private void refreshHint() {
+        hint.setText(!textComplete() ? "Space: show text   Esc: close" :
+            accept.isVisible() ? "Up/Down: choose   " + bindings.keyName(Action.INTERACT) +
+                ": confirm   Esc: close" : "Space: continue   Esc: close");
     }
 
     private void choose(boolean acceptOffer) {
@@ -229,6 +242,7 @@ final class DialogueOverlay implements Disposable {
                 visibleCharacters = next;
                 message.setText(fullText.substring(0, visibleCharacters));
                 refreshChoices();
+                refreshHint();
             }
         }
         animationTime += elapsed;
@@ -263,6 +277,7 @@ final class DialogueOverlay implements Disposable {
         float fontScale = Math.min(1.65f, Math.max(.9f, width / 1000f));
         name.setFontScale(fontScale);
         message.setFontScale(fontScale);
+        hint.setFontScale(Math.min(1.2f, fontScale));
         accept.getLabel().setFontScale(fontScale);
         refuse.getLabel().setFontScale(fontScale);
         name.setBounds(textX + inset, textY + textHeight - 35f, textWidth - inset * 2f, 28f);
@@ -274,6 +289,7 @@ final class DialogueOverlay implements Disposable {
         float messageBottom = firstButtonY + buttonHeight + 6f;
         message.setBounds(textX + inset, messageBottom,
             textWidth - inset * 2f, Math.max(22f, textY + textHeight - 35f - messageBottom));
+        hint.setBounds(textX + inset, panelY + 1f, textWidth - inset * 2f, 17f);
 
         float figureHeight = Math.min(height * .48f, 470f);
         float figureWidth = Math.min(npcWidth * .9f, figureHeight * .62f);

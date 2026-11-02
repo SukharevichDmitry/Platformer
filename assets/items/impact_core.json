@@ -1,0 +1,6 @@
+{
+  "id": "impact_core",
+  "effect": "melee_recoil",
+  "bonus": 3.0,
+  "maxStack": 1
+}
