@@ -369,8 +369,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         markCurrentRoomVisited();
 
         buildLocation();
+        float entryInset = "start".equals(locationName) && nextRoom.getRoomId() == 0 ? 8f : 2f;
         Vector2 spawn = new Vector2(
-            currentRoom.getWorldX() + (enterFromRight ? currentRoom.getWidth() - 3f : 2f),
+            currentRoom.getWorldX() + (enterFromRight ? currentRoom.getWidth() - 3f : entryInset),
             currentRoom.getWorldY() + 4
         );
 

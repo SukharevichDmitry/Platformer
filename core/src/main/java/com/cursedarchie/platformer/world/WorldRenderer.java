@@ -67,6 +67,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final TextureRegion[] wallFaces = new TextureRegion[256];
     private final TextureRegion backgroundStone;
     private final TextureRegion stoneHalf;
+    private final Texture collapsedWallSample;
     private final TextureRegion platformOneWay;
     private final TextureRegion blockBreakable;
     private final TextureRegion ladderSegment;
@@ -156,6 +157,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         }
         backgroundStone = requiredRegion(ruinsAtlas, "wall_center");
         stoneHalf = ruinsAtlas.findRegion("stone_half");
+        collapsedWallSample = pixelTexture("scenery/collapsed-masonry-wall-sample.png");
         platformOneWay = ruinsAtlas.findRegion("platform_oneway");
         blockBreakable = ruinsAtlas.findRegion("block_breakable");
         ladderSegment = ruinsAtlas.findRegion("ladder_segment");
@@ -332,6 +334,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 "ruins".equals(gameWorld.getLocation().getLocation())) drawOpeningScenery();
             else drawBackgroundMasonry();
             drawTiles();
+            drawCollapsedWallSample();
             roadSurface.draw(gameWorld.getLocation(), spriteBatch,
                 getVisibleLeftEdge(), getVisibleRightEdge());
             drawClimbShafts();
@@ -593,6 +596,18 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     }
                 }
             }
+        }
+    }
+
+    /** First authored wall sample; its solid silhouette is defined by start/0 tileRows. */
+    private void drawCollapsedWallSample() {
+        if (!"start".equals(gameWorld.getLocation().getLocation())) return;
+        for (RoomInstance room : gameWorld.getLocation().getRooms()) {
+            if (room.getRoomId() != 0 || !isRoomVisible(room)) continue;
+            spriteBatch.setColor(.69f, .67f, .72f, 1f);
+            spriteBatch.draw(collapsedWallSample,
+                room.getWorldX(), room.getWorldY() + 2f, 6f, 4f);
+            spriteBatch.setColor(Color.WHITE);
         }
     }
 
@@ -1003,6 +1018,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         bandageSprite.dispose();
         noteSprite.dispose();
         keeperSprite.dispose();
+        collapsedWallSample.dispose();
         sceneryPixel.dispose();
         shelterBackdrop.dispose();
         redBackdrop.dispose();
