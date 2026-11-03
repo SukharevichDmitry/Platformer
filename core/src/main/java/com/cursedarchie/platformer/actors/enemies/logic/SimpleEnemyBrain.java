@@ -37,7 +37,7 @@ public class SimpleEnemyBrain implements EnemyBrain {
             enemy.requestAttack();
         }
 
-        if (enemy.isAttacking() || enemy.isRangedWindingUp() || enemy.isBlocking() ||
+        if (enemy.isAttacking() || enemy.isRangedBusy() || enemy.isBlocking() ||
             (noticeRemaining > 0f && enemy.isCanSeeHero()) ||
             (!scavenger && enemy.isCanAttackHero())) {
             enemy.setIntent(IDLE);

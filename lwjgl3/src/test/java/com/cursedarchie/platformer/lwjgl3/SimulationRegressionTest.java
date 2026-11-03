@@ -79,6 +79,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkAlleyPortalsAndChoices();
         checkSliceItemsAndGuard();
         checkArrowCover();
+        checkArcherActionReadability();
         passed = true;
         Gdx.app.exit();
     }
@@ -993,8 +994,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             shooter.setActive(false);
             float health = hero.getHealth();
             route.fireArrowVolley(shooter, new Vector2(-1f, 0f), 0);
-            for (int i = 0; i < 35; i++) route.update(GameWorld.FIXED_STEP);
+            boolean heroImpact = false;
+            for (int i = 0; i < 35; i++) {
+                route.update(GameWorld.FIXED_STEP);
+                for (GameWorld.ArrowImpact impact : route.getArrowImpacts()) if (impact.hero) heroImpact = true;
+            }
             if (hero.getHealth() >= health) throw new AssertionError("Flying arrow missed an exposed hero");
+            if (!heroImpact) throw new AssertionError("Arrow hit on the hero left no impact effect");
             hero.setHealth(health);
             com.badlogic.gdx.physics.box2d.BodyDef wallDef = new com.badlogic.gdx.physics.box2d.BodyDef();
             wallDef.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
@@ -1006,9 +1012,175 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             wall.createFixture(shape, 0f);
             shape.dispose();
             route.fireArrowVolley(shooter, new Vector2(-1f, 0f), 0);
-            for (int i = 0; i < 35; i++) route.update(GameWorld.FIXED_STEP);
+            boolean wallImpact = false;
+            for (int i = 0; i < 35; i++) {
+                route.update(GameWorld.FIXED_STEP);
+                for (GameWorld.ArrowImpact impact : route.getArrowImpacts()) if (!impact.hero) wallImpact = true;
+            }
             closeTo(hero.getHealth(), health, "Arrow passed through cover");
+            if (!wallImpact) throw new AssertionError("Arrow hit on a wall left no impact effect");
         } finally { route.dispose(); }
+    }
+
+    /**
+     * The archer's actions must stay distinguishable: a phased shot with a locked aim, distinct hit
+     * feedback, a retreat that is telegraphed and skids rather than teleports, an evasion that deals no
+     * damage, and a melee strike that clearly breaks the ranged stance.
+     */
+    private void checkArcherActionReadability() {
+        // Standard shot: DRAW -> LOCKED -> CUE -> RECOVERY, with the aim frozen from the lock onward.
+        GameWorld shot = new GameWorld();
+        try {
+            Hero hero = shot.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy archer = EnemyFactory.createScavenger(shot.getWorld(), new Vector2(15f, 2.5f));
+            archer.setBrain(new SimpleEnemyBrain(shot));
+            shot.addEnemy(archer);
+            int last = 0;
+            boolean[] seen = new boolean[5];
+            Vector2 lockedAim = null;
+            Vector2 cueAim = null;
+            for (int i = 0; i < 300; i++) {
+                shot.update(GameWorld.FIXED_STEP);
+                Enemy.RangedPhase phase = archer.getRangedPhase();
+                int rank = phase.ordinal();
+                if (rank == 0) {
+                    if (last == 4) break;
+                    continue;
+                }
+                if (rank < last) throw new AssertionError("Archer shot phases ran out of order");
+                last = rank;
+                seen[rank] = true;
+                if (phase == Enemy.RangedPhase.LOCKED && lockedAim == null) {
+                    lockedAim = new Vector2(archer.getRangedAim());
+                    hero.getBody().setTransform(10f, 3.3f, 0f);
+                }
+                if (phase == Enemy.RangedPhase.CUE && cueAim == null) cueAim = new Vector2(archer.getRangedAim());
+            }
+            if (!seen[1] || !seen[2] || !seen[3] || !seen[4] || lockedAim == null || cueAim == null)
+                throw new AssertionError("Archer shot skipped a phase (draw, lock, release cue or recovery)");
+            closeTo(cueAim.x, lockedAim.x, "Aim kept moving after it was locked");
+            closeTo(cueAim.y, lockedAim.y, "Aim kept moving after it was locked");
+            if (archer.getRangedShotMode() != 0) throw new AssertionError("First archer shot was not a standard shot");
+            if (archer.pollCue() != Enemy.Cue.BOW_DRAW_STANDARD)
+                throw new AssertionError("Standard draw did not start with its own sound cue");
+            boolean shotCue = false;
+            for (Enemy.Cue cue = archer.pollCue(); cue != null; cue = archer.pollCue())
+                if (cue == Enemy.Cue.SHOT_STANDARD) shotCue = true;
+            if (!shotCue) throw new AssertionError("Standard release did not queue its sound cue");
+        } finally { shot.dispose(); }
+
+        // An arrow that lands: impact effect once, a hero reaction, and real damage.
+        GameWorld hit = new GameWorld();
+        try {
+            Hero hero = hit.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy archer = EnemyFactory.createScavenger(hit.getWorld(), new Vector2(15f, 2.5f));
+            archer.setBrain(new SimpleEnemyBrain(hit));
+            hit.addEnemy(archer);
+            float health = hero.getHealth();
+            boolean impact = false;
+            boolean reaction = false;
+            for (int i = 0; i < 160 && !(impact && reaction); i++) {
+                hit.update(GameWorld.FIXED_STEP);
+                for (GameWorld.ArrowImpact effect : hit.getArrowImpacts()) {
+                    if (!effect.hero) continue;
+                    impact = true;
+                    if (!effect.consumeSoundCue() || effect.consumeSoundCue())
+                        throw new AssertionError("Impact sound cue must play exactly once");
+                }
+                if (hit.getHeroArrowReactionProgress() >= 0f) reaction = true;
+            }
+            if (!impact) throw new AssertionError("Arrow hit left no impact effect");
+            if (!reaction) throw new AssertionError("Hero did not react to an arrow hit");
+            if (hero.getHealth() >= health) throw new AssertionError("Arrow hit dealt no damage");
+        } finally { hit.dispose(); }
+
+        // Retreat: telegraph, then dash, then skid back to stance; never a jump in position.
+        GameWorld retreat = new GameWorld();
+        try {
+            Hero hero = retreat.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy archer = EnemyFactory.createScavenger(retreat.getWorld(), new Vector2(12.2f, 2.5f));
+            archer.setBrain(new SimpleEnemyBrain(retreat));
+            retreat.addEnemy(archer);
+            boolean telegraph = false;
+            boolean dash = false;
+            boolean recover = false;
+            float telegraphStartX = 0f;
+            float telegraphDrift = 0f;
+            float lastX = archer.getPosition().x;
+            float biggestStep = 0f;
+            for (int i = 0; i < 300; i++) {
+                retreat.update(GameWorld.FIXED_STEP);
+                Enemy.RetreatPhase phase = archer.getRetreatPhase();
+                if (phase == Enemy.RetreatPhase.TELEGRAPH) {
+                    if (!telegraph) telegraphStartX = archer.getPosition().x;
+                    telegraph = true;
+                    telegraphDrift = Math.max(telegraphDrift, Math.abs(archer.getPosition().x - telegraphStartX));
+                }
+                if (phase == Enemy.RetreatPhase.DASH) dash = true;
+                if (phase == Enemy.RetreatPhase.RECOVER) recover = true;
+                biggestStep = Math.max(biggestStep, Math.abs(archer.getPosition().x - lastX));
+                lastX = archer.getPosition().x;
+                if (recover && phase == Enemy.RetreatPhase.NONE) break;
+            }
+            if (!telegraph || !dash || !recover)
+                throw new AssertionError("Retreat skipped its telegraph, dash or recovery");
+            if (telegraphDrift > .1f) throw new AssertionError("Archer moved during the retreat telegraph");
+            if (biggestStep > .35f) throw new AssertionError("Archer retreat teleported instead of dashing");
+            if (archer.getPosition().x < 13.2f) throw new AssertionError("Retreat did not create distance");
+            if (!archer.isFacingLeft()) throw new AssertionError("Archer did not return to face the hero");
+            boolean dashCue = false;
+            for (Enemy.Cue cue = archer.pollCue(); cue != null; cue = archer.pollCue())
+                if (cue == Enemy.Cue.RETREAT_DASH) dashCue = true;
+            if (!dashCue) throw new AssertionError("Retreat dash did not queue its sound cue");
+        } finally { retreat.dispose(); }
+
+        // Evasion after a light hit: no damage, an afterimage trail and a visible dodge effect.
+        GameWorld dodge = new GameWorld();
+        try {
+            Hero hero = dodge.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy archer = EnemyFactory.createScavenger(dodge.getWorld(), new Vector2(11.2f, 2.5f));
+            dodge.addEnemy(archer);
+            float health = archer.getHealth();
+            float startX = archer.getPosition().x;
+            archer.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, hero.getPosition().x, 1f, 0f, null));
+            closeTo(archer.getHealth(), health, "Dodged light hit still dealt damage");
+            if (archer.getDodgeFlashRemaining() <= 0f || archer.getRetreatTrailRemaining() <= 0f ||
+                !archer.isRetreatTrailDodge())
+                throw new AssertionError("Dodge showed no evasion effect");
+            if (archer.pollCue() != Enemy.Cue.DODGE) throw new AssertionError("Dodge did not queue its sound cue");
+            for (int i = 0; i < 12; i++) dodge.update(GameWorld.FIXED_STEP);
+            if (archer.getPosition().x <= startX + .3f) throw new AssertionError("Dodge did not move the archer away");
+        } finally { dodge.dispose(); }
+
+        // Melee: rushing an archer that is drawing ends the ranged stance and uses its own cues.
+        GameWorld melee = new GameWorld();
+        try {
+            Hero hero = melee.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy archer = EnemyFactory.createScavenger(melee.getWorld(), new Vector2(15f, 2.5f));
+            archer.setBrain(new SimpleEnemyBrain(melee));
+            melee.addEnemy(archer);
+            for (int i = 0; i < 120 && !archer.isRangedWindingUp(); i++) melee.update(GameWorld.FIXED_STEP);
+            if (!archer.isRangedWindingUp()) throw new AssertionError("Archer never started drawing");
+            hero.getBody().setTransform(14.2f, 2.5f, 0f);
+            hero.setHealth(hero.getMaxHealth());
+            for (int i = 0; i < 200 && !archer.isAttacking(); i++) melee.update(GameWorld.FIXED_STEP);
+            if (!archer.isAttacking()) throw new AssertionError("Archer did not switch to a melee strike");
+            if (archer.isRangedRecovering() || archer.getRangedPhase() != Enemy.RangedPhase.NONE)
+                throw new AssertionError("Melee strike still showed the ranged stance");
+            for (int i = 0; i < 20; i++) melee.update(GameWorld.FIXED_STEP);
+            boolean windup = false;
+            boolean strike = false;
+            for (Enemy.Cue cue = archer.pollCue(); cue != null; cue = archer.pollCue()) {
+                if (cue == Enemy.Cue.MELEE_WINDUP) windup = true;
+                if (cue == Enemy.Cue.MELEE_STRIKE) strike = true;
+            }
+            if (!windup || !strike) throw new AssertionError("Melee strike lacked its own sound cues");
+        } finally { melee.dispose(); }
     }
 
     private static void closeTo(float actual, float expected, String failure) {

@@ -94,6 +94,13 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final Sound firstSlash;
     private final Sound secondSlash;
     private final Sound heavySlash;
+    private final Sound[] archerCueSounds = new Sound[Enemy.Cue.values().length];
+    private final Sound arrowHitHeroSound;
+    private final Sound arrowHitWallSound;
+    private final Texture glowTexture;
+    private final Texture ringTexture;
+    /** Free-running clock (seconds) for flicker and orbit effects; advanced by the render delta. */
+    private float effectClock;
     private final Texture shelterBackdrop;
     private final Texture redBackdrop;
     private final Texture inkBackdrop;
@@ -204,6 +211,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         firstSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_light_1.wav"));
         secondSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_light_2.wav"));
         heavySlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_heavy.wav"));
+        loadArcherCueSounds();
+        arrowHitHeroSound = Gdx.audio.newSound(Gdx.files.internal("sfx/arrow_hit_hero.wav"));
+        arrowHitWallSound = Gdx.audio.newSound(Gdx.files.internal("sfx/arrow_hit_wall.wav"));
+        glowTexture = radialTexture(false);
+        ringTexture = radialTexture(true);
         bandageSprite.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         noteSprite.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         itemLabelFont = new ItemLabelFont();
@@ -354,6 +366,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     /** Draws only the world layer so transitions can capture it without HUD. */
     public void renderWorldOnly(float delta) {
         updateCamera(delta);
+        effectClock += delta;
 
         spriteBatch.setProjectionMatrix(cam.combined);
 
@@ -372,6 +385,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawHero();
             drawEnemy();
             drawArrows();
+            drawArrowImpacts();
             drawPortals(true);
             drawDefeatEffects();
             drawDamageIndicators();
@@ -496,13 +510,702 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         spriteBatch.setColor(Color.WHITE);
     }
 
+    /*=========================================ARCHER PRESENTATION=====================================================*/
+    // The scavenger sprite is one static pose without a bow, so each archer action is composed from the sprite
+    // transform plus procedural bow, aim, flash and trail effects. Palette, kept apart so actions read at a glance
+    // and never rely on colour alone (each also has its own silhouette): standard shot = amber, single thin line;
+    // charged shot = orange with a white-hot core, thick line and ring; volley = violet, three fanned lines;
+    // melee = crimson zone and steel slash; retreat/evade = teal/cyan chevrons and ghosts; hero hit = white, then red.
+
+    /** The scavenger art natively faces left; the collector's flip rule in drawEnemy is the same idea. */
+    private static final boolean SCAVENGER_SPRITE_FACES_LEFT = true;
+    private static final float ARCHER_VISUAL_WIDTH = 1.32f;
+    private static final float ARCHER_VISUAL_HEIGHT = 1.44f;
+    private static final float AIM_LINE_LENGTH = 6f;
+    private static final Color COLOR_SHOT_STANDARD = new Color(1f, .84f, .30f, 1f);
+    private static final Color COLOR_SHOT_CHARGED = new Color(1f, .45f, .12f, 1f);
+    private static final Color COLOR_SHOT_VOLLEY = new Color(.86f, .40f, 1f, 1f);
+    private static final Color COLOR_MELEE = new Color(1f, .20f, .20f, 1f);
+    private static final Color COLOR_STEEL = new Color(.92f, .95f, 1f, 1f);
+    private static final Color COLOR_RETREAT = new Color(.45f, .95f, 1f, 1f);
+    private static final Color COLOR_WOOD = new Color(.55f, .37f, .20f, 1f);
+    private static final Color COLOR_STRING = new Color(.92f, .88f, .78f, 1f);
+
+    private static Color shotColor(int mode) {
+        return mode == 2 ? COLOR_SHOT_VOLLEY : mode == 1 ? COLOR_SHOT_CHARGED : COLOR_SHOT_STANDARD;
+    }
+
+    private static float clamp01(float value) {
+        return value < 0f ? 0f : value > 1f ? 1f : value;
+    }
+
+    private void tint(Color color, float alpha) {
+        spriteBatch.setColor(color.r, color.g, color.b, alpha);
+    }
+
+    /** Like {@link #tint} but blends the colour toward white (0 = unchanged, 1 = white). */
+    private void tintMixed(Color color, float toWhite, float alpha) {
+        spriteBatch.setColor(color.r + (1f - color.r) * toWhite, color.g + (1f - color.g) * toWhite,
+            color.b + (1f - color.b) * toWhite, alpha);
+    }
+
+    /** Bar of the given size centred on a point and rotated about that centre. */
+    private void barCentered(float cx, float cy, float length, float thickness, float degrees) {
+        spriteBatch.draw(arrowPixel, cx - length / 2f, cy - thickness / 2f, length / 2f, thickness / 2f,
+            length, thickness, 1f, 1f, degrees);
+    }
+
+    /** Bar starting at a point and extending along the given angle. */
+    private void barFrom(float x, float y, float length, float thickness, float degrees) {
+        spriteBatch.draw(arrowPixel, x, y - thickness / 2f, 0f, thickness / 2f, length, thickness, 1f, 1f, degrees);
+    }
+
+    private void segment(float x0, float y0, float x1, float y1, float thickness) {
+        float dx = x1 - x0;
+        float dy = y1 - y0;
+        barFrom(x0, y0, (float) Math.sqrt(dx * dx + dy * dy), thickness,
+            (float) Math.toDegrees(Math.atan2(dy, dx)));
+    }
+
+    private void glow(float cx, float cy, float radius) {
+        spriteBatch.draw(glowTexture, cx - radius, cy - radius, radius * 2f, radius * 2f);
+    }
+
+    private void ring(float cx, float cy, float radius) {
+        spriteBatch.draw(ringTexture, cx - radius, cy - radius, radius * 2f, radius * 2f);
+    }
+
+    /** Soft white disc (or thin ring) used, tinted, for flashes, auras and shock rings. */
+    private static Texture radialTexture(boolean ring) {
+        final int size = 64;
+        Pixmap pixels = new Pixmap(size, size, Pixmap.Format.RGBA8888);
+        pixels.setBlending(Pixmap.Blending.None);
+        float centre = (size - 1) / 2f;
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                float d = (float) Math.sqrt((x - centre) * (x - centre) + (y - centre) * (y - centre))
+                    / (size / 2f);
+                float alpha;
+                if (d > 1f) alpha = 0f;
+                else if (ring) alpha = Math.max(0f, 1f - Math.abs(d - .82f) / .14f);
+                else {
+                    alpha = 1f - d;
+                    alpha *= alpha;
+                }
+                pixels.drawPixel(x, y, Color.rgba8888(1f, 1f, 1f, alpha));
+            }
+        }
+        Texture texture = new Texture(pixels);
+        texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        pixels.dispose();
+        return texture;
+    }
+
+    private static String cueFile(Enemy.Cue cue) {
+        switch (cue) {
+            case BOW_DRAW_STANDARD: return "bow_draw_standard";
+            case BOW_DRAW_CHARGED: return "bow_draw_charged";
+            case BOW_DRAW_VOLLEY: return "bow_draw_volley";
+            case SHOT_STANDARD: return "arrow_shot_standard";
+            case SHOT_CHARGED: return "arrow_shot_charged";
+            case SHOT_VOLLEY: return "arrow_shot_volley";
+            case MELEE_WINDUP: return "archer_melee_windup";
+            case MELEE_STRIKE: return "archer_melee_strike";
+            case RETREAT_DASH: return "archer_retreat_dash";
+            default: return "archer_dodge";
+        }
+    }
+
+    private static float cueVolume(Enemy.Cue cue) {
+        switch (cue) {
+            case SHOT_CHARGED: return .65f;
+            case SHOT_VOLLEY: return .6f;
+            case SHOT_STANDARD: case MELEE_WINDUP: case MELEE_STRIKE: return .5f;
+            case DODGE: return .4f;
+            case RETREAT_DASH: return .3f;
+            default: return .35f;
+        }
+    }
+
+    private void loadArcherCueSounds() {
+        for (Enemy.Cue cue : Enemy.Cue.values())
+            archerCueSounds[cue.ordinal()] =
+                Gdx.audio.newSound(Gdx.files.internal("sfx/" + cueFile(cue) + ".wav"));
+    }
+
+    /** Sounds fade with distance from the hero so off-screen archers stay quiet. */
+    private float soundVolume(float x, float y, float base) {
+        return base * Math.max(.15f, 1f - hero.getPosition().dst(x, y) / 14f);
+    }
+
+    private void playEnemyCues(Enemy enemy) {
+        Enemy.Cue cue = enemy.pollCue();
+        while (cue != null) {
+            archerCueSounds[cue.ordinal()].play(
+                soundVolume(enemy.getPosition().x, enemy.getPosition().y, cueVolume(cue)));
+            cue = enemy.pollCue();
+        }
+    }
+
+    private void drawArcherSprite(float centreX, float bottomY, boolean facingLeft, float forwardLean,
+                                  float scaleX, float scaleY) {
+        float face = facingLeft ? -1f : 1f;
+        spriteBatch.draw(scavengerSprite, centreX - ARCHER_VISUAL_WIDTH / 2f, bottomY,
+            ARCHER_VISUAL_WIDTH / 2f, 0f, ARCHER_VISUAL_WIDTH, ARCHER_VISUAL_HEIGHT, scaleX, scaleY,
+            -face * forwardLean, 0, 0, scavengerSprite.getWidth(), scavengerSprite.getHeight(),
+            facingLeft != SCAVENGER_SPRITE_FACES_LEFT, false);
+    }
+
+    private static com.cursedarchie.platformer.actors.enemies.states.combat.AttackState meleeState(Enemy enemy) {
+        Object state = enemy.getCombatStateMachine().getCurrentState();
+        return state instanceof com.cursedarchie.platformer.actors.enemies.states.combat.AttackState ?
+            (com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) state : null;
+    }
+
+    /** Draws one archer: body pose first, then the effects of whichever single action it is performing. */
+    private void drawArcher(Enemy enemy) {
+        playEnemyCues(enemy);
+        Vector2 pos = enemy.getPosition();
+        boolean left = enemy.isFacingLeft();
+        float face = left ? -1f : 1f;
+        float feet = pos.y - enemy.getSize() / 2f;
+        com.cursedarchie.platformer.actors.enemies.states.combat.AttackState melee = meleeState(enemy);
+        // Only one action is shown at a time, so melee never reads as a shot and vice versa.
+        Enemy.RangedPhase ranged = melee == null ? enemy.getRangedPhase() : Enemy.RangedPhase.NONE;
+        Enemy.RetreatPhase retreat = melee == null && ranged == Enemy.RangedPhase.NONE ?
+            enemy.getRetreatPhase() : Enemy.RetreatPhase.NONE;
+
+        float offX = 0f;
+        float offY = 0f;
+        float lean = 0f;
+        float scaleX = 1f;
+        float scaleY = 1f;
+        float r = 1f;
+        float g = 1f;
+        float b = 1f;
+        float a = 1f;
+
+        if (melee != null) {
+            float t = enemy.getCombatStateTime();
+            float startup = melee.startup(enemy);
+            float activeEnd = melee.activeEnd(enemy);
+            if (t < startup) {                       // wind-up: coil back, blade raised, flush crimson
+                float p = t / startup;
+                lean = -12f * p;
+                offX = -face * .1f * p;
+                offY = -.04f * p;
+                scaleY = 1f - .05f * p;
+                g = b = 1f - .5f * p;
+            } else if (t < activeEnd) {              // strike: lunge through the zone
+                lean = 18f;
+                offX = face * .24f;
+            } else {                                 // recovery: ease back to a neutral stance
+                float total = Math.max(activeEnd + .01f, enemy.getAttackDuration());
+                float q = clamp01((t - activeEnd) / (total - activeEnd));
+                lean = 18f * (1f - q);
+                offX = face * .24f * (1f - q);
+            }
+        } else if (ranged != Enemy.RangedPhase.NONE) {
+            float p = enemy.getRangedWindupProgress();
+            switch (ranged) {
+                case DRAW:
+                    lean = -4f * p;
+                    offX = -face * .05f * p;
+                    break;
+                case LOCKED:
+                    lean = 3f;
+                    offX = -face * .05f;
+                    break;
+                case CUE:
+                    lean = 5f;
+                    offX = -face * .05f + (float) Math.sin(effectClock * 90f) * .012f;
+                    break;
+                case RECOVERY:
+                    float q = enemy.getRangedRecoveryProgress();
+                    lean = -9f * (1f - q);
+                    offX = -face * .14f * (1f - q);
+                    break;
+                default:
+                    break;
+            }
+        } else if (retreat != Enemy.RetreatPhase.NONE) {
+            float p = enemy.getRetreatPhaseProgress();
+            switch (retreat) {
+                case TELEGRAPH:                      // coil away from the hero
+                    lean = -11f * p;
+                    offX = -face * .09f * p;
+                    offY = -.07f * p;
+                    scaleY = 1f - .06f * p;
+                    r = 1f - .3f * p;
+                    break;
+                case DASH:                           // stretched and tinted while moving backwards
+                    lean = -16f;
+                    scaleX = 1.1f;
+                    scaleY = .94f;
+                    r = .75f;
+                    break;
+                case RECOVER:                        // skid, then settle back into the stance
+                    lean = -10f * (1f - p);
+                    offY = -.04f * (1f - p);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        float dodgeRemaining = enemy.getDodgeFlashRemaining();
+        if (dodgeRemaining > Enemy.DODGE_EFFECT_DURATION - Enemy.DODGE_TINT_DURATION) {
+            r = .4f;
+            g = 1f;
+            b = 1f;
+            a = .8f;
+            lean = -14f;
+        } else if (gameWorld.hasRecentDamage(enemy)) {
+            r = 1f;
+            g = b = .35f;
+        }
+
+        drawArcherTrail(enemy, left, feet);
+        spriteBatch.setColor(r, g, b, a);
+        drawArcherSprite(pos.x + offX, feet + offY, left, lean, scaleX, scaleY);
+
+        if (melee != null) drawArcherMelee(enemy, melee, face);
+        else if (ranged != Enemy.RangedPhase.NONE) drawArcherRanged(enemy, ranged);
+        else if (retreat != Enemy.RetreatPhase.NONE) drawArcherRetreat(enemy, retreat, face, feet);
+        drawArcherDodge(enemy);
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    /** Afterimages along the path of a retreat dash (teal) or a dodge (cyan), plus a puff of dust at the start. */
+    private void drawArcherTrail(Enemy enemy, boolean left, float feet) {
+        float remaining = enemy.getRetreatTrailRemaining();
+        if (remaining <= 0f) return;
+        boolean dodge = enemy.isRetreatTrailDodge();
+        float fade = clamp01(remaining / Enemy.RETREAT_TRAIL_FADE);
+        float from = enemy.getRetreatTrailFromX();
+        float to = enemy.getRetreatTrailToX();
+        if (Math.abs(to - from) > .3f) {
+            int ghosts = 5;
+            for (int i = 0; i < ghosts; i++) {
+                float f = i / (float) ghosts;
+                float alpha = (.12f + .3f * f) * fade * (dodge ? 1.25f : 1f);
+                if (dodge) spriteBatch.setColor(.45f, 1f, 1f, alpha);
+                else spriteBatch.setColor(.55f, .9f, 1f, alpha);
+                drawArcherSprite(from + (to - from) * f, feet, left, dodge ? -10f : -14f, 1f, 1f);
+            }
+        }
+        float total = (dodge ? .3f : Enemy.RETREAT_DASH_TIME + Enemy.RETREAT_RECOVER_TIME) +
+            Enemy.RETREAT_TRAIL_FADE;
+        float puff = (total - remaining) / .4f;
+        if (puff < 1f) {
+            float dir = enemy.getRetreatTrailDirection();
+            for (int k = 0; k < 3; k++) {
+                spriteBatch.setColor(.72f, .7f, .66f, .4f * (1f - puff));
+                glow(from - dir * (.12f + .22f * puff) * (k + 1), feet + .1f + .12f * puff * k,
+                    .12f + .1f * k + .12f * puff);
+            }
+        }
+    }
+
+    /** Melee: a crimson strike zone, "!" marker and blade glint to telegraph, then a steel slash. */
+    private void drawArcherMelee(Enemy enemy,
+                                 com.cursedarchie.platformer.actors.enemies.states.combat.AttackState melee,
+                                 float face) {
+        Vector2 pos = enemy.getPosition();
+        float t = enemy.getCombatStateTime();
+        float startup = melee.startup(enemy);
+        float activeEnd = melee.activeEnd(enemy);
+        if (t < startup) {
+            float p = t / startup;
+            // Danger zone: where the hero's body can be struck (centred .86 ahead, hero body 1 wide).
+            tint(COLOR_MELEE, .10f + .28f * p);
+            spriteBatch.draw(sceneryPixel, face > 0f ? pos.x + .4f : pos.x - 1.75f, pos.y - .5f, 1.35f, 1f);
+            tint(COLOR_MELEE, .45f + .45f * p);
+            spriteBatch.draw(sceneryPixel, face > 0f ? pos.x + 1.69f : pos.x - 1.75f, pos.y - .5f, .06f, 1f);
+            // "!" marker above the head.
+            float markY = pos.y + .95f + .03f * (float) Math.sin(effectClock * 40f);
+            tint(COLOR_MELEE, .95f);
+            spriteBatch.draw(sceneryPixel, pos.x - .05f, markY, .1f, .26f);
+            spriteBatch.draw(sceneryPixel, pos.x - .05f, markY - .15f, .1f, .09f);
+            // Glint on the raised blade.
+            tint(COLOR_STEEL, .35f + .5f * p);
+            glow(pos.x + face * .6f, pos.y - .06f, .12f + .2f * p);
+        } else {
+            float sweepEnd = activeEnd + .1f;
+            if (t < sweepEnd)
+                drawSlashArc(pos.x, pos.y, face, .95f, (t - startup) / (sweepEnd - startup), COLOR_STEEL);
+        }
+    }
+
+    /** Crescent of short bars swept top-to-bottom in front of {@code dirX}; used for melee and whiffed strikes. */
+    private void drawSlashArc(float cx, float cy, float dirX, float radius, float progress, Color color) {
+        float alpha = clamp01(1f - progress * .85f);
+        int pieces = 7;
+        for (int i = 0; i < pieces; i++) {
+            float f = i / (float) (pieces - 1);
+            if (f > clamp01(progress * 1.6f + .25f)) break;
+            float angle = 62f - 118f * f;
+            if (dirX < 0f) angle = 180f - angle;
+            float rad = (float) Math.toRadians(angle);
+            tint(color, alpha * (.45f + .55f * f));
+            barCentered(cx + (float) Math.cos(rad) * radius, cy + .05f + (float) Math.sin(rad) * radius,
+                .3f, .09f, angle + 90f);
+        }
+    }
+
+    /** Retreat: teal chevrons as the tell, speed lines on the dash, a ready ring when back in stance. */
+    private void drawArcherRetreat(Enemy enemy, Enemy.RetreatPhase phase, float face, float feet) {
+        Vector2 pos = enemy.getPosition();
+        float p = enemy.getRetreatPhaseProgress();
+        float away = -face;
+        switch (phase) {
+            case TELEGRAPH:
+                for (int k = 0; k < 3; k++) {
+                    tint(COLOR_RETREAT, clamp01(p * 1.5f - k * .15f) * .85f);
+                    chevron(pos.x + away * (.75f + .26f * k), pos.y - .1f, away);
+                }
+                tint(COLOR_RETREAT, .35f * p);
+                ring(pos.x, feet + .1f, .15f + .35f * p);
+                break;
+            case DASH:
+                for (int k = 0; k < 3; k++) {
+                    tint(COLOR_RETREAT, .55f * (1f - p));
+                    barCentered(pos.x - away * (.6f + .35f * k), pos.y - .3f + .3f * k,
+                        .55f - .1f * k, .05f, 0f);
+                }
+                break;
+            case RECOVER:
+                if (p > .55f) {
+                    float f = (p - .55f) / .45f;
+                    tint(COLOR_RETREAT, .6f * (1f - f));
+                    ring(pos.x, pos.y + .1f, .5f + .4f * f);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void chevron(float tipX, float tipY, float dir) {
+        float base = dir > 0f ? 180f : 0f;
+        barFrom(tipX, tipY, .26f, .06f, base - 40f);
+        barFrom(tipX, tipY, .26f, .06f, base + 40f);
+    }
+
+    /** Evasion: the hero's blade whiffs through the archer's old position and a "DODGE" label rises. */
+    private void drawArcherDodge(Enemy enemy) {
+        float remaining = enemy.getDodgeFlashRemaining();
+        if (remaining <= 0f) return;
+        float p = 1f - remaining / Enemy.DODGE_EFFECT_DURATION;
+        float away = enemy.getDodgeDirection();
+        float originX = enemy.getDodgeOriginX();
+        float originY = enemy.getDodgeOriginY();
+        if (p < .6f) drawSlashArc(originX - away * .65f, originY, away, .65f, p / .6f, COLOR_RETREAT);
+        tint(COLOR_RETREAT, .6f * (1f - p));
+        ring(originX, originY, .2f + .6f * p);
+        float labelY = enemy.getPosition().y + enemy.getSize() / 2f + .7f + .5f * p;
+        damageLayout.setText(damageFont, "DODGE");
+        float labelX = enemy.getPosition().x - damageLayout.width / 2f;
+        damageFont.setColor(0f, 0f, 0f, .7f * (1f - p));
+        damageFont.draw(spriteBatch, "DODGE", labelX + .03f, labelY - .03f);
+        damageFont.setColor(.45f, 1f, 1f, 1f - p);
+        damageFont.draw(spriteBatch, "DODGE", labelX, labelY);
+        damageFont.setColor(Color.WHITE);
+    }
+
+    /** Ranged: bow, nocked arrows and aim lines per shot type, release cue, muzzle flash and recovery. */
+    private void drawArcherRanged(Enemy enemy, Enemy.RangedPhase phase) {
+        int mode = enemy.getRangedShotMode();
+        Color c = shotColor(mode);
+        Vector2 pos = enemy.getPosition();
+        Vector2 aim = enemy.getRangedAim();
+        float face = enemy.isRangedShotFacingLeft() ? -1f : 1f;
+        float aimAngle = (float) Math.toDegrees(Math.atan2(aim.y, aim.x));
+        float progress = enemy.getRangedWindupProgress();
+        boolean drawing = phase == Enemy.RangedPhase.DRAW || phase == Enemy.RangedPhase.LOCKED ||
+            phase == Enemy.RangedPhase.CUE;
+        // The bow sits where the arrows spawn (see GameWorld.fireArrowVolley).
+        float hx = pos.x + aim.x * .55f;
+        float hy = pos.y + .1f + aim.y * .55f;
+        float mx = pos.x + aim.x * .65f;
+        float my = pos.y + .1f + aim.y * .65f;
+        float drawDistance = mode == 1 ? .46f : mode == 2 ? .42f : .34f;
+        float pull = drawing ? clamp01(progress / .65f) : 0f;
+        float bowAngle = aimAngle;
+        if (phase == Enemy.RangedPhase.RECOVERY)
+            bowAngle = aimAngle - face * 70f * clamp01(enemy.getRangedRecoveryProgress() * 3f);
+        float cue = enemy.getRangedReleaseCueProgress();
+
+        if (drawing) {
+            drawAimLines(enemy, phase, mode, c, aimAngle, progress, cue);
+            float charge = clamp01(progress);
+            if (mode == 1) {
+                // Charged: a growing orange aura with white-hot sparks spiralling in.
+                tint(c, .18f + .32f * charge);
+                glow(hx, hy, .25f + .55f * charge);
+                for (int k = 0; k < 4; k++) {
+                    float angle = effectClock * 7f + k * 1.5708f;
+                    float orbit = .75f - .4f * charge;
+                    tintMixed(c, .7f, .9f);
+                    barCentered(hx + (float) Math.cos(angle) * orbit, hy + (float) Math.sin(angle) * orbit,
+                        .09f, .09f, 0f);
+                }
+            } else if (mode == 2) {
+                tint(c, .12f + .22f * charge);
+                glow(hx, hy, .3f + .25f * charge);
+            } else {
+                tint(c, .10f + .15f * charge);
+                glow(hx, hy, .22f);
+            }
+        }
+
+        drawBow(hx, hy, bowAngle, pull, drawDistance);
+        if (drawing) drawNockedArrows(hx, hy, bowAngle, pull, drawDistance, mode, c);
+
+        if (enemy.getRangedLockFlashRemaining() > 0f) {
+            float f = enemy.getRangedLockFlashRemaining() / .14f;
+            tintMixed(c, .5f, f);
+            ring(mx, my, .15f + .35f * (1f - f));
+        }
+        if (phase == Enemy.RangedPhase.CUE) {
+            // Just before release: pulsing white-hot flare and a tightening ring.
+            float pulse = .6f + .4f * (float) Math.sin(effectClock * 100f);
+            tintMixed(c, .7f, .85f * pulse);
+            glow(mx, my, (mode == 1 ? .6f : mode == 2 ? .5f : .34f) * (.7f + .6f * cue));
+            tintMixed(c, .8f, 1f - cue);
+            ring(mx, my, .7f - .55f * cue);
+        }
+        if (phase == Enemy.RangedPhase.RECOVERY) {
+            if (enemy.getRangedShotFlashRemaining() > 0f) drawReleaseFlash(enemy, mode, c, mx, my, aimAngle, pos);
+            else if (enemy.getRangedFizzleRemaining() > 0f) {
+                float f = enemy.getRangedFizzleRemaining() / .3f;
+                spriteBatch.setColor(.65f, .62f, .6f, .5f * f);
+                glow(hx, hy, .45f * (1.2f - f * .4f));
+                tint(c, .9f * f);
+                for (int k = 0; k < 4; k++) {
+                    float angle = k * 1.7f + .6f;
+                    float dist = .15f + .5f * (1f - f);
+                    barCentered(hx + (float) Math.cos(angle) * dist, hy + (float) Math.sin(angle) * dist,
+                        .1f, .05f, (float) Math.toDegrees(angle));
+                }
+            } else {
+                float q = enemy.getRangedRecoveryProgress();
+                spriteBatch.setColor(.7f, .7f, .72f, .28f * (1f - q));
+                glow(mx, my, .22f + .3f * q);
+            }
+        }
+    }
+
+    /** Aim indication: dashed while tracking, solid once locked, wide and white at the release cue. */
+    private void drawAimLines(Enemy enemy, Enemy.RangedPhase phase, int mode, Color c, float aimAngle,
+                              float progress, float cue) {
+        Vector2 pos = enemy.getPosition();
+        int lines = mode == 2 ? 3 : 1;
+        float spreadDegrees = (float) Math.toDegrees(GameWorld.VOLLEY_SPREAD);
+        float lockProgress = clamp01(progress / Enemy.RANGED_AIM_LOCK_AT);
+        for (int i = 0; i < lines; i++) {
+            float angle = aimAngle + (mode == 2 ? (i - 1) * spreadDegrees : 0f);
+            float rad = (float) Math.toRadians(angle);
+            float cos = (float) Math.cos(rad);
+            float sin = (float) Math.sin(rad);
+            float ox = pos.x + cos * .65f;
+            float oy = pos.y + .1f + sin * .65f;
+            float thickness = mode == 1 ? .1f : mode == 2 ? .045f : .06f;
+            if (phase == Enemy.RangedPhase.DRAW) {
+                float length = AIM_LINE_LENGTH * (.3f + .7f * lockProgress);
+                tint(c, .2f + .2f * lockProgress);
+                for (float d = 0f; d < length; d += .42f)
+                    barFrom(ox + cos * d, oy + sin * d, Math.min(.22f, length - d), thickness * .7f, angle);
+            } else {
+                boolean cueing = phase == Enemy.RangedPhase.CUE;
+                float flicker = cueing ? .8f + .2f * (float) Math.sin(effectClock * 100f) : 1f;
+                float width = cueing ? thickness * 1.9f : thickness;
+                if (mode == 1) {
+                    tint(c, .22f * flicker);
+                    barFrom(ox, oy, AIM_LINE_LENGTH, width * 2.6f, angle);
+                }
+                tintMixed(c, cueing ? .6f : 0f, (cueing ? .95f : .6f) * flicker);
+                barFrom(ox, oy, AIM_LINE_LENGTH, width, angle);
+                if (mode != 0) {
+                    tint(c, .9f);
+                    barCentered(ox + cos * AIM_LINE_LENGTH, oy + sin * AIM_LINE_LENGTH,
+                        mode == 1 ? .2f : .13f, mode == 1 ? .2f : .13f, angle + 45f);
+                }
+            }
+        }
+    }
+
+    private void drawBow(float hx, float hy, float angleDeg, float pull, float drawDistance) {
+        float rad = (float) Math.toRadians(angleDeg);
+        float cos = (float) Math.cos(rad);
+        float sin = (float) Math.sin(rad);
+        final int segments = 6;
+        float prevX = 0f;
+        float prevY = 0f;
+        for (int i = 0; i <= segments; i++) {
+            float u = -1f + 2f * i / segments;
+            // The limbs bulge toward the target and their tips bend back as the string is drawn.
+            float lx = .15f * (1f - u * u) - .09f * pull * u * u;
+            float ly = u * .52f;
+            float wx = hx + lx * cos - ly * sin;
+            float wy = hy + lx * sin + ly * cos;
+            if (i > 0) {
+                tint(COLOR_WOOD, 1f);
+                segment(prevX, prevY, wx, wy, .07f);
+            }
+            prevX = wx;
+            prevY = wy;
+        }
+        float tipX = -.09f * pull;
+        float nockX = -drawDistance * pull;
+        float topX = hx + tipX * cos - .52f * sin;
+        float topY = hy + tipX * sin + .52f * cos;
+        float bottomX = hx + tipX * cos + .52f * sin;
+        float bottomY = hy + tipX * sin - .52f * cos;
+        float nockWorldX = hx + nockX * cos;
+        float nockWorldY = hy + nockX * sin;
+        tint(COLOR_STRING, .9f);
+        segment(topX, topY, nockWorldX, nockWorldY, .022f);
+        segment(nockWorldX, nockWorldY, bottomX, bottomY, .022f);
+    }
+
+    /** One nocked arrow, or three with a slight vertical fan for the volley, sliding back as the bow is drawn. */
+    private void drawNockedArrows(float hx, float hy, float bowAngle, float pull, float drawDistance,
+                                  int mode, Color c) {
+        float rad = (float) Math.toRadians(bowAngle);
+        float cos = (float) Math.cos(rad);
+        float sin = (float) Math.sin(rad);
+        int count = mode == 2 ? 3 : 1;
+        for (int i = 0; i < count; i++) {
+            float phi = mode == 2 ? (i - 1) * GameWorld.VOLLEY_SPREAD : 0f;
+            float lateral = mode == 2 ? (i - 1) * .08f : 0f;
+            float tailLx = -drawDistance * pull;
+            float length = drawDistance * pull + .24f;
+            float tipLx = tailLx + (float) Math.cos(phi) * length;
+            float tipLy = lateral + (float) Math.sin(phi) * length;
+            float tailX = hx + tailLx * cos - lateral * sin;
+            float tailY = hy + tailLx * sin + lateral * cos;
+            float tipX = hx + tipLx * cos - tipLy * sin;
+            float tipY = hy + tipLx * sin + tipLy * cos;
+            float arrowAngle = bowAngle + (float) Math.toDegrees(phi);
+            tintMixed(c, .35f, 1f);
+            segment(tailX, tailY, tipX, tipY, mode == 1 ? .06f : .04f);
+            tint(COLOR_STEEL, 1f);
+            barCentered(tipX, tipY, .12f, mode == 1 ? .1f : .07f, arrowAngle);
+            tint(c, 1f);
+            barFrom(tailX, tailY, .12f, .03f, arrowAngle + 150f);
+            barFrom(tailX, tailY, .12f, .03f, arrowAngle - 150f);
+            if (mode != 0) {
+                tint(c, .5f * pull);
+                glow(tipX, tipY, mode == 1 ? .3f : .2f);
+            }
+        }
+    }
+
+    /** Muzzle flash at release: bigger and brighter for the charged shot, widest for the volley. */
+    private void drawReleaseFlash(Enemy enemy, int mode, Color c, float mx, float my, float aimAngle,
+                                  Vector2 pos) {
+        float f = enemy.getRangedShotFlashRemaining() / enemy.getRangedShotFlashDuration();
+        float size = mode == 2 ? .75f : mode == 1 ? .7f : .38f;
+        tintMixed(c, .75f, f);
+        glow(mx, my, size * (.7f + .6f * (1f - f)));
+        int rays = mode == 1 ? 8 : mode == 2 ? 6 : 4;
+        for (int k = 0; k < rays; k++) {
+            float angle = aimAngle + k * 360f / rays;
+            tintMixed(c, .5f, f * .9f);
+            barFrom(mx, my, size * 1.4f * (1.1f - .3f * f), mode == 1 ? .07f : .05f, angle);
+        }
+        int beams = mode == 2 ? 3 : 1;
+        float spreadDegrees = (float) Math.toDegrees(GameWorld.VOLLEY_SPREAD);
+        for (int i = 0; i < beams; i++) {
+            float angle = aimAngle + (mode == 2 ? (i - 1) * spreadDegrees : 0f);
+            float rad = (float) Math.toRadians(angle);
+            tintMixed(c, .6f, f * .8f);
+            barFrom(pos.x + (float) Math.cos(rad) * .65f, pos.y + .1f + (float) Math.sin(rad) * .65f,
+                AIM_LINE_LENGTH * (1f - .4f * (1f - f)), mode == 1 ? .2f : .1f, angle);
+        }
+    }
+
+    /** Arrow aligned with its velocity; length and motion trail scale with speed, colour with shot type. */
     private void drawArrows() {
         for (GameWorld.Arrow arrow : gameWorld.getArrows()) {
             float angle = (float) Math.toDegrees(Math.atan2(arrow.velocity.y, arrow.velocity.x));
-            spriteBatch.setColor(arrow.charged ? 1f : .78f,
-                arrow.charged ? .47f : .67f, .25f, 1f);
-            spriteBatch.draw(arrowPixel, arrow.position.x - .3f, arrow.position.y - .045f,
-                .3f, .045f, .6f, .09f, 1f, 1f, angle);
+            float rad = (float) Math.toRadians(angle);
+            float cos = (float) Math.cos(rad);
+            float sin = (float) Math.sin(rad);
+            Color c = shotColor(arrow.mode);
+            float length = arrow.speed * .04f;
+            float thickness = arrow.mode == 1 ? .12f : .09f;
+            float tailX = arrow.position.x - cos * length;
+            float tailY = arrow.position.y - sin * length;
+            float trail = arrow.speed * (arrow.mode == 1 ? .1f : .07f);
+            int steps = 4;
+            for (int i = 0; i < steps; i++) {
+                float f = i / (float) steps;
+                float segmentLength = trail / steps;
+                float back = f * trail + segmentLength;
+                tint(c, (arrow.mode == 1 ? .55f : .35f) * (1f - f));
+                barFrom(tailX - cos * back, tailY - sin * back, segmentLength, thickness * (1f - .5f * f), angle);
+            }
+            if (arrow.mode == 1) {
+                tint(c, .55f);
+                glow(arrow.position.x - cos * length * .5f, arrow.position.y - sin * length * .5f, .38f);
+            }
+            tintMixed(c, .25f, 1f);
+            barFrom(tailX, tailY, length, thickness * .55f, angle);
+            tint(COLOR_STEEL, 1f);
+            barCentered(arrow.position.x, arrow.position.y, .16f, thickness * 1.4f, angle);
+            tint(c, 1f);
+            barFrom(tailX, tailY, .14f, .035f, angle + 150f);
+            barFrom(tailX, tailY, .14f, .035f, angle - 150f);
+        }
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    /** Arrow impacts: hero hits flash white and burst; wall hits are small dry chips with a different sound. */
+    private void drawArrowImpacts() {
+        for (GameWorld.ArrowImpact impact : gameWorld.getArrowImpacts()) {
+            if (impact.consumeSoundCue())
+                (impact.hero ? arrowHitHeroSound : arrowHitWallSound)
+                    .play(soundVolume(impact.x, impact.y, impact.hero ? .7f : .45f));
+            float p = impact.getProgress();
+            float fade = 1f - p;
+            Color c = shotColor(impact.mode);
+            if (impact.hero) {
+                float scale = impact.mode == 1 ? 1.45f : 1f;
+                spriteBatch.setColor(1f, 1f, 1f, fade * fade);
+                glow(impact.x, impact.y, (.3f + .45f * p) * scale);
+                tintMixed(c, .5f, fade);
+                ring(impact.x, impact.y, (.12f + .65f * p) * scale);
+                int sparks = impact.mode == 1 ? 9 : 6;
+                for (int k = 0; k < sparks; k++) {
+                    float angle = impact.normalAngle + (k / (float) (sparks - 1) - .5f) * 110f;
+                    float rad = (float) Math.toRadians(angle);
+                    float dist = (.1f + .55f * p) * scale * (.8f + .4f * ((k * 37) % 5) / 4f);
+                    spriteBatch.setColor(1f, .38f + .4f * fade, .3f, fade);
+                    barCentered(impact.x + (float) Math.cos(rad) * dist, impact.y + (float) Math.sin(rad) * dist,
+                        .2f * fade * scale + .04f, .045f, angle);
+                }
+            } else {
+                spriteBatch.setColor(.85f, .85f, .8f, .7f * fade);
+                ring(impact.x, impact.y, .1f + .3f * p);
+                for (int k = 0; k < 4; k++) {
+                    float angle = impact.normalAngle + (k / 3f - .5f) * 110f;
+                    float rad = (float) Math.toRadians(angle);
+                    float dist = .06f + .4f * p;
+                    spriteBatch.setColor(1f, .93f, .65f, fade);
+                    barCentered(impact.x + (float) Math.cos(rad) * dist, impact.y + (float) Math.sin(rad) * dist,
+                        .14f * fade + .03f, .035f, angle);
+                }
+                for (int k = 0; k < 2; k++) {
+                    float angle = impact.normalAngle + (k == 0 ? -35f : 35f);
+                    float rad = (float) Math.toRadians(angle);
+                    spriteBatch.setColor(.6f, .58f, .55f, fade);
+                    barCentered(impact.x + (float) Math.cos(rad) * (.1f + .3f * p),
+                        impact.y + (float) Math.sin(rad) * (.1f + .3f * p) - 1.2f * p * p,
+                        .06f, .06f, 0f);
+                }
+            }
         }
         spriteBatch.setColor(Color.WHITE);
     }
@@ -769,6 +1472,13 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         float drawX = hero.getPosition().x - hero.getSize()/2f;
         float drawY = hero.getPosition().y - hero.getSize()/2f;
         float drawSize = hero.getSize();
+        // Flinch when an arrow lands: shoved along the arrow's path with a quick shake that settles.
+        float arrowReaction = gameWorld.getHeroArrowReactionProgress();
+        if (arrowReaction >= 0f && enteringPortal == null) {
+            float settle = 1f - arrowReaction;
+            drawX += gameWorld.getHeroArrowReactionDirection() * .16f * settle +
+                (float) Math.sin(arrowReaction * 60f) * .03f * settle;
+        }
         if (enteringPortal != null) {
             RoomInstance room = gameWorld.getCurrentRoom();
             float targetX = room.getWorldX() + enteringPortal.position.x;
@@ -781,6 +1491,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             heroFrame,
             drawX, drawY, drawSize, drawSize
         );
+        if (arrowReaction >= 0f && arrowReaction < .35f) {
+            // Brief white flash over the hero before the red damage tint takes over.
+            spriteBatch.setColor(1f, 1f, 1f, .75f * (1f - arrowReaction / .35f));
+            glow(drawX + drawSize / 2f, drawY + drawSize / 2f, .75f);
+            spriteBatch.setColor(Color.WHITE);
+        }
         if (hero.isBlocking() || hero.isBlockBroken() || hero.getBlockFlashRemaining() > 0f) {
             float direction = hero.isFacingLeft() ? -1f : 1f;
             spriteBatch.setColor(hero.isBlockBroken() ? 1f :
@@ -943,6 +1659,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
         for (Enemy enemy : enemies) {
             if (enemy.isAlive()) {
+                if ("scavenger".equals(enemy.getArchetypeId())) {
+                    drawArcher(enemy);
+                    continue;
+                }
                 TextureRegion enemyFrame;
 
 
@@ -1035,15 +1755,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     spriteBatch.setColor(.35f, .75f, 1f, .9f);
                     spriteBatch.draw(sceneryPixel, enemy.getPosition().x + direction * .68f - .09f,
                         enemy.getPosition().y - .4f, .18f, 1.1f);
-                }
-                if (enemy.isRangedWindingUp() || enemy.getRangedShotFlashRemaining() > 0f) {
-                    spriteBatch.setColor(1f, enemy.isRangedWindingUp() ? .45f : .92f, .2f, .8f);
-                    float angle = (float) Math.toDegrees(Math.atan2(
-                        enemy.getRangedAim().y, enemy.getRangedAim().x));
-                    spriteBatch.draw(arrowPixel, enemy.getPosition().x,
-                        enemy.getPosition().y, 0f, .04f,
-                        6f, enemy.getRangedShotMode() == 2 ? .16f : .08f,
-                        1f, 1f, angle);
                 }
                 spriteBatch.setColor(Color.WHITE);
             }
@@ -1232,6 +1943,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         firstSlash.dispose();
         secondSlash.dispose();
         heavySlash.dispose();
+        for (Sound cue : archerCueSounds) if (cue != null) cue.dispose();
+        arrowHitHeroSound.dispose();
+        arrowHitWallSound.dispose();
+        glowTexture.dispose();
+        ringTexture.dispose();
         damageFont.dispose();
         itemLabelFont.dispose();
         bandageSprite.dispose();

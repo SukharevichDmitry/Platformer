@@ -47,6 +47,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public static final String FINAL_FACTION = "neighbor_final_faction";
     public static final float FIXED_STEP = 1f / 60f;
     public static final float GRAVITY = 80f;
+    /** Angle in radians between neighbouring arrows of an archer volley (shared with the telegraph). */
+    public static final float VOLLEY_SPREAD = .22f;
     private static final int MAX_STEPS_PER_FRAME = 6;
 
     private final World world;
@@ -68,6 +70,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private final Array<DefeatEffect> defeatEffects = new Array<>();
     private final Array<DamageIndicator> damageIndicators = new Array<>();
     private final Array<Arrow> arrows = new Array<>();
+    private final Array<ArrowImpact> arrowImpacts = new Array<>();
+    private float heroArrowReactionRemaining;
+    private float heroArrowReactionDirection;
     private final Map<Actor, Float> observedHealth = new IdentityHashMap<>();
     private final EnemyController enemyController;
     private boolean disposed;
@@ -137,6 +142,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         smokeRemaining = Math.max(0f, smokeRemaining - delta);
         updateDefeatEffects(delta);
         updateDamageIndicators(delta);
+        updateArrowImpacts(delta);
         recordDamage();
         // Body destruction must happen outside Box2D's locked world.step callback.
         removeDeadEnemies();
@@ -372,6 +378,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private void unloadLocation() {
         arrows.clear();
+        arrowImpacts.clear();
+        heroArrowReactionRemaining = 0f;
         defeatEffects.clear();
         damageIndicators.clear();
         for (int i = enemies.size - 1; i >= 0; i--) {
@@ -522,16 +530,72 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public Array<DefeatEffect> getDefeatEffects() { return defeatEffects; }
     public Array<DamageIndicator> getDamageIndicators() { return damageIndicators; }
     public Array<Arrow> getArrows() { return arrows; }
+    public Array<ArrowImpact> getArrowImpacts() { return arrowImpacts; }
+
+    public static final float HERO_ARROW_REACTION_DURATION = .32f;
+    /** 0..1 progress of the hero's flinch after an arrow hit, or -1 when no reaction is playing. */
+    public float getHeroArrowReactionProgress() {
+        return heroArrowReactionRemaining <= 0f ? -1f :
+            1f - heroArrowReactionRemaining / HERO_ARROW_REACTION_DURATION;
+    }
+    /** Travel direction (-1 or 1) of the arrow that caused the current reaction. */
+    public float getHeroArrowReactionDirection() { return heroArrowReactionDirection; }
 
     public static final class Arrow {
         public final Vector2 position = new Vector2();
         public final Vector2 velocity = new Vector2();
         public final boolean charged;
+        /** 0 = standard, 1 = charged, 2 = volley (matches the shot that produced it). */
+        public final int mode;
+        public final float speed;
         public float age;
-        private Arrow(float x, float y, float vx, float vy, boolean charged) {
+        private Arrow(float x, float y, float vx, float vy, int mode) {
             position.set(x, y);
             velocity.set(vx, vy);
-            this.charged = charged;
+            this.mode = mode;
+            this.charged = mode == 1;
+            this.speed = velocity.len();
+        }
+    }
+
+    /** Short-lived burst where an arrow struck the hero or level geometry. */
+    public static final class ArrowImpact {
+        public static final float HERO_DURATION = .38f;
+        public static final float WALL_DURATION = .26f;
+        public final boolean hero;
+        public final float x;
+        public final float y;
+        /** Travel direction of the arrow in degrees. */
+        public final float angle;
+        /** Surface normal angle in degrees (walls only; heroes use the reverse of the travel direction). */
+        public final float normalAngle;
+        public final int mode;
+        private float elapsed;
+        private boolean soundPending = true;
+        private ArrowImpact(boolean hero, float x, float y, float angle, float normalAngle, int mode) {
+            this.hero = hero;
+            this.x = x;
+            this.y = y;
+            this.angle = angle;
+            this.normalAngle = normalAngle;
+            this.mode = mode;
+        }
+        public float getDuration() { return hero ? HERO_DURATION : WALL_DURATION; }
+        public float getProgress() { return Math.min(1f, elapsed / getDuration()); }
+        /** True exactly once, so the renderer plays the unique impact sound a single time. */
+        public boolean consumeSoundCue() {
+            boolean pending = soundPending;
+            soundPending = false;
+            return pending;
+        }
+    }
+
+    private void updateArrowImpacts(float delta) {
+        heroArrowReactionRemaining = Math.max(0f, heroArrowReactionRemaining - delta);
+        for (int i = arrowImpacts.size - 1; i >= 0; i--) {
+            ArrowImpact impact = arrowImpacts.get(i);
+            impact.elapsed += delta;
+            if (impact.elapsed >= impact.getDuration()) arrowImpacts.removeIndex(i);
         }
     }
 
@@ -539,13 +603,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         int count = mode == 2 ? 3 : 1;
         float speed = mode == 1 ? 18f : 15f;
         for (int i = 0; i < count; i++) {
-            float angle = mode == 2 ? (i - 1) * .22f : 0f;
+            float angle = mode == 2 ? (i - 1) * VOLLEY_SPREAD : 0f;
             float cosine = (float) Math.cos(angle), sine = (float) Math.sin(angle);
             float dx = direction.x * cosine - direction.y * sine;
             float dy = direction.x * sine + direction.y * cosine;
             arrows.add(new Arrow(source.getPosition().x + dx * .65f,
                 source.getPosition().y + .1f + dy * .65f,
-                dx * speed, dy * speed, mode == 1));
+                dx * speed, dy * speed, mode));
         }
     }
 
@@ -556,6 +620,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             float toY = arrow.position.y + arrow.velocity.y * delta;
             final float[] closest = {1f};
             final boolean[] hitHero = {false};
+            final float[] hit = new float[3]; // impact x, y and surface normal angle (degrees)
             world.rayCast((fixture, point, normal, fraction) -> {
                 if (fixture.isSensor()) return -1f;
                 Object owner = fixture.getBody().getUserData();
@@ -563,14 +628,30 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 if (fraction < closest[0]) {
                     closest[0] = fraction;
                     hitHero[0] = owner == hero;
+                    hit[0] = point.x;
+                    hit[1] = point.y;
+                    hit[2] = (float) Math.toDegrees(Math.atan2(normal.y, normal.x));
                 }
                 return fraction;
             }, arrow.position.x, arrow.position.y, toX, toY);
             arrow.age += delta;
             if (closest[0] < 1f || arrow.age > 2f) {
-                if (hitHero[0]) hero.receiveHit(new CombatHit(CombatHit.Type.PROJECTILE,
-                    arrow.charged ? 1f : .5f, arrow.position.x, 0f,
-                    arrow.charged ? 5f : 0f, null));
+                if (closest[0] < 1f) {
+                    float travel = (float) Math.toDegrees(Math.atan2(arrow.velocity.y, arrow.velocity.x));
+                    if (hitHero[0]) {
+                        float before = hero.getHealth();
+                        hero.receiveHit(new CombatHit(CombatHit.Type.PROJECTILE,
+                            arrow.charged ? 1f : .5f, arrow.position.x, 0f,
+                            arrow.charged ? 5f : 0f, null));
+                        if (hero.getHealth() < before) {
+                            heroArrowReactionRemaining = HERO_ARROW_REACTION_DURATION;
+                            heroArrowReactionDirection = arrow.velocity.x < 0f ? -1f : 1f;
+                        }
+                        arrowImpacts.add(new ArrowImpact(true, hit[0], hit[1], travel, travel + 180f, arrow.mode));
+                    } else {
+                        arrowImpacts.add(new ArrowImpact(false, hit[0], hit[1], travel, hit[2], arrow.mode));
+                    }
+                }
                 arrows.removeIndex(i);
             } else arrow.position.set(toX, toY);
         }

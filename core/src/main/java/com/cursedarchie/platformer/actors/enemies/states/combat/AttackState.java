@@ -15,6 +15,7 @@ public class AttackState implements EnemyState {
     private final boolean lunge;
     private final boolean area;
     private boolean facingLeft;
+    private boolean strikeCueSent;
 
     public AttackState() { this(false, false); }
     public AttackState(boolean lunge) { this(lunge, false); }
@@ -29,7 +30,9 @@ public class AttackState implements EnemyState {
     public void enter(Enemy enemy) {
         enemy.clearAttackRequest();
         hitTargets.clear();
+        strikeCueSent = false;
         facingLeft = enemy.isFacingLeft();
+        if ("scavenger".equals(enemy.getArchetypeId())) enemy.emitCue(Enemy.Cue.MELEE_WINDUP);
         enemy.setLeftAttackActive(false);
         enemy.setRightAttackActive(false);
         Gdx.app.log("INFO", "Start Attacking");
@@ -41,6 +44,10 @@ public class AttackState implements EnemyState {
 
         boolean activeFrame = enemy.getCombatStateTime() >= startup(enemy) &&
             enemy.getCombatStateTime() < activeEnd(enemy);
+        if (activeFrame && !strikeCueSent) {
+            strikeCueSent = true;
+            if ("scavenger".equals(enemy.getArchetypeId())) enemy.emitCue(Enemy.Cue.MELEE_STRIKE);
+        }
         enemy.setLeftAttackActive(activeFrame && facingLeft);
         enemy.setRightAttackActive(activeFrame && !facingLeft);
 
