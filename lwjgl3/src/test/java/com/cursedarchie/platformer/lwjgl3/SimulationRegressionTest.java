@@ -1144,6 +1144,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.getBody().setTransform(10f, 2.5f, 0f);
             Enemy archer = EnemyFactory.createScavenger(dodge.getWorld(), new Vector2(11.2f, 2.5f));
             dodge.addEnemy(archer);
+            archer.setBrain(null);
+            archer.setIntent(Enemy.Intent.IDLE);
             float health = archer.getHealth();
             float startX = archer.getPosition().x;
             archer.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, hero.getPosition().x, 1f, 0f, null));
