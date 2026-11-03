@@ -32,16 +32,29 @@ public class SimpleEnemyBrain implements EnemyBrain {
 
         boolean scavenger = "scavenger".equals(enemy.getArchetypeId());
         float distance = Math.abs(enemy.getHeroLastKnownPos().x - enemy.getPosition().x);
+        float retreatDirection = enemy.getHeroLastKnownPos().x < enemy.getPosition().x ? 1f : -1f;
+
+        if (enemy.isStaggered() || enemy.isDodging() || enemy.isActionRecovering()) {
+            enemy.setIntent(IDLE);
+            return;
+        }
+        if (enemy.isRetreating()) {
+            enemy.setIntent(RETREAT);
+            return;
+        }
         if (noticeRemaining == 0f && enemy.isCanAttackHero() && !enemy.isRangedWindingUp() &&
             !enemy.isBlocking() && (!scavenger || distance < 1.6f)) {
             enemy.requestAttack();
+            enemy.setIntent(IDLE);
+            return;
         }
 
         if (enemy.isAttacking() || enemy.isRangedWindingUp() || enemy.isBlocking() ||
             (noticeRemaining > 0f && enemy.isCanSeeHero()) ||
             (!scavenger && enemy.isCanAttackHero())) {
             enemy.setIntent(IDLE);
-        } else if (scavenger && enemy.isCanSeeHero() && distance < 2.7f) {
+        } else if (scavenger && enemy.isCanSeeHero() && distance < 2.7f &&
+            enemy.canBeginRetreat(retreatDirection)) {
             enemy.setIntent(RETREAT);
         } else if (scavenger && enemy.isCanSeeHero() && distance < 5.5f) {
             enemy.setIntent(IDLE);

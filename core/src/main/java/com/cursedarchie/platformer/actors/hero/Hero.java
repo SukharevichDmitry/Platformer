@@ -10,6 +10,10 @@ import com.cursedarchie.platformer.physics.PhysicsCategories;
 import com.cursedarchie.platformer.run.Inventory;
 import com.cursedarchie.platformer.run.ItemCatalog;
 import com.cursedarchie.platformer.physics.CombatHit;
+import com.cursedarchie.platformer.combat.AttackDefinition;
+import com.cursedarchie.platformer.combat.Hurtbox;
+import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
+import com.cursedarchie.platformer.actors.hero.states.combat.CombatIdleState;
 
 public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public static final float BODY_SIZE = 1f;
@@ -43,12 +47,27 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     protected MotionStateMachine motionStateMachine;
     protected CombatStateMachine combatStateMachine;
     private float invulnerabilityRemaining;
+    private float staggerRemaining;
+    private float lastHitSourceX = Float.NaN;
     private float platformDropRemaining;
     private boolean blockHeld;
     private float blockStability = 3f;
     private float blockBrokenRemaining;
     private float blockCounterCooldown;
     private float blockFlashRemaining;
+    private final AttackConfig firstAttackLeft = new AttackConfig(.9f, .82f, -1.0f, .02f);
+    private final AttackConfig firstAttackRight = new AttackConfig(.9f, .82f, 1.0f, .02f);
+    private final AttackConfig secondAttackLeft = new AttackConfig(1.32f, .66f, -1.38f, .16f);
+    private final AttackConfig secondAttackRight = new AttackConfig(1.32f, .66f, 1.38f, .16f);
+    private static final AttackDefinition LIGHT_1 = new AttackDefinition("hero_light_1",
+        CombatHit.Type.MELEE_LIGHT, .12f, .12f, .12f,
+        1.45f, .9f, .82f, .02f, 1f, 5f, .14f, 1f, true, .25f, .36f);
+    private static final AttackDefinition LIGHT_2 = new AttackDefinition("hero_light_2",
+        CombatHit.Type.MELEE_LIGHT, .08f, .15f, .23f,
+        2.04f, 1.32f, .66f, .16f, 1.1f, 8.5f, .2f, 1f, true, .46f, .46f);
+    private static final AttackDefinition HEAVY = new AttackDefinition("hero_heavy",
+        CombatHit.Type.MELEE_HEAVY, .52f, .18f, .22f,
+        1.9f, 1.3f, 1.05f, .04f, 2f, 10f, .3f, 2f, true, .92f, .92f, .2f);
     public void setBlockHeld(boolean value) { blockHeld = value; }
     public boolean isBlocking() { return blockHeld && blockBrokenRemaining == 0f && blockStability > 0f; }
     public boolean isBlockBroken() { return blockBrokenRemaining > 0f; }
@@ -58,9 +77,10 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         return inventory != null && inventory.count(ItemCatalog.WEIGHTED_BRACER) > 0 ? 3.75f :
             inventory != null && inventory.count(ItemCatalog.RED_BRACER) > 0 ? 3.75f : 3f;
     }
-    public void receiveHit(CombatHit hit) {
+    public boolean receiveHit(CombatHit hit) {
+        if (!alive || invulnerabilityRemaining > 0f) return false;
         boolean frontal = (hit.sourceX < getPosition().x) == facingLeft;
-        if (hit.type != CombatHit.Type.PROJECTILE && frontal && isBlocking()) {
+        if (hit.blockable && frontal && isBlocking()) {
             blockStability = Math.max(0f, blockStability - hit.stabilityDamage);
             blockFlashRemaining = .18f;
             if (hit.type == CombatHit.Type.MELEE_HEAVY) {
@@ -74,12 +94,19 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
                 }
             }
             if (blockStability == 0f) blockBrokenRemaining = .85f;
-            return;
+            return true;
         }
+        float healthBefore = health;
         takeDamage(hit.damage);
+        lastHitSourceX = hit.sourceX;
+        if (alive) staggerRemaining = Math.max(staggerRemaining, hit.staggerDuration);
+        if (alive && combatStateMachine.getCurrentState() instanceof AttackState)
+            combatStateMachine.changeState(new CombatIdleState());
         if (hit.recoil > 0f && alive)
-            body.setLinearVelocity(Math.copySign(hit.recoil, getPosition().x - hit.sourceX),
+            body.setLinearVelocity(hit.direction == 0f ?
+                    Math.copySign(hit.recoil, getPosition().x - hit.sourceX) : hit.direction * hit.recoil,
                 body.getLinearVelocity().y);
+        return health < healthBefore;
     }
     public float getPlatformDropRemaining() { return platformDropRemaining; }
     public void setPlatformDropRemaining(float seconds) { platformDropRemaining = Math.max(0f, seconds); }
@@ -108,8 +135,9 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         this.attackHandled = false;
         this.damage = 1f;
         this.attackDuration = ATTACK_DURATION;
-        this.attackLeft = new AttackConfig(0.8f, 0.8f, -1f, 0f);
-        this.attackRight = new AttackConfig(0.8f, 0.8f, 1f, 0f);
+        this.attackLeft = firstAttackLeft;
+        this.attackRight = firstAttackRight;
+        this.hurtbox = new Hurtbox(.78f, .94f, 0f, .02f);
 
         //BODY===================================================================
 
@@ -141,7 +169,9 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         createAttackSensors(
             PhysicsTags.HERO_ATTACK_SENSOR,
             PhysicsCategories.HERO_ATTACK,
-            PhysicsCategories.ENEMY
+            PhysicsCategories.ENEMY,
+            secondAttackLeft,
+            secondAttackRight
         );
 
         //=======================================================================
@@ -156,6 +186,8 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         return combatStateMachine;
     }
     public float getInvulnerabilityRemaining() { return invulnerabilityRemaining; }
+    public boolean isStaggered() { return staggerRemaining > 0f; }
+    public float getLastHitSourceX() { return lastHitSourceX; }
     public void setInventory(Inventory inventory) { this.inventory = inventory; }
     public float meleeDamageMultiplier(boolean heavy, int comboStep) {
         if (inventory == null) return 1f;
@@ -172,6 +204,18 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             ItemCatalog.impactCore().bonus : 0f;
     }
 
+    public AttackDefinition attackDefinition(boolean heavy, int comboStep) {
+        return heavy ? HEAVY : comboStep == 2 ? LIGHT_2 : LIGHT_1;
+    }
+
+    /** The two light strikes intentionally use different logical hitboxes. */
+    public boolean isTargetInAttack(Actor target, boolean attackFacesLeft, int comboStep) {
+        AttackConfig attack = comboStep == 2 ?
+            (attackFacesLeft ? secondAttackLeft : secondAttackRight) :
+            (attackFacesLeft ? firstAttackLeft : firstAttackRight);
+        return isTargetInAttack(target, attack);
+    }
+
     /*==========================================CONTROLLERS===========================================================*/
 
     @Override
@@ -182,6 +226,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         if (!blockHeld && blockBrokenRemaining == 0f)
             blockStability = Math.min(getMaxBlockStability(), blockStability + 1.15f * delta);
         invulnerabilityRemaining = Math.max(0f, invulnerabilityRemaining - delta);
+        staggerRemaining = Math.max(0f, staggerRemaining - delta);
         motionStateMachine.update(delta);
         combatStateMachine.update(delta);
     }

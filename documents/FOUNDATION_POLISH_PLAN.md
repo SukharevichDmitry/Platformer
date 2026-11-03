@@ -1,5 +1,32 @@
 # Foundation polish plan for the first game
 
+## Two-strike readability pass — 2026-11-03
+
+The normal attack now has an explicit `startup → active → recovery` phase model.
+Only `active` enables damage, the directional attack flag and the bright leading
+edge of the slash; startup shows a compact wind-up cue and recovery has neither
+hitbox nor trail. The first strike is a short, stable forward sweep. A second
+press is accepted only during its recovery and queues one follow-up; a press
+outside that interval starts a later new first strike, so a late input cannot
+retroactively become combo step two. The follow-up is visually higher and uses
+its own sound, a longer/flatter logical hitbox, faster lunge and stronger recoil;
+its damage increase is deliberately small rather than being its sole difference.
+
+Damage continues to create the existing red flash and floating number, now with
+a brief world-space cross spark and short pitched impact tick placed on the
+struck side of the target. The impact tick is a temporary reuse of an existing
+sound asset until final combat audio arrives. Hero
+recoil/invulnerability and enemy recoil/stagger remain short, so feedback does
+not become a long loss of control. The hit sensor is sized for the longer second
+strike, while the logical hitbox for each phase selects the exact first/second
+range before applying damage. This keeps sensor contact, shown active trail and
+damage on the same simulation phase.
+
+JDK 17 `lwjgl3:simulationRegressionTest` passed. It exercises the recovery
+queued second strike at its extended range alongside existing hit timing and
+damage-cue regressions. A manual check remains necessary for final frame artwork,
+audio assets, and exact feel of the recovery input window.
+
 ## Combat core pass — 2026-11-02
 
 Input and inventory follow-up: Interact opens dialogue and confirms replies;

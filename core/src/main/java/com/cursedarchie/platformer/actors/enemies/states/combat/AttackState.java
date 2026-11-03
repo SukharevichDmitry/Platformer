@@ -1,95 +1,82 @@
 package com.cursedarchie.platformer.actors.enemies.states.combat;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.math.Rectangle;
 import com.cursedarchie.platformer.actors.Actor;
-import com.cursedarchie.platformer.actors.hero.Hero;
-import com.cursedarchie.platformer.physics.CombatHit;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.states.EnemyState;
+import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.combat.AttackDefinition;
+import com.cursedarchie.platformer.combat.AttackRuntime;
+import com.cursedarchie.platformer.physics.CombatHit;
 
-import java.util.HashSet;
 import java.util.Set;
 
+/** Shared phase-based melee authority for every enemy attack variant. */
 public class AttackState implements EnemyState {
-    private final Set<Actor> hitTargets = new HashSet<>();
     private final boolean lunge;
     private final boolean area;
-    private boolean facingLeft;
+    private final Rectangle attackBounds = new Rectangle();
+    private final Rectangle hurtBounds = new Rectangle();
+    private AttackRuntime runtime;
+    private boolean lunged;
 
     public AttackState() { this(false, false); }
     public AttackState(boolean lunge) { this(lunge, false); }
     public AttackState(boolean lunge, boolean area) { this.lunge = lunge; this.area = area; }
     public boolean isLunge() { return lunge; }
     public boolean isArea() { return area; }
-    public boolean isFacingLeft() { return facingLeft; }
-    public float startup(Enemy enemy) { return area ? .65f : lunge ? .48f : enemy.getAttackStartup(); }
-    public float activeEnd(Enemy enemy) { return area ? .84f : lunge ? .67f : enemy.getAttackActiveEnd(); }
+    public boolean isFacingLeft() { return runtime != null && runtime.facesLeft(); }
+    public AttackRuntime getRuntime() { return runtime; }
+    public AttackDefinition getDefinition() { return runtime.definition(); }
+    public float startup(Enemy enemy) { return runtime.definition().startupDuration; }
+    public float activeEnd(Enemy enemy) { return runtime.definition().activeEnd(); }
 
-    @Override
-    public void enter(Enemy enemy) {
+    @Override public void enter(Enemy enemy) {
         enemy.clearAttackRequest();
-        hitTargets.clear();
-        facingLeft = enemy.isFacingLeft();
+        runtime = new AttackRuntime(enemy.attackDefinition(lunge, area), enemy.isFacingLeft());
+        lunged = false;
         enemy.setLeftAttackActive(false);
         enemy.setRightAttackActive(false);
-        Gdx.app.log("INFO", "Start Attacking");
+        Gdx.app.log("INFO", "Start Attacking " + runtime.definition().id);
     }
 
-    @Override
-    public void update(Enemy enemy, float delta) {
-        enemy.setCombatStateTime(enemy.getCombatStateTime() + delta);
-
-        boolean activeFrame = enemy.getCombatStateTime() >= startup(enemy) &&
-            enemy.getCombatStateTime() < activeEnd(enemy);
-        enemy.setLeftAttackActive(activeFrame && facingLeft);
-        enemy.setRightAttackActive(activeFrame && !facingLeft);
-
-        if (activeFrame) {
-            if (area) {
-                for (Actor target : enemy.getVisibleActors()) {
-                    if (!(target instanceof Hero) || hitTargets.contains(target) ||
-                        Math.abs(target.getPosition().x - enemy.getPosition().x) > 2.4f ||
-                        Math.abs(target.getPosition().y - enemy.getPosition().y) > 1.2f) continue;
-                    ((Hero) target).receiveHit(new CombatHit(CombatHit.Type.MELEE_HEAVY,
-                        enemy.getDamage() * 1.25f, enemy.getPosition().x, 2.5f, 5f, enemy));
-                    hitTargets.add(target);
-                }
-            }
-            if (lunge) {
-                enemy.getBody().setLinearVelocity(facingLeft ? -11f : 11f,
-                    enemy.getBody().getLinearVelocity().y);
-            }
-
-            for (Actor target : enemy.getAttackTargets()) {
-                if (area || hitTargets.contains(target) || !enemy.isTargetInAttack(target, facingLeft)) continue;
-
-                if (target instanceof Hero)
-                    ((Hero) target).receiveHit(new CombatHit(lunge ? CombatHit.Type.MELEE_HEAVY :
-                        CombatHit.Type.MELEE_LIGHT, enemy.getDamage(), enemy.getPosition().x,
-                        lunge ? 2f : 1f, lunge ? 3f : 0f, enemy));
-                else target.takeDamage(enemy.getDamage());
-                hitTargets.add(target);
-                Gdx.app.log(
-                    "COMBAT",
-                    enemy.getClass().getSimpleName()
-                        + " dealt damage to "
-                        + target.getClass().getSimpleName()
-                );
-            }
-
+    @Override public void update(Enemy enemy, float delta) {
+        runtime.advance(delta);
+        enemy.setCombatStateTime(runtime.elapsed());
+        boolean active = runtime.isActive();
+        enemy.setLeftAttackActive(active && runtime.facesLeft());
+        enemy.setRightAttackActive(active && !runtime.facesLeft());
+        if (active && lunge && !lunged) {
+            enemy.getBody().setLinearVelocity(runtime.direction() * 11f,
+                enemy.getBody().getLinearVelocity().y);
+            lunged = true;
         }
-
-        if (enemy.getCombatStateTime() >= (area ? 1.08f : lunge ? .88f : enemy.getAttackDuration())) {
-            enemy.getCombatStateMachine().changeState(new CombatIdleState());
+        if (active) {
+            Set<Actor> candidates = area ? enemy.getVisibleActors() : enemy.getAttackTargets();
+            for (Actor target : candidates) {
+                if (!(target instanceof Hero) ||
+                    !runtime.canHit(enemy, target, attackBounds, hurtBounds)) continue;
+                AttackDefinition attack = runtime.definition();
+                CombatHit hit = new CombatHit(attack.type,
+                    enemy.getDamage() * attack.damageMultiplier, enemy, target,
+                    runtime.direction(), attack.stabilityDamage, attack.knockback,
+                    attack.staggerDuration, attack.blockable);
+                if (!((Hero) target).receiveHit(hit)) continue;
+                enemy.emitCombatHit(hit);
+                runtime.recordHit(target);
+                Gdx.app.log("COMBAT", enemy.getClass().getSimpleName() +
+                    " dealt damage to " + target.getClass().getSimpleName());
+            }
         }
+        if (runtime.isComplete()) enemy.getCombatStateMachine().changeState(new CombatIdleState());
     }
 
-    @Override
-    public void exit (Enemy enemy) {
+    @Override public void exit(Enemy enemy) {
         enemy.setAttackHandled(false);
         enemy.setLeftAttackActive(false);
         enemy.setRightAttackActive(false);
-        enemy.beginAttackCooldown(lunge && hitTargets.isEmpty() ? .4f : 0f);
+        enemy.beginAttackCooldown(lunge && !runtime.hitAnyTarget() ? .4f : 0f);
         Gdx.app.log("INFO", "Finished Attacking");
     }
 }

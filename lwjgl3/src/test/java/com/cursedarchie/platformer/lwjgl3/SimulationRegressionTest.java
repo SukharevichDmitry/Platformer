@@ -6,6 +6,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.actors.enemies.RangedAttackConfig;
 import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
 import com.cursedarchie.platformer.actors.enemies.logic.SimpleEnemyBrain;
 import com.badlogic.gdx.math.Vector2;
@@ -19,6 +20,8 @@ import com.cursedarchie.platformer.actors.hero.states.HeroState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.run.ItemCatalog;
 import com.cursedarchie.platformer.physics.CombatHit;
+import com.cursedarchie.platformer.combat.AttackDefinition;
+import com.cursedarchie.platformer.combat.AttackRuntime;
 import com.cursedarchie.platformer.world.GameWorld;
 import com.cursedarchie.platformer.world.LocationTitleOverlay;
 
@@ -68,10 +71,12 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkJumpBuffer();
         checkEnemyHeadJump();
         checkRenderRateConsistency();
+        checkUnifiedAttackModel();
         checkHeroAttackTimingAndDirection();
         checkCombatExtensions();
         checkLockedAttackDirection();
         checkSpecialEnemyRoles();
+        checkScavengerActionPriority();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -625,6 +630,60 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         }
     }
 
+    private void checkUnifiedAttackModel() {
+        Hero sampleHero = world.getHero();
+        AttackDefinition first = sampleHero.attackDefinition(false, 1);
+        closeTo(first.startupDuration, .12f, "first attack startup setting");
+        closeTo(first.activeDuration, .12f, "first attack active setting");
+        closeTo(first.recoveryDuration, .12f, "first attack recovery setting");
+        closeTo(first.hitboxWidth, .9f, "first attack hitbox width");
+        closeTo(GameWorld.Arrow.WIDTH, .48f, "arrow width setting");
+        AttackRuntime runtime = new AttackRuntime(first, false);
+        if (runtime.direction() != 1 || runtime.phase() != AttackRuntime.Phase.STARTUP)
+            throw new AssertionError("Attack runtime did not lock its initial direction");
+        runtime.advance(first.startupDuration);
+        if (runtime.phase() != AttackRuntime.Phase.ACTIVE)
+            throw new AssertionError("Attack did not enter its active phase at startup end");
+        runtime.advance(first.activeDuration);
+        runtime.advance(.01f);
+        if (runtime.phase() != AttackRuntime.Phase.RECOVERY || !runtime.acceptsNextInput())
+            throw new AssertionError("Attack recovery or combo input window is incorrect");
+
+        GameWorld fight = combatFixture();
+        try {
+            Enemy target = null;
+            for (Enemy enemy : fight.getEnemies()) {
+                enemy.setActive(false);
+                if (enemy.getSize() < 2f) target = enemy;
+            }
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            target.getBody().setTransform(11.2f, 2.5f, 0f);
+            fight.update(GameWorld.FIXED_STEP);
+            float health = target.getHealth();
+            fight.getHeroController().keyDown(Input.Keys.X);
+            for (int i = 0; i < 4; i++) fight.update(GameWorld.FIXED_STEP);
+            target.getBody().setTransform(15f, 2.5f, 0f);
+            for (int i = 0; i < 18; i++) fight.update(GameWorld.FIXED_STEP);
+            closeTo(target.getHealth(), health, "target that left before active phase was hit");
+            fight.getHeroController().keyUp(Input.Keys.X);
+
+            for (int i = 0; i < 20; i++) fight.update(GameWorld.FIXED_STEP);
+            hero.setFacingLeft(false);
+            target.getBody().setTransform(hero.getPosition().x + 1.2f, hero.getPosition().y, 0f);
+            target.getBody().setLinearVelocity(0f, 0f);
+            fight.getHeroController().keyDown(Input.Keys.X);
+            for (int i = 0; i < 12; i++) fight.update(GameWorld.FIXED_STEP);
+            if (fight.getCombatEvents().size == 0)
+                throw new AssertionError("Successful hit did not create a gameplay combat event");
+            CombatHit hit = fight.getCombatEvents().first().hit;
+            if (hit.source != hero || hit.target != target || hit.direction != 1f ||
+                hit.damage <= 0f || hit.recoil <= 0f || hit.staggerDuration <= 0f || !hit.blockable)
+                throw new AssertionError("Combat event omitted source, target, force, stagger, or blockability");
+            fight.getHeroController().keyUp(Input.Keys.X);
+        } finally { fight.dispose(); }
+    }
+
     private void checkEnemyAttackAndDamageCooldown() {
         GameWorld combatWorld = combatFixture();
         try {
@@ -694,13 +753,14 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             for (int i = 0; i < 10; i++) fight.update(GameWorld.FIXED_STEP);
             closeTo(target.getHealth(), 9f, "first strike damage");
             fight.getHeroController().keyUp(Input.Keys.X);
+            // The follow-up is accepted only during the recovery of strike one.
+            for (int i = 0; i < 5; i++) fight.update(GameWorld.FIXED_STEP);
             fight.getHeroController().keyDown(Input.Keys.X);
-            for (int i = 0; i < 12; i++) fight.update(GameWorld.FIXED_STEP);
-            target.getBody().setTransform(hero.getPosition().x + 1.2f, hero.getPosition().y, 0f);
+            target.getBody().setTransform(hero.getPosition().x + 1.55f, hero.getPosition().y, 0f);
             target.getBody().setLinearVelocity(0f, 0f);
-            for (int i = 0; i < 12; i++) fight.update(GameWorld.FIXED_STEP);
-            if (target.getHealth() > 7.5f)
-                throw new AssertionError("Buffered second combo strike did not land");
+            for (int i = 0; i < 24; i++) fight.update(GameWorld.FIXED_STEP);
+            if (target.getHealth() >= 9f)
+                throw new AssertionError("Recovery-queued second combo strike did not land at its extended range");
             fight.getHeroController().keyUp(Input.Keys.X);
 
             fight.getInventory().add(ItemCatalog.BLADE_SHARD);
@@ -806,6 +866,108 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             flank.takeMeleeHit(2f, flank.getPosition().x + 1f, 0f, false);
             closeTo(flank.getHealth(), flank.getMaxHealth() - 2f,
                 "Rear light strike did not bypass guard");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkScavengerActionPriority() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+
+            Enemy shooter = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(15f, 2.5f));
+            shooter.setIntent(Enemy.Intent.IDLE);
+            shooter.updateSpecialActions(fight, hero, fight.getAliveEnemies(), .81f);
+            shooter.setCanSeeHero(true);
+            if (!shooter.beginRangedAttack(RangedAttackConfig.NORMAL, hero))
+                throw new AssertionError("Scavenger could not begin a valid normal shot");
+            Vector2 lockedAim = new Vector2(shooter.getRangedAim());
+            Vector2 lockedTarget = new Vector2(shooter.getRangedTargetPosition());
+            hero.getBody().setTransform(20f, 2.5f, 0f);
+            shooter.updateSpecialActions(fight, hero, fight.getAliveEnemies(),
+                RangedAttackConfig.NORMAL.startup + .01f);
+            if (fight.getArrows().size != 1)
+                throw new AssertionError("Normal shot did not create exactly one arrow");
+            GameWorld.Arrow lockedArrow = fight.getArrows().first();
+            if (!lockedArrow.direction.epsilonEquals(lockedAim, .0001f) || lockedArrow.direction.x >= 0f)
+                throw new AssertionError("Moving during startup redirected the committed shot");
+            if (!shooter.getRangedTargetPosition().epsilonEquals(lockedTarget, .0001f))
+                throw new AssertionError("Moving during startup changed the committed target position");
+            closeTo(lockedArrow.damage, .5f, "normal arrow damage");
+            closeTo(lockedArrow.speed, 15f, "normal arrow speed");
+
+            fight.getArrows().clear();
+            fight.fireArrows(shooter, new Vector2(-1f, 0f), RangedAttackConfig.CHARGED);
+            if (fight.getArrows().size != 1 ||
+                fight.getArrows().first().type != RangedAttackConfig.Type.CHARGED)
+                throw new AssertionError("Charged shot did not create one charged arrow");
+            closeTo(fight.getArrows().first().damage, 1f, "charged arrow damage");
+            closeTo(fight.getArrows().first().speed, 18f, "charged arrow speed");
+
+            fight.getArrows().clear();
+            fight.fireArrows(shooter, new Vector2(-1f, 0f), RangedAttackConfig.VOLLEY);
+            if (fight.getArrows().size != 3)
+                throw new AssertionError("Volley did not create exactly three arrows");
+            if (!(fight.getArrows().get(0).direction.y > fight.getArrows().get(1).direction.y &&
+                fight.getArrows().get(1).direction.y > fight.getArrows().get(2).direction.y))
+                throw new AssertionError("Volley arrows do not have vertical angular spread");
+            fight.getArrows().clear();
+
+            Enemy closeShooter = EnemyFactory.createScavenger(fight.getWorld(),
+                new Vector2(12f, 2.5f));
+            closeShooter.setIntent(Enemy.Intent.IDLE);
+            closeShooter.updateSpecialActions(fight, hero, fight.getAliveEnemies(), .81f);
+            hero.getBody().setTransform(10.5f, 2.5f, 0f);
+            closeShooter.setCanSeeHero(true);
+            if (closeShooter.beginRangedAttack(RangedAttackConfig.NORMAL, hero))
+                throw new AssertionError("Scavenger started a ranged shot at melee distance");
+            closeShooter.requestAttack();
+            closeShooter.processCombatRequests();
+            if (!closeShooter.isAttacking() || closeShooter.isRangedWindingUp())
+                throw new AssertionError("Close scavenger did not choose an exclusive melee attack");
+
+            Enemy dodger = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(15f, 2.5f));
+            dodger.setIntent(Enemy.Intent.IDLE);
+            float health = dodger.getHealth();
+            boolean lightApplied = dodger.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT,
+                1f, 14f, 1f, 2f, hero));
+            if (lightApplied || dodger.getHealth() != health || !dodger.isDodging())
+                throw new AssertionError("Safe light-hit dodge did not avoid damage");
+            dodger.setCanSeeHero(true);
+            dodger.requestAttack();
+            dodger.processCombatRequests();
+            if (dodger.beginRangedAttack(RangedAttackConfig.NORMAL, hero) || dodger.isAttacking())
+                throw new AssertionError("Dodge allowed a simultaneous ranged or melee attack");
+
+            Enemy heavyTarget = EnemyFactory.createScavenger(fight.getWorld(),
+                new Vector2(17f, 2.5f));
+            float heavyHealth = heavyTarget.getHealth();
+            if (!heavyTarget.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_HEAVY,
+                1f, 16f, 2f, 3f, hero)) || heavyTarget.getHealth() >= heavyHealth ||
+                heavyTarget.isDodging())
+                throw new AssertionError("Heavy hit was incorrectly treated as a light dodge");
+
+            Enemy blocked = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(22f, 2.5f));
+            blocked.setIntent(Enemy.Intent.IDLE);
+            com.badlogic.gdx.physics.box2d.BodyDef wallDef = new com.badlogic.gdx.physics.box2d.BodyDef();
+            wallDef.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
+            wallDef.position.set(23f, 2.5f);
+            com.badlogic.gdx.physics.box2d.Body wall = fight.getWorld().createBody(wallDef);
+            wall.setUserData("level");
+            com.badlogic.gdx.physics.box2d.PolygonShape wallShape =
+                new com.badlogic.gdx.physics.box2d.PolygonShape();
+            wallShape.setAsBox(.2f, 1f);
+            wall.createFixture(wallShape, 0f);
+            wallShape.dispose();
+            if (blocked.hasClearRetreatPath(1f) || blocked.beginRetreat(1f))
+                throw new AssertionError("Scavenger retreated into a wall");
+            hero.getBody().setTransform(25f, 2.5f, 0f);
+            blocked.updateSpecialActions(fight, hero, fight.getAliveEnemies(), .81f);
+            blocked.setCanSeeHero(true);
+            if (blocked.beginRangedAttack(RangedAttackConfig.NORMAL, hero))
+                throw new AssertionError("Scavenger shot through blocked line of sight");
         } finally {
             fight.dispose();
         }
@@ -992,9 +1154,11 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             Enemy shooter = EnemyFactory.createScavenger(route.getWorld(), new Vector2(15f, 2.5f));
             shooter.setActive(false);
             float health = hero.getHealth();
-            route.fireArrowVolley(shooter, new Vector2(-1f, 0f), 0);
+            route.fireArrows(shooter, new Vector2(-1f, 0f), RangedAttackConfig.NORMAL);
             for (int i = 0; i < 35; i++) route.update(GameWorld.FIXED_STEP);
             if (hero.getHealth() >= health) throw new AssertionError("Flying arrow missed an exposed hero");
+            if (route.getArrows().size != 0)
+                throw new AssertionError("Arrow was not removed after hitting the hero");
             hero.setHealth(health);
             com.badlogic.gdx.physics.box2d.BodyDef wallDef = new com.badlogic.gdx.physics.box2d.BodyDef();
             wallDef.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
@@ -1005,9 +1169,11 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             shape.setAsBox(.15f, 1f);
             wall.createFixture(shape, 0f);
             shape.dispose();
-            route.fireArrowVolley(shooter, new Vector2(-1f, 0f), 0);
+            route.fireArrows(shooter, new Vector2(-1f, 0f), RangedAttackConfig.NORMAL);
             for (int i = 0; i < 35; i++) route.update(GameWorld.FIXED_STEP);
             closeTo(hero.getHealth(), health, "Arrow passed through cover");
+            if (route.getArrows().size != 0)
+                throw new AssertionError("Arrow was not removed after hitting a wall");
         } finally { route.dispose(); }
     }
 

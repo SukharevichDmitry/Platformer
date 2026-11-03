@@ -4,20 +4,27 @@ import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.states.EnemyState;
 
 public class RetreatState implements EnemyState {
+    private float direction;
+
     @Override
     public void enter(Enemy enemy) {
+        direction = enemy.getHeroLastKnownPos().x < enemy.getPosition().x ? 1f : -1f;
+        if (!enemy.beginRetreat(direction)) enemy.moveStop();
     }
 
     @Override
     public void update (Enemy enemy, float delta) {
-        float direction = enemy.getHeroLastKnownPos().x < enemy.getPosition().x ? 1f : -1f;
-        if (enemy.hasGroundAhead(direction)) enemy.moveHorizontal(direction);
-        else enemy.moveStop();
-        enemy.setFacingLeft(direction > 0f);
+        if (!enemy.isRetreating() || !enemy.hasClearRetreatPath(direction)) {
+            enemy.finishRetreat();
+            return;
+        }
+        enemy.moveHorizontal(direction);
+        enemy.setFacingLeft(direction < 0f);
     }
 
     @Override
     public void exit (Enemy enemy) {
-        enemy.moveStop();
+        if (enemy.isRetreating()) enemy.finishRetreat();
+        else enemy.moveStop();
     }
 }
