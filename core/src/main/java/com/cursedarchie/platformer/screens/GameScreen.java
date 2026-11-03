@@ -66,6 +66,10 @@
             multiplexer.addProcessor(new InputAdapter() {
                 @Override
                 public boolean keyDown(int keycode) {
+                    if (keycode == Input.Keys.F3) {
+                        renderer.toggleCombatDebug();
+                        return true;
+                    }
                     if (enteringPortal != null) return true;
                     if (dialogue.isOpen()) {
                         if (game.getControls().matches(Action.INTERACT, keycode)) {

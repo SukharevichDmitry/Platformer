@@ -33,10 +33,12 @@ import com.cursedarchie.platformer.tiles.types.HalfOfBlock;
 import com.cursedarchie.platformer.tiles.types.OneWayPlatform;
 import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.actors.enemies.RangedAttackConfig;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.run.ItemCatalog;
 import com.cursedarchie.platformer.controllers.ControlBindings;
 import com.cursedarchie.platformer.controllers.ControlBindings.Action;
+import com.cursedarchie.platformer.combat.AttackRuntime;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -145,6 +147,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final BitmapFont damageFont;
     private final GlyphLayout damageLayout = new GlyphLayout();
     private final boolean debug;
+    private boolean combatDebug;
+    private AttackState displayedHeroAttack;
+    private boolean displayedHeroSwing;
     private int width;
     private int height;
 
@@ -157,6 +162,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             updateCamera(0f);
         }
     }
+    public void toggleCombatDebug() { combatDebug = !combatDebug; }
+    public boolean isCombatDebug() { return combatDebug; }
 
     public WorldRenderer(GameWorld gameWorld, boolean debug) {
         Gdx.app.log("GameWorld Renderer", "Initializing GameWorld Renderer");
@@ -388,6 +395,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawArrowImpacts();
             drawPortals(true);
             drawDefeatEffects();
+            drawCombatEvents();
             drawDamageIndicators();
         spriteBatch.end();
 
@@ -398,6 +406,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawViewCones();
             drawChainDebug();
         }
+        if (combatDebug) drawCombatDebug();
 
     }
 
@@ -1001,7 +1010,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                               float progress, float cue) {
         Vector2 pos = enemy.getPosition();
         int lines = mode == 2 ? 3 : 1;
-        float spreadDegrees = (float) Math.toDegrees(GameWorld.VOLLEY_SPREAD);
+        float spreadDegrees = (float) Math.toDegrees(RangedAttackConfig.VOLLEY.spreadRadians);
         float lockProgress = clamp01(progress / Enemy.RANGED_AIM_LOCK_AT);
         for (int i = 0; i < lines; i++) {
             float angle = aimAngle + (mode == 2 ? (i - 1) * spreadDegrees : 0f);
@@ -1077,7 +1086,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         float sin = (float) Math.sin(rad);
         int count = mode == 2 ? 3 : 1;
         for (int i = 0; i < count; i++) {
-            float phi = mode == 2 ? (i - 1) * GameWorld.VOLLEY_SPREAD : 0f;
+            float phi = mode == 2 ? (i - 1) * RangedAttackConfig.VOLLEY.spreadRadians : 0f;
             float lateral = mode == 2 ? (i - 1) * .08f : 0f;
             float tailLx = -drawDistance * pull;
             float length = drawDistance * pull + .24f;
@@ -1116,7 +1125,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             barFrom(mx, my, size * 1.4f * (1.1f - .3f * f), mode == 1 ? .07f : .05f, angle);
         }
         int beams = mode == 2 ? 3 : 1;
-        float spreadDegrees = (float) Math.toDegrees(GameWorld.VOLLEY_SPREAD);
+        float spreadDegrees = (float) Math.toDegrees(RangedAttackConfig.VOLLEY.spreadRadians);
         for (int i = 0; i < beams; i++) {
             float angle = aimAngle + (mode == 2 ? (i - 1) * spreadDegrees : 0f);
             float rad = (float) Math.toRadians(angle);
@@ -1133,21 +1142,21 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             float rad = (float) Math.toRadians(angle);
             float cos = (float) Math.cos(rad);
             float sin = (float) Math.sin(rad);
-            Color c = shotColor(arrow.mode);
+            Color c = shotColor(arrow.mode());
             float length = arrow.speed * .04f;
-            float thickness = arrow.mode == 1 ? .12f : .09f;
+            float thickness = arrow.mode() == 1 ? .12f : .09f;
             float tailX = arrow.position.x - cos * length;
             float tailY = arrow.position.y - sin * length;
-            float trail = arrow.speed * (arrow.mode == 1 ? .1f : .07f);
+            float trail = arrow.speed * (arrow.mode() == 1 ? .1f : .07f);
             int steps = 4;
             for (int i = 0; i < steps; i++) {
                 float f = i / (float) steps;
                 float segmentLength = trail / steps;
                 float back = f * trail + segmentLength;
-                tint(c, (arrow.mode == 1 ? .55f : .35f) * (1f - f));
+                tint(c, (arrow.mode() == 1 ? .55f : .35f) * (1f - f));
                 barFrom(tailX - cos * back, tailY - sin * back, segmentLength, thickness * (1f - .5f * f), angle);
             }
-            if (arrow.mode == 1) {
+            if (arrow.mode() == 1) {
                 tint(c, .55f);
                 glow(arrow.position.x - cos * length * .5f, arrow.position.y - sin * length * .5f, .38f);
             }
@@ -1449,10 +1458,17 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             heroFrame = attack.isFacingLeft() ?
                 heroAttackLeftAnimation.getKeyFrame(pose, false) :
                 heroAttackRightAnimation.getKeyFrame(pose, false);
-            if (attack.consumeSoundCue(hero))
+            if (displayedHeroAttack != attack) {
+                displayedHeroAttack = attack;
+                displayedHeroSwing = false;
+            }
+            if (!displayedHeroSwing && attack.getRuntime().phase() != AttackRuntime.Phase.STARTUP) {
+                displayedHeroSwing = true;
                 (attack.isHeavy() ? heavySlash : attack.getComboStep() == 2 ? secondSlash : firstSlash)
                     .play(attack.isHeavy() ? .55f : .35f);
+            }
         } else if (this.hero.getMotionStateMachine().getCurrentState() instanceof MoveState) {
+            displayedHeroAttack = null;
             heroFrame = this.hero.isFacingLeft() ?
                 heroWalkLeftAnimation.getKeyFrame(this.hero.getMotionStateTime(), true) :
                 heroWalkRightAnimation.getKeyFrame(this.hero.getMotionStateTime(), true);
@@ -1511,12 +1527,14 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         }
         if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
             AttackState attack = (AttackState) hero.getCombatStateMachine().getCurrentState();
-            if (attack.isHeavy() && hero.getCombatStateTime() < attack.getStartup()) {
+            if (attack.getPhase(hero) == AttackState.Phase.STARTUP) {
                 float direction = attack.isFacingLeft() ? -1f : 1f;
-                spriteBatch.setColor(1f, .48f, .15f, .85f);
-                spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .58f - .12f,
-                    hero.getPosition().y + .25f,
-                    .24f, .15f + .32f * hero.getCombatStateTime() / attack.getStartup());
+                float windup = hero.getCombatStateTime() / attack.getStartup();
+                float y = attack.getComboStep() == 2 ? .46f : .18f;
+                spriteBatch.setColor(attack.isHeavy() ? 1f : attack.getComboStep() == 2 ? .38f : .76f,
+                    attack.isHeavy() ? .48f : .82f, 1f, .28f + .46f * windup);
+                spriteBatch.draw(sceneryPixel, hero.getPosition().x - direction * .22f,
+                    hero.getPosition().y + y, direction * .42f, .08f + .12f * windup);
             }
         }
         if (hero.isLeftAttackActive() || hero.isRightAttackActive()) {
@@ -1527,6 +1545,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             float trailY = attack.getComboStep() == 2 ? .34f : .1f;
             spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .65f - .35f,
                 hero.getPosition().y + trailY, .7f, attack.isHeavy() ? .24f : .13f);
+            // The bright leading edge exists only during the gameplay-active window.
+            spriteBatch.setColor(1f, .96f, .78f, .95f);
+            spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction *
+                (attack.getComboStep() == 2 ? 1.55f : 1.12f) - .05f,
+                hero.getPosition().y + trailY, .10f, .10f);
             if (attack.getComboStep() == 2)
                 spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .95f - .24f,
                     hero.getPosition().y + .12f, .48f, .12f);
@@ -1780,6 +1803,17 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             float progress = indicator.getProgress();
             float rise = 0.84f * (1f - (1f - progress) * (1f - progress));
             float alpha = 1f - progress;
+            // Placeholder impact tick: it is intentionally short and separate
+            // from the swing cue; artists can replace this binding later.
+            // A short cross-shaped spark anchors the health loss to a world-space hit.
+            if (progress < .35f) {
+                float spark = .18f * (1f - progress / .35f);
+                spriteBatch.setColor(1f, .86f, .42f, alpha);
+                spriteBatch.draw(sceneryPixel, indicator.impactX - spark, indicator.impactY - .025f,
+                    spark * 2f, .05f);
+                spriteBatch.draw(sceneryPixel, indicator.impactX - .025f, indicator.impactY - spark,
+                    .05f, spark * 2f);
+            }
             damageLayout.setText(damageFont, indicator.label);
             float x = indicator.x - damageLayout.width / 2f;
             float y = indicator.y + rise;
@@ -1790,7 +1824,61 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 indicator.hero ? 0.38f : 0.5f, alpha);
             damageFont.draw(spriteBatch, indicator.label, x, y);
         }
+        spriteBatch.setColor(Color.WHITE);
         damageFont.setColor(Color.WHITE);
+    }
+
+    private void drawCombatEvents() {
+        for (GameWorld.CombatEvent event : gameWorld.getCombatEvents()) {
+            float progress = event.progress();
+            if (event.consumeSound()) {
+                Sound sound = event.hit.type == com.cursedarchie.platformer.physics.CombatHit.Type.MELEE_HEAVY
+                    ? heavySlash : firstSlash;
+                sound.play(.14f, event.hit.type == com.cursedarchie.platformer.physics.CombatHit.Type.PROJECTILE
+                    ? 1.8f : 1.45f, 0f);
+            }
+            float radius = .24f * (1f - progress);
+            spriteBatch.setColor(1f, .82f, .3f, 1f - progress);
+            spriteBatch.draw(sceneryPixel, event.x - radius, event.y - .025f, radius * 2f, .05f);
+            spriteBatch.draw(sceneryPixel, event.x - .025f, event.y - radius, .05f, radius * 2f);
+        }
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    private void drawCombatDebug() {
+        debugRenderer.setProjectionMatrix(cam.combined);
+        debugRenderer.begin(ShapeType.Line);
+        Rectangle box = new Rectangle();
+        hero.getHurtboxBounds(box);
+        debugRenderer.setColor(Color.CYAN);
+        debugRenderer.rect(box.x, box.y, box.width, box.height);
+        drawAttackRuntime(hero.getPosition(), hero.getCombatStateMachine().getCurrentState(), box);
+        for (Enemy enemy : gameWorld.getAliveEnemies()) {
+            enemy.getHurtboxBounds(box);
+            debugRenderer.setColor(Color.GREEN);
+            debugRenderer.rect(box.x, box.y, box.width, box.height);
+            drawAttackRuntime(enemy.getPosition(), enemy.getCombatStateMachine().getCurrentState(), box);
+        }
+        debugRenderer.setColor(Color.MAGENTA);
+        for (GameWorld.Arrow arrow : gameWorld.getArrows())
+            debugRenderer.rect(arrow.position.x - GameWorld.Arrow.WIDTH / 2f,
+                arrow.position.y - GameWorld.Arrow.HEIGHT / 2f,
+                GameWorld.Arrow.WIDTH, GameWorld.Arrow.HEIGHT);
+        debugRenderer.end();
+    }
+
+    private void drawAttackRuntime(Vector2 origin, Object state, Rectangle box) {
+        AttackRuntime runtime = null;
+        if (state instanceof AttackState) runtime = ((AttackState) state).getRuntime();
+        else if (state instanceof com.cursedarchie.platformer.actors.enemies.states.combat.AttackState)
+            runtime = ((com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) state).getRuntime();
+        if (runtime == null) return;
+        runtime.hitbox(origin, box);
+        debugRenderer.setColor(runtime.phase() == AttackRuntime.Phase.ACTIVE ? Color.RED :
+            runtime.phase() == AttackRuntime.Phase.STARTUP ? Color.YELLOW : Color.GRAY);
+        debugRenderer.rect(box.x, box.y, box.width, box.height);
+        debugRenderer.line(origin.x, origin.y,
+            origin.x + runtime.direction() * runtime.definition().range, origin.y);
     }
 
     private void drawViewCones() {

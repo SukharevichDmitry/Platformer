@@ -1,97 +1,85 @@
 package com.cursedarchie.platformer.actors.hero.states.combat;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.math.Rectangle;
 import com.cursedarchie.platformer.actors.Actor;
-import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
-import com.cursedarchie.platformer.physics.CombatHit;
+import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
+import com.cursedarchie.platformer.combat.AttackDefinition;
+import com.cursedarchie.platformer.combat.AttackRuntime;
+import com.cursedarchie.platformer.physics.CombatHit;
 
-import java.util.HashSet;
-import java.util.Set;
-
+/** Gameplay authority for one hero strike; rendering only reads its runtime. */
 public class AttackState implements HeroState {
-    private final Set<Actor> hitTargets = new HashSet<>();
+    public enum Phase { STARTUP, ACTIVE, RECOVERY }
     private final boolean heavy;
     private final int comboStep;
+    private final Rectangle attackBounds = new Rectangle();
+    private final Rectangle hurtBounds = new Rectangle();
+    private AttackRuntime runtime;
     private boolean lunged;
-    private boolean hit;
-    private boolean soundPlayed;
-    private boolean facingLeft;
 
     public AttackState() { this(false, 1); }
-    public AttackState(boolean heavy, int comboStep) {
-        this.heavy = heavy;
-        this.comboStep = comboStep;
-    }
+    public AttackState(boolean heavy, int comboStep) { this.heavy = heavy; this.comboStep = comboStep; }
     public boolean isHeavy() { return heavy; }
     public int getComboStep() { return comboStep; }
-    public boolean isFacingLeft() { return facingLeft; }
-    public float getStartup() { return heavy ? .52f : comboStep == 2 ? .10f : Hero.ATTACK_STARTUP; }
-    public float getActiveEnd() { return heavy ? .70f : comboStep == 2 ? .25f : Hero.ATTACK_ACTIVE_END; }
-    public boolean isInRecovery(Hero hero) { return hero.getCombatStateTime() >= getActiveEnd(); }
-    public boolean consumeSoundCue(Hero hero) {
-        if (soundPlayed || hero.getCombatStateTime() < getStartup()) return false;
-        soundPlayed = true;
-        return true;
+    public AttackRuntime getRuntime() { return runtime; }
+    public AttackDefinition getDefinition() { return runtime.definition(); }
+    public boolean isFacingLeft() { return runtime != null && runtime.facesLeft(); }
+    public float getStartup() { return runtime.definition().startupDuration; }
+    public float getActiveEnd() { return runtime.definition().activeEnd(); }
+    public float getDuration(Hero hero) { return runtime.duration(); }
+    public Phase getPhase(Hero hero) {
+        return runtime.phase() == AttackRuntime.Phase.STARTUP ? Phase.STARTUP :
+            runtime.phase() == AttackRuntime.Phase.ACTIVE ? Phase.ACTIVE : Phase.RECOVERY;
+    }
+    public boolean isInRecovery(Hero hero) { return runtime.phase() == AttackRuntime.Phase.RECOVERY; }
+    public boolean canQueueFollowUp(Hero hero) {
+        return !heavy && comboStep == 1 && runtime.acceptsNextInput();
     }
 
-    @Override
-    public void enter(Hero hero) {
-        hitTargets.clear();
+    @Override public void enter(Hero hero) {
+        runtime = new AttackRuntime(hero.attackDefinition(heavy, comboStep), hero.isFacingLeft());
         lunged = false;
-        hit = false;
-        soundPlayed = false;
-        facingLeft = hero.isFacingLeft();
         hero.setLeftAttackActive(false);
         hero.setRightAttackActive(false);
-        Gdx.app.log("HERO", "Start Attacking");
+        Gdx.app.log("HERO", "Start Attacking " + runtime.definition().id);
     }
 
-    @Override
-    public void update(Hero hero, float delta) {
-
-        hero.setCombatStateTime(hero.getCombatStateTime() + delta);
-
-        boolean activeFrame = hero.getCombatStateTime() >= getStartup() &&
-            hero.getCombatStateTime() < getActiveEnd();
-        hero.setLeftAttackActive(activeFrame && facingLeft);
-        hero.setRightAttackActive(activeFrame && !facingLeft);
-
-        if (activeFrame) {
-            if (!lunged) {
-                float forward = facingLeft ? -1f : 1f;
-                hero.getBody().setLinearVelocity(forward * (heavy ? 6f : 4f),
-                    hero.getBody().getLinearVelocity().y);
-                lunged = true;
-            }
-            for (Actor target : hero.getAttackTargets()) {
-                if (hitTargets.contains(target) || !hero.isTargetInAttack(target, facingLeft)) continue;
-                float damage = hero.getDamage() * (heavy ? 2f : comboStep == 2 ? 1.5f : 1f) *
-                    hero.meleeDamageMultiplier(heavy, comboStep);
-                if (target instanceof Enemy) {
-                    ((Enemy) target).takeMeleeHit(new CombatHit(
-                        heavy ? CombatHit.Type.MELEE_HEAVY : CombatHit.Type.MELEE_LIGHT,
-                        damage, hero.getPosition().x, heavy ? 2f : 1f,
-                        (heavy ? 10f : comboStep == 2 ? 8f : 5f) + hero.meleeRecoilBonus(), hero));
-                } else target.takeDamage(damage);
-                hitTargets.add(target);
-                hit = true;
-
-                Gdx.app.log("HERO",
-                    "dealt damage to " + target.getClass().getSimpleName()
-                );
-            }
+    @Override public void update(Hero hero, float delta) {
+        runtime.advance(delta);
+        hero.setCombatStateTime(runtime.elapsed());
+        boolean active = runtime.isActive();
+        hero.setLeftAttackActive(active && runtime.facesLeft());
+        hero.setRightAttackActive(active && !runtime.facesLeft());
+        if (active && !lunged) {
+            hero.getBody().setLinearVelocity(runtime.direction() *
+                    (heavy ? 6f : comboStep == 2 ? 6.5f : 4f),
+                hero.getBody().getLinearVelocity().y);
+            lunged = true;
         }
-
-        if (hero.getCombatStateTime() >= (heavy ? hit ? Hero.HEAVY_ATTACK_DURATION : 1.12f :
-            comboStep == 2 ? .40f : hero.getAttackDuration())) {
-            hero.getCombatStateMachine().changeState(new CombatIdleState());
+        if (active) for (Actor target : hero.getAttackTargets()) {
+            if (!runtime.canHit(hero, target, attackBounds, hurtBounds)) continue;
+            AttackDefinition attack = runtime.definition();
+            float damage = hero.getDamage() * attack.damageMultiplier *
+                hero.meleeDamageMultiplier(heavy, comboStep);
+            CombatHit hit = new CombatHit(attack.type, damage, hero, target,
+                runtime.direction(), attack.stabilityDamage,
+                attack.knockback + hero.meleeRecoilBonus(), attack.staggerDuration,
+                attack.blockable);
+            float healthBefore = target.getHealth();
+            boolean applied = target instanceof Enemy ? ((Enemy) target).takeMeleeHit(hit) : true;
+            if (!(target instanceof Enemy)) target.takeDamage(damage);
+            if (!applied || target.getHealth() == healthBefore && !(target instanceof Enemy)) continue;
+            hero.emitCombatHit(hit);
+            runtime.recordHit(target);
+            Gdx.app.log("HERO", "dealt damage to " + target.getClass().getSimpleName());
         }
+        if (runtime.isComplete()) hero.getCombatStateMachine().changeState(new CombatIdleState());
     }
 
-    @Override
-    public void exit(Hero hero) {
+    @Override public void exit(Hero hero) {
         hero.setAttackHandled(false);
         hero.setLeftAttackActive(false);
         hero.setRightAttackActive(false);

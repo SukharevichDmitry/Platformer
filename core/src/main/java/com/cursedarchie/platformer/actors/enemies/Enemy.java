@@ -8,12 +8,16 @@ import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyBrain;
 import com.cursedarchie.platformer.actors.enemies.machines.MotionStateMachine;
 import com.cursedarchie.platformer.actors.enemies.states.combat.AttackState;
+import com.cursedarchie.platformer.actors.enemies.states.combat.CombatIdleState;
 import com.cursedarchie.platformer.actors.enemies.states.motion.*;
 import com.cursedarchie.platformer.actors.enemies.machines.CombatStateMachine;
 import com.cursedarchie.platformer.physics.PhysicsTags;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
 import com.cursedarchie.platformer.physics.CombatHit;
+import com.cursedarchie.platformer.physics.AttackConfig;
 import com.cursedarchie.platformer.world.GameWorld;
+import com.cursedarchie.platformer.combat.AttackDefinition;
+import com.cursedarchie.platformer.combat.Hurtbox;
 
 public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCombatState> {
 
@@ -62,12 +66,13 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public static final float RANGED_RELEASE_CUE_TIME = .14f;
     public static final float DODGE_EFFECT_DURATION = .5f;
     public static final float DODGE_TINT_DURATION = .22f;
-    public static final float RETREAT_TELEGRAPH_TIME = .2f;
-    public static final float RETREAT_DASH_TIME = .18f;
-    public static final float RETREAT_RECOVER_TIME = .28f;
+    /** Gameplay length of one retreat step; the first part is shown as the lean-back telegraph. */
+    public static final float RETREAT_DURATION = .38f;
+    public static final float RETREAT_TELEGRAPH_TIME = .1f;
+    public static final float RETREAT_DASH_TIME = RETREAT_DURATION - RETREAT_TELEGRAPH_TIME;
+    /** Matches the action-recovery window that follows a retreat. */
+    public static final float RETREAT_RECOVER_TIME = .22f;
     public static final float RETREAT_TRAIL_FADE = .35f;
-    private static final float RETREAT_DASH_SPEED = 11f;
-    private static final float RETREAT_REPEAT_DELAY = .9f;
     private static final int MAX_QUEUED_CUES = 8;
 
     private Intent currentIntent = null;
@@ -82,15 +87,18 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private final float attackStartup;
     private final float attackActiveEnd;
     private final float attackCooldown;
+    private final AttackDefinition baseAttackDefinition;
     private float attackCooldownRemaining;
     private float staggerRemaining;
+    private float lastHitSourceX = Float.NaN;
     private float jumpCooldownRemaining;
     private float rangedCooldownRemaining = .8f;
     private float rangedWindupRemaining;
     private float rangedWindupDuration;
     private final Vector2 rangedAim = new Vector2();
+    private final Vector2 rangedTargetPosition = new Vector2();
     private int rangedShotSequence;
-    private int rangedShotMode;
+    private RangedAttackConfig rangedAttackConfig = RangedAttackConfig.NORMAL;
     private boolean rangedShotFacingLeft;
     private float rangedShotFlashRemaining;
     private float rangedShotFlashDuration = .12f;
@@ -98,9 +106,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private float rangedRecoveryDuration;
     private float rangedLockFlashRemaining;
     private float rangedFizzleRemaining;
-    private RetreatPhase retreatPhase = RetreatPhase.NONE;
-    private float retreatPhaseTime;
-    private float retreatRepeatRemaining;
+    /** True while the post-retreat action recovery is running (shown as the return to combat stance). */
+    private boolean retreatRecovering;
     private float retreatTrailRemaining;
     private float retreatTrailFromX;
     private float retreatTrailToX;
@@ -113,10 +120,11 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private float blockRemaining;
     private float blockCooldownRemaining = .8f;
     private float dodgeCooldownRemaining;
-    /** While > 0 the dodge impulse is protected from stop/chase commands so the evasion visibly travels. */
-    private float dodgeSlideRemaining;
-    public static final float DODGE_SLIDE_TIME = .18f;
     private float dodgeFlashRemaining;
+    private float dodgeRemaining;
+    private float actionRecoveryRemaining;
+    private float retreatRemaining;
+    private float retreatCooldownRemaining;
     private float supportCooldownRemaining;
     private float supportFlashRemaining;
     private Vector2 heroLastKnownPos = new Vector2();
@@ -154,6 +162,13 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         this.velocity = cfg.velocity;
         this.attackLeft = cfg.attackLeft;
         this.attackRight = cfg.attackRight;
+        float reach = Math.abs(cfg.attackRight.offsetX) + cfg.attackRight.width / 2f;
+        this.baseAttackDefinition = new AttackDefinition("enemy_light", CombatHit.Type.MELEE_LIGHT,
+            cfg.attackStartup, cfg.attackActiveEnd - cfg.attackStartup,
+            cfg.attackDuration - cfg.attackActiveEnd, reach, cfg.attackRight.width,
+            cfg.attackRight.height, cfg.attackRight.offsetY, 1f, 0f, .14f, 1f,
+            true, cfg.attackDuration, cfg.attackDuration);
+        this.hurtbox = new Hurtbox(cfg.size * .78f, cfg.size * .92f, 0f, 0f);
         this.physicsWorld = world;
         this.patrolOriginX = pos.x;
 
@@ -204,7 +219,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         createAttackSensors(
             PhysicsTags.ENEMY_ATTACK_SENSOR,
             PhysicsCategories.ENEMY_ATTACK,
-            PhysicsCategories.HERO
+            PhysicsCategories.HERO,
+            new AttackConfig(2.4f, Math.max(1.2f, size), -1.2f, 0f),
+            new AttackConfig(2.4f, Math.max(1.2f, size), 1.2f, 0f)
         );
 
         //VISION=================================================================
@@ -271,17 +288,47 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         }, x, feet + .15f, x, feet - 1.25f);
         return ground[0];
     }
+    public boolean hasClearRetreatPath(float direction) {
+        if (direction == 0f || !hasGroundAt(direction, .7f) || !hasGroundAt(direction, 1.6f)) return false;
+        final boolean[] blocked = {false};
+        float fromX = getPosition().x + direction * size / 2f;
+        float toX = fromX + direction * 1.35f;
+        physicsWorld.rayCast((fixture, point, normal, fraction) -> {
+            if (!fixture.isSensor() && "level".equals(fixture.getBody().getUserData())) {
+                blocked[0] = true;
+                return 0f;
+            }
+            return -1f;
+        }, fromX, getPosition().y, toX, getPosition().y);
+        return !blocked[0];
+    }
+    private boolean hasGroundAt(float direction, float distance) {
+        final boolean[] ground = {false};
+        float x = getPosition().x + direction * (size / 2f + distance);
+        float feet = getPosition().y - size / 2f;
+        physicsWorld.rayCast((fixture, point, normal, fraction) -> {
+            if (!fixture.isSensor() && "level".equals(fixture.getBody().getUserData())) {
+                ground[0] = true;
+                return 0f;
+            }
+            return -1f;
+        }, x, feet + .12f, x, feet - 1.25f);
+        return ground[0];
+    }
     public boolean isStaggered() { return staggerRemaining > 0f; }
+    public float getLastHitSourceX() { return lastHitSourceX; }
     public boolean isRangedWindingUp() { return rangedWindupRemaining > 0f; }
     public boolean isRangedRecovering() { return rangedRecoveryRemaining > 0f; }
     /** True from the first frame of the draw until the bow is lowered again. */
     public boolean isRangedBusy() { return isRangedWindingUp() || isRangedRecovering(); }
     public boolean isRangedShotFacingLeft() { return rangedShotFacingLeft; }
     public Vector2 getRangedAim() { return rangedAim; }
+    public Vector2 getRangedTargetPosition() { return rangedTargetPosition; }
     public float getRangedWindupProgress() { return rangedWindupDuration == 0f ? 0f :
         1f - rangedWindupRemaining / rangedWindupDuration; }
-    /** 0 = standard shot, 1 = charged shot, 2 = three-arrow volley. */
-    public int getRangedShotMode() { return rangedShotMode; }
+    /** 0 = standard shot, 1 = charged shot, 2 = three-arrow volley (derived from the active config). */
+    public int getRangedShotMode() { return rangedAttackConfig.type.ordinal(); }
+    public RangedAttackConfig getRangedAttackConfig() { return rangedAttackConfig; }
     public float getRangedShotFlashRemaining() { return rangedShotFlashRemaining; }
     public float getRangedShotFlashDuration() { return rangedShotFlashDuration; }
     public float getRangedRecoveryProgress() { return rangedRecoveryDuration == 0f ? 1f :
@@ -303,13 +350,23 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         return rangedRecoveryRemaining > 0f ? RangedPhase.RECOVERY : RangedPhase.NONE;
     }
 
-    public RetreatPhase getRetreatPhase() { return retreatPhase; }
-    public boolean isRetreatActive() { return retreatPhase != RetreatPhase.NONE; }
+    /** Derived from the gameplay timers: telegraph/dash while retreating, recover while settling back. */
+    public RetreatPhase getRetreatPhase() {
+        if (retreatRemaining > 0f)
+            return RETREAT_DURATION - retreatRemaining < RETREAT_TELEGRAPH_TIME ?
+                RetreatPhase.TELEGRAPH : RetreatPhase.DASH;
+        return retreatRecovering && actionRecoveryRemaining > 0f ? RetreatPhase.RECOVER : RetreatPhase.NONE;
+    }
+    public boolean isRetreatActive() { return getRetreatPhase() != RetreatPhase.NONE; }
+    public boolean isRetreatRecovering() { return getRetreatPhase() == RetreatPhase.RECOVER; }
     public float getRetreatPhaseProgress() {
-        float length = retreatPhase == RetreatPhase.TELEGRAPH ? RETREAT_TELEGRAPH_TIME :
-            retreatPhase == RetreatPhase.DASH ? RETREAT_DASH_TIME :
-            retreatPhase == RetreatPhase.RECOVER ? RETREAT_RECOVER_TIME : 0f;
-        return length == 0f ? 0f : Math.min(1f, retreatPhaseTime / length);
+        float elapsed = RETREAT_DURATION - retreatRemaining;
+        switch (getRetreatPhase()) {
+            case TELEGRAPH: return Math.min(1f, elapsed / RETREAT_TELEGRAPH_TIME);
+            case DASH: return Math.min(1f, (elapsed - RETREAT_TELEGRAPH_TIME) / RETREAT_DASH_TIME);
+            case RECOVER: return Math.min(1f, 1f - actionRecoveryRemaining / RETREAT_RECOVER_TIME);
+            default: return 0f;
+        }
     }
     public float getRetreatTrailRemaining() { return retreatTrailRemaining; }
     public float getRetreatTrailFromX() { return retreatTrailFromX; }
@@ -329,6 +386,31 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isNextAttackLunge() { return nextAttackLunge; }
     public boolean isAttacking() { return combatStateMachine.getCurrentState() instanceof AttackState; }
     public float getSupportFlashRemaining() { return supportFlashRemaining; }
+    public boolean isDodging() { return dodgeRemaining > 0f; }
+    public boolean isActionRecovering() { return actionRecoveryRemaining > 0f; }
+    public boolean isRetreating() { return retreatRemaining > 0f; }
+    public boolean canBeginRetreat(float direction) {
+        return retreatCooldownRemaining == 0f && actionRecoveryRemaining == 0f &&
+            !isStaggered() && !isAttacking() && !isRangedWindingUp() &&
+            hasClearRetreatPath(direction);
+    }
+    public boolean beginRetreat(float direction) {
+        if (!canBeginRetreat(direction)) return false;
+        retreatRemaining = RETREAT_DURATION;
+        retreatCooldownRemaining = 1.2f;
+        retreatRecovering = false;
+        beginTrail(direction, false);
+        emitCue(Cue.RETREAT_DASH);
+        return true;
+    }
+    public void finishRetreat() {
+        if (retreatRemaining > 0f) {
+            retreatRemaining = 0f;
+            retreatRecovering = true;
+        }
+        actionRecoveryRemaining = Math.max(actionRecoveryRemaining, RETREAT_RECOVER_TIME);
+        moveStop();
+    }
     public void updateSpecialActions(Hero hero, Array<Enemy> allies, float delta) {
         updateSpecialActions(null, hero, allies, delta);
     }
@@ -339,8 +421,17 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         blockRemaining = Math.max(0f, blockRemaining - delta);
         blockCooldownRemaining = Math.max(0f, blockCooldownRemaining - delta);
         dodgeCooldownRemaining = Math.max(0f, dodgeCooldownRemaining - delta);
-        dodgeSlideRemaining = Math.max(0f, dodgeSlideRemaining - delta);
         dodgeFlashRemaining = Math.max(0f, dodgeFlashRemaining - delta);
+        dodgeRemaining = Math.max(0f, dodgeRemaining - delta);
+        actionRecoveryRemaining = Math.max(0f, actionRecoveryRemaining - delta);
+        float previousRetreatRemaining = retreatRemaining;
+        retreatRemaining = Math.max(0f, retreatRemaining - delta);
+        if (previousRetreatRemaining > 0f && retreatRemaining == 0f) {
+            actionRecoveryRemaining = Math.max(actionRecoveryRemaining, RETREAT_RECOVER_TIME);
+            retreatRecovering = true;
+        }
+        if (actionRecoveryRemaining == 0f) retreatRecovering = false;
+        retreatCooldownRemaining = Math.max(0f, retreatCooldownRemaining - delta);
         supportCooldownRemaining = Math.max(0f, supportCooldownRemaining - delta);
         supportFlashRemaining = Math.max(0f, supportFlashRemaining - delta);
         if ("scavenger".equals(archetypeId)) {
@@ -349,30 +440,24 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             rangedRecoveryRemaining = Math.max(0f, rangedRecoveryRemaining - delta);
             rangedLockFlashRemaining = Math.max(0f, rangedLockFlashRemaining - delta);
             rangedFizzleRemaining = Math.max(0f, rangedFizzleRemaining - delta);
+            if (isDodging() || isActionRecovering() || isRetreating() || isStaggered() || isAttacking()) {
+                if (rangedWindupRemaining > 0f) interruptRangedAttack();
+                return;
+            }
             if (rangedWindupRemaining > 0f) {
-                // Standard shot sequence: stop -> draw (aim follows) -> aim locked -> release cue -> fire -> recovery.
-                boolean aimWasOpen = getRangedWindupProgress() < RANGED_AIM_LOCK_AT;
-                if (aimWasOpen) trackAim(hero);
+                if (Math.abs(dx) <= 2.4f) {
+                    interruptRangedAttack();
+                    return;
+                }
+                boolean wasOpen = getRangedWindupProgress() < RANGED_AIM_LOCK_AT;
                 rangedWindupRemaining -= delta;
                 if (rangedWindupRemaining <= 0f) {
-                    releaseRangedShot(gameWorld, hero, dx, dy);
-                } else if (aimWasOpen && getRangedWindupProgress() >= RANGED_AIM_LOCK_AT) {
+                    releaseRangedShot(gameWorld);
+                } else if (wasOpen && getRangedWindupProgress() >= RANGED_AIM_LOCK_AT) {
+                    // Presentation only: the committed aim line turns solid at this point.
                     rangedLockFlashRemaining = .14f;
                 }
-            } else if (rangedCooldownRemaining == 0f && rangedRecoveryRemaining == 0f &&
-                !isRetreatActive() && !isAttacking() && canSeeHero &&
-                Math.abs(dx) > 2.4f && Math.abs(dx) < 7f && dy < 1.25f) {
-                rangedShotMode = ++rangedShotSequence % 5 == 0 ? 2 :
-                    rangedShotSequence % 3 == 0 ? 1 : 0;
-                rangedWindupDuration = rangedShotMode == 2 ? 1.2f :
-                    rangedShotMode == 1 ? 1.05f : .7f;
-                rangedWindupRemaining = rangedWindupDuration;
-                rangedFizzleRemaining = 0f;
-                trackAim(hero);
-                moveStop();
-                emitCue(rangedShotMode == 2 ? Cue.BOW_DRAW_VOLLEY :
-                    rangedShotMode == 1 ? Cue.BOW_DRAW_CHARGED : Cue.BOW_DRAW_STANDARD);
-            }
+            } else beginRangedAttack(selectRangedAttack(), hero);
         } else if ("red_collector".equals(archetypeId)) {
             if (blockCooldownRemaining == 0f && canSeeHero && !isStaggered() &&
                 !(combatStateMachine.getCurrentState() instanceof AttackState) &&
@@ -393,102 +478,77 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             }
         }
     }
-    /** Aim follows the hero only until the lock point; afterwards the shot direction is fixed and dodgeable. */
-    private void trackAim(Hero hero) {
-        rangedAim.set(hero.getPosition()).sub(getPosition()).nor();
-        rangedShotFacingLeft = hero.getPosition().x < getPosition().x;
-        facingLeft = rangedShotFacingLeft;
+
+    private RangedAttackConfig selectRangedAttack() {
+        int sequence = rangedShotSequence + 1;
+        return sequence % 5 == 0 ? RangedAttackConfig.VOLLEY :
+            sequence % 3 == 0 ? RangedAttackConfig.CHARGED : RangedAttackConfig.NORMAL;
     }
 
-    private void releaseRangedShot(GameWorld gameWorld, Hero hero, float dx, float dy) {
+    public boolean beginRangedAttack(RangedAttackConfig config, Hero hero) {
+        if (!"scavenger".equals(archetypeId) || config == null || hero == null ||
+            rangedCooldownRemaining > 0f || rangedWindupRemaining > 0f ||
+            rangedRecoveryRemaining > 0f || !canSeeHero ||
+            isStaggered() || isAttacking() || isDodging() || isRetreating() ||
+            isActionRecovering() || currentIntent == Intent.RETREAT) return false;
+        float dx = hero.getPosition().x - getPosition().x;
+        float dy = Math.abs(hero.getPosition().y - getPosition().y);
+        if (Math.abs(dx) <= 2.4f || Math.abs(dx) >= config.maxRange || dy >= 1.25f ||
+            !hasLineOfFire(hero.getPosition())) return false;
+        rangedShotSequence++;
+        rangedAttackConfig = config;
+        rangedWindupDuration = config.startup;
+        rangedWindupRemaining = config.startup;
+        rangedTargetPosition.set(hero.getPosition());
+        rangedAim.set(rangedTargetPosition).sub(getPosition()).nor();
+        rangedShotFacingLeft = rangedAim.x < 0f;
+        facingLeft = rangedShotFacingLeft;
+        rangedFizzleRemaining = 0f;
+        moveStop();
+        emitCue(config.type == RangedAttackConfig.Type.VOLLEY ? Cue.BOW_DRAW_VOLLEY :
+            config.type == RangedAttackConfig.Type.CHARGED ? Cue.BOW_DRAW_CHARGED : Cue.BOW_DRAW_STANDARD);
+        return true;
+    }
+
+    public void cancelRangedAttack() {
         rangedWindupRemaining = 0f;
-        rangedCooldownRemaining = 2.2f;
-        if (isStaggered()) {
-            // A staggered archer loses the shot: show a broken-off draw instead of a muzzle flash.
+        rangedWindupDuration = 0f;
+    }
+
+    private boolean hasLineOfFire(Vector2 target) {
+        final boolean[] blocked = {false};
+        physicsWorld.rayCast((fixture, point, normal, fraction) -> {
+            if (!fixture.isSensor() && "level".equals(fixture.getBody().getUserData())) {
+                blocked[0] = true;
+                return 0f;
+            }
+            return -1f;
+        }, getPosition(), target);
+        return !blocked[0];
+    }
+
+    /** A draw that is broken off: a stagger shows a "lost draw" effect, anything else just lowers the bow. */
+    private void interruptRangedAttack() {
+        boolean lostToStagger = isStaggered() && rangedWindupRemaining > 0f;
+        cancelRangedAttack();
+        if (lostToStagger) {
             rangedFizzleRemaining = .3f;
             rangedRecoveryDuration = .2f;
             rangedRecoveryRemaining = rangedRecoveryDuration;
-            return;
         }
-        rangedShotFlashDuration = rangedShotMode == 2 ? .22f : rangedShotMode == 1 ? .18f : .1f;
+    }
+
+    /** Fires the committed shot (gameplay: config + GameWorld.fireArrows) and starts the visual follow-through. */
+    private void releaseRangedShot(GameWorld gameWorld) {
+        rangedWindupRemaining = 0f;
+        rangedCooldownRemaining = rangedAttackConfig.cooldown;
+        int mode = getRangedShotMode();
+        rangedShotFlashDuration = mode == 2 ? .22f : mode == 1 ? .18f : .1f;
         rangedShotFlashRemaining = rangedShotFlashDuration;
-        rangedRecoveryDuration = rangedShotMode == 2 ? .5f : rangedShotMode == 1 ? .42f : .28f;
+        rangedRecoveryDuration = mode == 2 ? .5f : mode == 1 ? .42f : .28f;
         rangedRecoveryRemaining = rangedRecoveryDuration;
-        emitCue(rangedShotMode == 2 ? Cue.SHOT_VOLLEY :
-            rangedShotMode == 1 ? Cue.SHOT_CHARGED : Cue.SHOT_STANDARD);
-        if (gameWorld != null) gameWorld.fireArrowVolley(this, rangedAim, rangedShotMode);
-        else if (hero.isAlive() && Math.abs(dx) < 7f && dy < 1.25f &&
-            (dx < 0f) == rangedShotFacingLeft)
-            hero.receiveHit(new CombatHit(CombatHit.Type.PROJECTILE, .5f,
-                getPosition().x, 0f, 0f, this));
-    }
-
-    /*==========================================RETREAT CYCLE=========================================================*/
-
-    public void beginRetreat() {
-        // Re-entering while still skidding out of a dash must not restart the cycle.
-        if (retreatPhase == RetreatPhase.RECOVER) return;
-        retreatPhase = RetreatPhase.NONE;
-        retreatPhaseTime = 0f;
-    }
-
-    /**
-     * Called every tick while the motion state is RETREAT. {@code away} is the direction away from the hero.
-     * Cycle: telegraph (hold still, lean back) -> dash backwards -> skid back into stance (see {@link #update}).
-     * Between cycles the archer simply backpedals while facing the hero.
-     */
-    public void tickRetreat(float away, float delta) {
-        switch (retreatPhase) {
-            case NONE:
-                if (retreatRepeatRemaining == 0f && hasGroundAhead(away)) {
-                    retreatPhase = RetreatPhase.TELEGRAPH;
-                    retreatPhaseTime = 0f;
-                    moveStop();
-                } else if (hasGroundAhead(away)) moveHorizontal(away);
-                else moveStop();
-                break;
-            case TELEGRAPH:
-                moveStop();
-                if (retreatPhaseTime >= RETREAT_TELEGRAPH_TIME) {
-                    if (hasGroundAhead(away)) {
-                        retreatPhase = RetreatPhase.DASH;
-                        retreatPhaseTime = 0f;
-                        beginTrail(away, false);
-                        emitCue(Cue.RETREAT_DASH);
-                    } else finishRetreatCycle();
-                }
-                break;
-            case DASH:
-                if (!isStaggered())
-                    body.setLinearVelocity(away * RETREAT_DASH_SPEED, body.getLinearVelocity().y);
-                if (retreatPhaseTime >= RETREAT_DASH_TIME || !hasGroundAhead(away)) {
-                    retreatPhase = RetreatPhase.RECOVER;
-                    retreatPhaseTime = 0f;
-                }
-                break;
-            case RECOVER:
-                // No velocity writes here: damping brakes the dash, so the archer skids to a stop.
-                break;
-        }
-        // Always keep facing the hero (the combat stance), never the direction of travel.
-        facingLeft = away > 0f;
-    }
-
-    /** Leaving the RETREAT state cancels a telegraph but lets a dash finish as a skid back into stance. */
-    public void endRetreat() {
-        if (retreatPhase == RetreatPhase.TELEGRAPH) {
-            retreatPhase = RetreatPhase.NONE;
-            retreatPhaseTime = 0f;
-        } else if (retreatPhase == RetreatPhase.DASH) {
-            retreatPhase = RetreatPhase.RECOVER;
-            retreatPhaseTime = 0f;
-        }
-    }
-
-    private void finishRetreatCycle() {
-        retreatPhase = RetreatPhase.NONE;
-        retreatPhaseTime = 0f;
-        retreatRepeatRemaining = RETREAT_REPEAT_DELAY;
+        emitCue(mode == 2 ? Cue.SHOT_VOLLEY : mode == 1 ? Cue.SHOT_CHARGED : Cue.SHOT_STANDARD);
+        if (gameWorld != null) gameWorld.fireArrows(this, rangedAim, rangedAttackConfig);
     }
 
     private void beginTrail(float direction, boolean dodge) {
@@ -496,11 +556,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         retreatTrailToX = getPosition().x;
         retreatTrailDirection = direction;
         retreatTrailDodge = dodge;
-        retreatTrailRemaining = (dodge ? .3f : RETREAT_DASH_TIME + RETREAT_RECOVER_TIME) + RETREAT_TRAIL_FADE;
+        retreatTrailRemaining = (dodge ? .3f : RETREAT_DURATION + RETREAT_RECOVER_TIME) + RETREAT_TRAIL_FADE;
     }
-
-    public boolean isRetreatRecovering() { return retreatPhase == RetreatPhase.RECOVER; }
-
     public void pursueElevatedTarget(float targetY) {
         if (jumpCooldownRemaining > 0f || !grounded ||
             targetY < getPosition().y + 1.15f || "boss".equals(archetypeId)) return;
@@ -513,33 +570,38 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         takeMeleeHit(new CombatHit(heavy ? CombatHit.Type.MELEE_HEAVY :
             CombatHit.Type.MELEE_LIGHT, amount, sourceX, heavy ? 2f : 1f, recoil, null));
     }
-    public void takeMeleeHit(CombatHit hit) {
-        if (!alive) return;
+    public boolean takeMeleeHit(CombatHit hit) {
+        if (!alive) return false;
         if ("scavenger".equals(archetypeId) && hit.type == CombatHit.Type.MELEE_LIGHT &&
-            dodgeCooldownRemaining == 0f && !isStaggered()) {
+            dodgeCooldownRemaining == 0f && !isStaggered() && !isAttacking() &&
+            !isRangedWindingUp() && !isRetreating() && !isActionRecovering()) {
             float away = hit.sourceX < getPosition().x ? 1f : -1f;
-            if (hasGroundAhead(away)) {
-                // Evasion: remember where the blow landed so the renderer can show a whiffed strike.
+            if (hasClearRetreatPath(away)) {
+                // Presentation: remember where the blow landed so the renderer can show a whiffed strike.
                 dodgeOriginX = getPosition().x;
                 dodgeOriginY = getPosition().y;
                 dodgeDirection = away;
                 body.setLinearVelocity(away * 9f, body.getLinearVelocity().y);
                 dodgeCooldownRemaining = 2.5f;
-                dodgeSlideRemaining = DODGE_SLIDE_TIME;
                 dodgeFlashRemaining = DODGE_EFFECT_DURATION;
-                retreatRepeatRemaining = Math.max(retreatRepeatRemaining, .6f);
+                dodgeRemaining = .16f;
+                actionRecoveryRemaining = .34f;
+                retreatRecovering = false;
+                cancelRangedAttack();
+                attackRequested = false;
+                currentIntent = Intent.IDLE;
                 beginTrail(away, true);
                 facingLeft = away > 0f;
                 emitCue(Cue.DODGE);
-                return;
+                return false;
             }
         }
         float amount = hit.damage;
         float sourceX = hit.sourceX;
         float recoil = hit.recoil;
         boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY;
-        if (heavy && isBlocking()) blockRemaining = 0f;
-        if (!heavy && "red_collector".equals(archetypeId) && isBlocking() && !isStaggered() &&
+        if (heavy && hit.blockable && isBlocking()) blockRemaining = 0f;
+        if (!heavy && hit.blockable && "red_collector".equals(archetypeId) && isBlocking() && !isStaggered() &&
             ((sourceX < getPosition().x) == facingLeft) &&
             !(combatStateMachine.getCurrentState() instanceof AttackState)) {
             amount *= .5f;
@@ -547,12 +609,16 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             blockRemaining = 0f;
         }
         takeDamage(amount);
-        if (!alive) return;
+        lastHitSourceX = sourceX;
+        if (!alive) return true;
         float resistance = "boss".equals(archetypeId) ? .1f :
             "red_collector".equals(archetypeId) ? heavy ? .75f : .4f : 1f;
-        body.setLinearVelocity(Math.copySign(recoil * resistance, getPosition().x - sourceX),
+        body.setLinearVelocity((hit.direction == 0f ?
+                Math.copySign(recoil, getPosition().x - sourceX) : hit.direction * recoil) * resistance,
             Math.max(body.getLinearVelocity().y, 1.5f * resistance));
-        staggerRemaining = "boss".equals(archetypeId) ? .05f : heavy ? .24f : .14f;
+        staggerRemaining = "boss".equals(archetypeId) ?
+            Math.min(.05f, hit.staggerDuration) : hit.staggerDuration;
+        return true;
     }
 
     public boolean isCanAttackHero() {
@@ -561,6 +627,15 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
     public float getAttackStartup() { return attackStartup; }
     public float getAttackActiveEnd() { return attackActiveEnd; }
+    public AttackDefinition attackDefinition(boolean lunge, boolean area) {
+        if (area) return new AttackDefinition("enemy_area", CombatHit.Type.MELEE_HEAVY,
+            .65f, .19f, .24f, 2.4f, 2.4f, 1.2f, 0f,
+            1.25f, 5f, .28f, 2.5f, true, 1.08f, 1.08f);
+        if (lunge) return new AttackDefinition("enemy_lunge", CombatHit.Type.MELEE_HEAVY,
+            .48f, .19f, .21f, 1.9f, 1.25f, 1f, 0f,
+            1f, 3f, .22f, 2f, true, .88f, .88f);
+        return baseAttackDefinition;
+    }
 
     public void beginAttackCooldown() {
         attackCooldownRemaining = attackCooldown;
@@ -583,7 +658,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
     public void requestAttack() {
         if (attackCooldownRemaining > 0f || isBlocking() ||
-            combatStateMachine.getCurrentState() instanceof AttackState) return;
+            isStaggered() || isDodging() || isRetreating() || isActionRecovering() ||
+            isRangedWindingUp() || combatStateMachine.getCurrentState() instanceof AttackState) return;
 
         lungeRequested = "default".equals(archetypeId) && nextAttackLunge;
         areaRequested = "heavy_hunter".equals(archetypeId) ||
@@ -635,10 +711,6 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public void moveHorizontal(float dir) {
 
         if (staggerRemaining > 0f) return;
-        // The dodge impulse must not be cancelled by an idle/chase command in the same frame.
-        if (dodgeSlideRemaining > 0f) return;
-        // Let the retreat dash skid to a halt instead of being cut off by a stop command.
-        if (dir == 0f && retreatPhase == RetreatPhase.RECOVER) return;
 
         Vector2 v = body.getLinearVelocity();
 
@@ -662,18 +734,24 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         staggerRemaining = Math.max(0f, staggerRemaining - delta);
         jumpCooldownRemaining = Math.max(0f, jumpCooldownRemaining - delta);
         patrolPauseRemaining = Math.max(0f, patrolPauseRemaining - delta);
-        retreatRepeatRemaining = Math.max(0f, retreatRepeatRemaining - delta);
-        if (retreatPhase != RetreatPhase.NONE) {
-            retreatPhaseTime += delta;
-            if (retreatPhase == RetreatPhase.RECOVER) {
-                // Back to combat stance: turn to the hero while the dash momentum bleeds off.
-                facingLeft = heroLastKnownPos.x < getPosition().x;
-                if (retreatPhaseTime >= RETREAT_RECOVER_TIME) finishRetreatCycle();
-            }
-        }
+        // Back to combat stance: after a retreat the archer turns to face the hero again.
+        if (retreatRecovering && actionRecoveryRemaining > 0f)
+            facingLeft = heroLastKnownPos.x < getPosition().x;
         if (retreatTrailRemaining > 0f) {
             retreatTrailRemaining = Math.max(0f, retreatTrailRemaining - delta);
             if (Math.abs(body.getLinearVelocity().x) > .5f) retreatTrailToX = getPosition().x;
+        }
+
+        // Reactions and evasive movement own the actor until they finish. This keeps
+        // the priority chain deterministic and prevents attacks from running together.
+        if (isStaggered() || isDodging() || isActionRecovering()) {
+            cancelRangedAttack();
+            attackRequested = false;
+            currentIntent = Intent.IDLE;
+            if (combatStateMachine.getCurrentState() instanceof AttackState)
+                combatStateMachine.changeState(new CombatIdleState());
+            if (!isDodging()) moveStop();
+            return;
         }
 
         if (brain != null) {

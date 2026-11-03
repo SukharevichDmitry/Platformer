@@ -38,7 +38,7 @@ public class HeroController implements InputProcessor {
     private float attackBufferRemaining;
     private float heavyAttackBufferRemaining;
     private int comboStep;
-    private float comboWindowRemaining;
+    private boolean comboQueued;
     private boolean jumpHeld;
     private float jumpBufferRemaining;
     private boolean dashQueued;
@@ -71,9 +71,14 @@ public class HeroController implements InputProcessor {
             if (!jumpHeld) jumpBufferRemaining = JUMP_BUFFER_SECONDS;
             jumpHeld = true;
         } else if (bindings.matches(Action.ATTACK, keycode)) {
-            if (!attackHeld) attackBufferRemaining =
-                hero.getCombatStateMachine().getCurrentState() instanceof AttackState
-                    ? Hero.ATTACK_DURATION + ATTACK_BUFFER_SECONDS : ATTACK_BUFFER_SECONDS;
+            if (!attackHeld) {
+                AttackState current = hero.getCombatStateMachine().getCurrentState() instanceof AttackState
+                    ? (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
+                // The second press only belongs to a combo during strike one's recovery.
+                // Any later press is deliberately treated as the next standalone first hit.
+                if (current != null && current.canQueueFollowUp(hero)) comboQueued = true;
+                else if (current == null) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
+            }
             attackHeld = true;
         } else if (bindings.matches(Action.HEAVY_ATTACK, keycode)) {
             if (!heavyAttackHeld) heavyAttackBufferRemaining =
@@ -174,7 +179,7 @@ public class HeroController implements InputProcessor {
         hero.setBlockHeld(false);
         attackBufferRemaining = 0f;
         heavyAttackBufferRemaining = 0f;
-        comboWindowRemaining = 0f;
+        comboQueued = false;
         comboStep = 0;
         interactHeld = false;
         interactQueued = false;
@@ -202,6 +207,12 @@ public class HeroController implements InputProcessor {
     }
 
     private void handleMovementInput(float delta) {
+        if (hero.isStaggered()) {
+            climbing = false;
+            hero.getBody().setLinearVelocity(approach(hero.getBody().getLinearVelocity().x,
+                0f, Hero.AIR_BRAKING * delta), hero.getBody().getLinearVelocity().y);
+            return;
+        }
         if (dashQueued && gameWorld.hasEchoDash() && dashCooldownRemaining <= 0f) {
             dashRemaining = DASH_SECONDS;
             dashCooldownRemaining = DASH_COOLDOWN;
@@ -304,24 +315,29 @@ public class HeroController implements InputProcessor {
         return Math.max(current - step, target);
     }
     private void handleCombatInput(float delta) {
-        if (blockHeld) {
+        if (blockHeld || hero.isStaggered()) {
             attackBufferRemaining = 0f;
             heavyAttackBufferRemaining = 0f;
+            comboQueued = false;
+            comboStep = 0;
             return;
         }
-        comboWindowRemaining = Math.max(0f, comboWindowRemaining - delta);
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
             if (heavyAttackBufferRemaining > 0f) {
                 hero.getCombatStateMachine().changeState(new AttackState(true, 0));
                 heavyAttackBufferRemaining = 0f;
                 attackBufferRemaining = 0f;
-                comboWindowRemaining = 0f;
+                comboQueued = false;
                 comboStep = 0;
+            } else if (comboQueued) {
+                comboStep = 2;
+                hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
+                comboQueued = false;
+                attackBufferRemaining = 0f;
             } else if (attackBufferRemaining > 0f) {
-                comboStep = comboWindowRemaining > 0f ? (comboStep % 2) + 1 : 1;
+                comboStep = 1;
                 hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
                 attackBufferRemaining = 0f;
-                comboWindowRemaining = 0.7f;
             }
         }
         attackBufferRemaining = Math.max(0f, attackBufferRemaining - delta);

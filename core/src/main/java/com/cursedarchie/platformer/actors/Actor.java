@@ -7,6 +7,9 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Pool;
 import com.cursedarchie.platformer.physics.AttackConfig;
 import com.cursedarchie.platformer.physics.PhysicsTags;
+import com.cursedarchie.platformer.combat.Hurtbox;
+import com.cursedarchie.platformer.physics.CombatHit;
+import java.util.function.Consumer;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -34,6 +37,7 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     protected boolean rightAttackActive;
     protected AttackConfig attackLeft;
     protected AttackConfig attackRight;
+    protected Hurtbox hurtbox;
 
     protected float motionStateTime;
     protected float combatStateTime;
@@ -55,6 +59,7 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     };
 
     private final Set<Actor> attackTargets = new HashSet<>();
+    private Consumer<CombatHit> combatHitListener;
     protected final Set<Actor> visibleActors = new HashSet<>();
 
     /*===========================================HELPERS==============================================================*/
@@ -99,6 +104,12 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     }
     public Body getBody() {
         return body;
+    }
+
+    public Hurtbox getHurtbox() { return hurtbox; }
+    public Rectangle getHurtboxBounds(Rectangle out) {
+        if (hurtbox == null) hurtbox = new Hurtbox(size, size, 0f, 0f);
+        return hurtbox.bounds(body.getPosition(), out);
     }
 
     protected void createFootSensor(
@@ -168,16 +179,31 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
         short category,
         short mask
     ) {
+        createAttackSensors(tag, category, mask, attackLeft, attackRight);
+    }
+
+    /**
+     * The contact sensors may cover the largest attack in a moveset. Actual
+     * damage still goes through {@link #isTargetInAttack(Actor, boolean)}, so
+     * a wide follow-up sensor never makes a startup frame deal damage.
+     */
+    protected void createAttackSensors(
+        String tag,
+        short category,
+        short mask,
+        AttackConfig leftDetection,
+        AttackConfig rightDetection
+    ) {
 
         attackRightSensor = createAttackSensor(
-            attackRight,
+            rightDetection,
             tag,
             category,
             mask
         );
 
         attackLeftSensor = createAttackSensor(
-            attackLeft,
+            leftDetection,
             tag,
             category,
             mask
@@ -403,6 +429,10 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     public Set<Actor> getAttackTargets() {
         return attackTargets;
     }
+    public void setCombatHitListener(Consumer<CombatHit> listener) { combatHitListener = listener; }
+    public void emitCombatHit(CombatHit hit) {
+        if (combatHitListener != null) combatHitListener.accept(hit);
+    }
 
     public boolean isTargetInFacingAttack(Actor target) {
         return isTargetInAttack(target, facingLeft);
@@ -411,6 +441,11 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     public boolean isTargetInAttack(Actor target, boolean attackFacesLeft) {
         if (target == null || !target.isAlive()) return false;
         AttackConfig attack = attackFacesLeft ? attackLeft : attackRight;
+        return isTargetInAttack(target, attack);
+    }
+
+    protected boolean isTargetInAttack(Actor target, AttackConfig attack) {
+        if (target == null || !target.isAlive()) return false;
         Vector2 origin = body.getPosition();
         Vector2 targetPosition = target.getPosition();
         return Math.abs(targetPosition.x - (origin.x + attack.offsetX)) <
