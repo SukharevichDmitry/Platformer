@@ -30,6 +30,7 @@ public class HeroController implements InputProcessor {
     private boolean climbRegrabBlocked;
     private boolean attackHeld;
     private boolean heavyAttackHeld;
+    private boolean blockHeld;
     private boolean interactHeld;
     private boolean interactQueued;
     private int pocketQueued = -1;
@@ -79,6 +80,9 @@ public class HeroController implements InputProcessor {
                 hero.getCombatStateMachine().getCurrentState() instanceof AttackState
                     ? 1.12f + ATTACK_BUFFER_SECONDS : ATTACK_BUFFER_SECONDS;
             heavyAttackHeld = true;
+        } else if (bindings.matches(Action.BLOCK, keycode)) {
+            blockHeld = true;
+            hero.setBlockHeld(true);
         } else if (bindings.matches(Action.DASH, keycode)) {
             if (!dashHeld) dashQueued = true;
             dashHeld = true;
@@ -98,6 +102,10 @@ public class HeroController implements InputProcessor {
         else if (bindings.matches(Action.JUMP, keycode)) jumpHeld = false;
         else if (bindings.matches(Action.ATTACK, keycode)) attackHeld = false;
         else if (bindings.matches(Action.HEAVY_ATTACK, keycode)) heavyAttackHeld = false;
+        else if (bindings.matches(Action.BLOCK, keycode)) {
+            blockHeld = false;
+            hero.setBlockHeld(false);
+        }
         else if (bindings.matches(Action.DASH, keycode)) dashHeld = false;
         else if (bindings.matches(Action.INTERACT, keycode)) interactHeld = false;
         return true;
@@ -162,6 +170,8 @@ public class HeroController implements InputProcessor {
         if (hero.getBody() != null) hero.getBody().setGravityScale(1f);
         attackHeld = false;
         heavyAttackHeld = false;
+        blockHeld = false;
+        hero.setBlockHeld(false);
         attackBufferRemaining = 0f;
         heavyAttackBufferRemaining = 0f;
         comboWindowRemaining = 0f;
@@ -184,7 +194,7 @@ public class HeroController implements InputProcessor {
             interactQueued = false;
         }
         if (pocketQueued >= 0) {
-            gameWorld.useFieldBandage(Inventory.CAPACITY + pocketQueued);
+            gameWorld.usePocketItem(Inventory.CAPACITY + pocketQueued);
             pocketQueued = -1;
         }
         handleMovementInput(delta);
@@ -256,7 +266,7 @@ public class HeroController implements InputProcessor {
         float attackSpeed = attack != null && attack.isHeavy() ?
             hero.getCombatStateTime() < attack.getStartup() ? .35f :
                 attack.isInRecovery(hero) ? .50f : 1f : 1f;
-        float targetX = direction * hero.getVelocity() * attackSpeed;
+        float targetX = direction * hero.getVelocity() * attackSpeed * (blockHeld ? .55f : 1f);
         // Ground input is direct: reversing or releasing a key takes effect in this step.
         float acceleration = direction == 0f ? Hero.AIR_BRAKING : Hero.AIR_ACCELERATION;
         float moveX = hero.isGrounded() ? targetX : approach(currentX, targetX, acceleration * delta);
@@ -294,6 +304,11 @@ public class HeroController implements InputProcessor {
         return Math.max(current - step, target);
     }
     private void handleCombatInput(float delta) {
+        if (blockHeld) {
+            attackBufferRemaining = 0f;
+            heavyAttackBufferRemaining = 0f;
+            return;
+        }
         comboWindowRemaining = Math.max(0f, comboWindowRemaining - delta);
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
             if (heavyAttackBufferRemaining > 0f) {

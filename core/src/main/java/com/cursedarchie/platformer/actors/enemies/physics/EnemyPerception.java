@@ -43,7 +43,8 @@ public class EnemyPerception {
             boolean blocked =
                 isLineBlocked(enemyCenter, heroCenter);
 
-            if (!blocked && actor instanceof Hero) {
+            if (!blocked && actor instanceof Hero &&
+                !("scavenger".equals(enemy.getArchetypeId()) && gameWorld.isHeroInSmoke())) {
                 canSeeHero = true;
                 updateHeroLastKnownPos(enemy, actor);
                 break;

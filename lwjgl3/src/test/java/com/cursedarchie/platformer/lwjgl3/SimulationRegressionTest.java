@@ -18,6 +18,7 @@ import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
 import com.cursedarchie.platformer.actors.hero.states.motion.MoveState;
 import com.cursedarchie.platformer.run.ItemCatalog;
+import com.cursedarchie.platformer.physics.CombatHit;
 import com.cursedarchie.platformer.world.GameWorld;
 import com.cursedarchie.platformer.world.LocationTitleOverlay;
 
@@ -75,6 +76,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
         checkInteractionInput();
+        checkAlleyPortalsAndChoices();
+        checkSliceItemsAndGuard();
+        checkArrowCover();
         passed = true;
         Gdx.app.exit();
     }
@@ -751,7 +755,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (!ranged.isRangedWindingUp())
                 throw new AssertionError("Scavenger did not telegraph a distant shot");
             float health = hero.getHealth();
-            for (int i = 0; i < 50; i++) fight.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 75; i++) fight.update(GameWorld.FIXED_STEP);
             if (hero.getHealth() >= health)
                 throw new AssertionError("Telegraphed ranged shot did not deal damage");
             hero.getBody().setTransform(ranged.getPosition().x - 2f, 2.5f, 0f);
@@ -893,6 +897,118 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         for (int i = 0; i < com.cursedarchie.platformer.run.Inventory.TOTAL_SLOTS; i++)
             if (id.equals(world.getInventory().itemId(i))) return i;
         throw new AssertionError("Missing inventory item: " + id);
+    }
+
+    private void checkAlleyPortalsAndChoices() {
+        GameWorld route = new GameWorld(412L);
+        try {
+            route.changeLocation("ruins", 0);
+            com.cursedarchie.platformer.levels.wrappers.InteractionData entrance = null;
+            for (com.cursedarchie.platformer.levels.RoomInstance room : route.getLocation().getRooms())
+                for (com.cursedarchie.platformer.levels.wrappers.InteractionData interaction : room.getInteractions())
+                    if ("laundry_alley_entrance".equals(interaction.id)) {
+                        route.changeLocation("ruins", room.getRoomId());
+                        entrance = interaction;
+                    }
+            if (entrance == null) throw new AssertionError("Generated street has no alley entrance");
+            int streetRoom = route.getCurrentRoom().getRoomId();
+            float streetX = route.getCurrentRoom().getWorldX() + entrance.position.x;
+            route.getHero().getBody().setTransform(streetX,
+                route.getCurrentRoom().getWorldY() + entrance.position.y, 0f);
+            if (!route.enterPortal(entrance) || !"laundry_alley".equals(route.getLocation().getLocation()))
+                throw new AssertionError("Alley portal did not enter its authored room");
+            int lastRoom = route.getLocation().getRooms().size() - 1;
+            if (lastRoom < 3) throw new AssertionError("Generated alley is too short");
+            for (int roomId = 1; roomId <= lastRoom; roomId++) {
+                com.cursedarchie.platformer.levels.RoomInstance next = route.getLocation().getRoom(roomId);
+                route.getHero().getBody().setTransform(next.getWorldX() + 2f, 3f, 0f);
+                route.update(GameWorld.FIXED_STEP);
+                if (route.getCurrentRoom().getRoomId() != roomId)
+                    throw new AssertionError("Alley boundary did not advance to room " + roomId);
+            }
+            route.getHero().getBody().setTransform(3.5f, 3f, 0f);
+            route.update(GameWorld.FIXED_STEP);
+            if (route.getCurrentRoom().getRoomId() != 0)
+                throw new AssertionError("Alley return path did not reach its first room");
+            com.cursedarchie.platformer.levels.wrappers.InteractionData exit =
+                route.getCurrentRoom().getInteractions().first();
+            route.getHero().getBody().setTransform(exit.position, 0f);
+            if (!route.enterPortal(exit) || !"ruins".equals(route.getLocation().getLocation()) ||
+                route.getCurrentRoom().getRoomId() != streetRoom ||
+                Math.abs(route.getHero().getPosition().x - streetX) > .01f)
+                throw new AssertionError("Alley exit did not return to the same street doorway");
+        } finally { route.dispose(); }
+    }
+
+    private void checkSliceItemsAndGuard() {
+        GameWorld route = new GameWorld(424L);
+        try {
+            Hero hero = route.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.setFacingLeft(true);
+            hero.setBlockHeld(true);
+            float health = hero.getHealth();
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, 9f, 1f, 0f, null));
+            closeTo(hero.getHealth(), health, "front light hit passed through block");
+            closeTo(hero.getBlockStability(), 2f, "block did not lose stability");
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_HEAVY, 1f, 9f, 2f, 0f, null));
+            closeTo(hero.getHealth(), health - .5f, "heavy block did not leak partial damage");
+            if (!hero.isBlockBroken()) throw new AssertionError("Depleted block did not break");
+            hero.setBlockHeld(false);
+            for (int i = 0; i < 60; i++) route.update(GameWorld.FIXED_STEP);
+            float beforeArrow = hero.getHealth();
+            hero.receiveHit(new CombatHit(CombatHit.Type.PROJECTILE, .5f, 9f, 0f, 0f, null));
+            closeTo(hero.getHealth(), beforeArrow - .5f, "Projectile was blocked");
+            route.getInventory().add(ItemCatalog.RED_BRACER);
+            closeTo(hero.getMaxBlockStability(), 3.75f, "damaged bracer stability bonus");
+            route.getInventory().add(ItemCatalog.IMPACT_CORE);
+            if (!route.combineItems(inventorySlot(route, ItemCatalog.RED_BRACER),
+                inventorySlot(route, ItemCatalog.IMPACT_CORE)) ||
+                route.getInventory().count(ItemCatalog.WEIGHTED_BRACER) != 1 ||
+                route.getInventory().count(ItemCatalog.IMPACT_CORE) != 0)
+                throw new AssertionError("Weighted bracer recipe did not consume one core");
+            route.getInventory().add(ItemCatalog.SEWING_KIT);
+            route.getInventory().add(ItemCatalog.SEWING_KIT);
+            route.getInventory().add(ItemCatalog.SEWING_KIT);
+            route.getInventory().add(ItemCatalog.FIELD_BANDAGE);
+            if (!route.combineItems(inventorySlot(route, ItemCatalog.SEWING_KIT),
+                inventorySlot(route, ItemCatalog.FIELD_BANDAGE)) ||
+                route.getInventory().count(ItemCatalog.SEWING_KIT) != 2 ||
+                route.getInventory().count(ItemCatalog.REINFORCED_BANDAGE) != 1)
+                throw new AssertionError("Sewing recipe lost charges or output");
+            if (!route.moveInventorySlot(inventorySlot(route, ItemCatalog.REINFORCED_BANDAGE), 7))
+                throw new AssertionError("Reinforced bandage could not enter pocket");
+            hero.setHealth(1f);
+            if (!route.usePocketItem(7) || hero.getHealth() != hero.getMaxHealth())
+                throw new AssertionError("Reinforced bandage did not heal two up to max");
+        } finally { route.dispose(); }
+    }
+
+    private void checkArrowCover() {
+        GameWorld route = new GameWorld(426L);
+        try {
+            Hero hero = route.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy shooter = EnemyFactory.createScavenger(route.getWorld(), new Vector2(15f, 2.5f));
+            shooter.setActive(false);
+            float health = hero.getHealth();
+            route.fireArrowVolley(shooter, new Vector2(-1f, 0f), 0);
+            for (int i = 0; i < 35; i++) route.update(GameWorld.FIXED_STEP);
+            if (hero.getHealth() >= health) throw new AssertionError("Flying arrow missed an exposed hero");
+            hero.setHealth(health);
+            com.badlogic.gdx.physics.box2d.BodyDef wallDef = new com.badlogic.gdx.physics.box2d.BodyDef();
+            wallDef.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
+            wallDef.position.set(12.5f, 2.5f);
+            com.badlogic.gdx.physics.box2d.Body wall = route.getWorld().createBody(wallDef);
+            wall.setUserData("level");
+            com.badlogic.gdx.physics.box2d.PolygonShape shape = new com.badlogic.gdx.physics.box2d.PolygonShape();
+            shape.setAsBox(.15f, 1f);
+            wall.createFixture(shape, 0f);
+            shape.dispose();
+            route.fireArrowVolley(shooter, new Vector2(-1f, 0f), 0);
+            for (int i = 0; i < 35; i++) route.update(GameWorld.FIXED_STEP);
+            closeTo(hero.getHealth(), health, "Arrow passed through cover");
+        } finally { route.dispose(); }
     }
 
     private static void closeTo(float actual, float expected, String failure) {

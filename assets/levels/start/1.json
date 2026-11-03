@@ -44,7 +44,19 @@
       "visualId": "blade_shard",
       "itemId": "blade_shard",
       "eventId": "blade_shard_taken",
-      "position": { "x": 19.0, "y": 3.0 }
+      "position": {
+        "x": 19.0,
+        "y": 3.0
+      }
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "gate_return",
+      "position": {
+        "x": 17.5,
+        "y": 2.5
+      }
     }
   ]
 }

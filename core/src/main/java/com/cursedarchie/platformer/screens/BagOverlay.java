@@ -62,9 +62,10 @@ final class BagOverlay implements Disposable {
             source = -1;
             craftMessage = "Choose a highlighted ingredient";
         } else if (craftSecond >= 0) {
+            String result = inventory.combinationResult(craftFirst, craftSecond);
             if (world.combineItems(craftFirst, craftSecond)) {
                 selected = craftFirst;
-                craftMessage = "Created FUSED RELIC: power + recoil + heavy strike";
+                craftMessage = "Created " + resultName(result);
             } else craftMessage = "Cannot combine these items";
             craftFirst = craftSecond = -1;
         } else selectIngredient(world);
@@ -73,9 +74,17 @@ final class BagOverlay implements Disposable {
         if (selected == craftFirst) return;
         String result = world.getInventory().combinationResult(craftFirst, selected);
         if (result == null) { craftMessage = "These items cannot be combined"; return; }
-        if (world.getInventory().count(result) > 0) { craftMessage = "You already have this relic"; return; }
+        if (!ItemCatalog.REINFORCED_BANDAGE.equals(result) &&
+            world.getInventory().count(result) > 0) {
+            craftMessage = "You already have this relic"; return;
+        }
         craftSecond = selected;
-        craftMessage = "Result: FUSED RELIC (power + recoil + heavy strike). C/E: create";
+        craftMessage = "Result: " + resultName(result) + ". C/Interact: create";
+    }
+    private static String resultName(String id) {
+        if (ItemCatalog.WEIGHTED_BRACER.equals(id)) return "WEIGHTED BRACER";
+        if (ItemCatalog.REINFORCED_BANDAGE.equals(id)) return "REINFORCED BANDAGE";
+        return "FUSED RELIC";
     }
     void confirm(GameWorld world) {
         if (craftFirst >= 0) {
@@ -210,6 +219,11 @@ final class BagOverlay implements Disposable {
             ItemCatalog.BLADE_SHARD.equals(item) ? "BLADE SHARD: STRONGER STRIKES" :
             ItemCatalog.IMPACT_CORE.equals(item) ? "IMPACT CORE: MORE RECOIL" :
             ItemCatalog.FUSED_RELIC.equals(item) ? "FUSED RELIC: POWER + RECOIL" :
+            ItemCatalog.RED_BRACER.equals(item) ? "RED BRACER: +25% BLOCK STABILITY" :
+            ItemCatalog.WEIGHTED_BRACER.equals(item) ? "WEIGHTED BRACER: BLOCK COUNTER" :
+            ItemCatalog.SMOKE_INCENSE.equals(item) ? "SMOKE INCENSE: 3 SEC COVER" :
+            ItemCatalog.SEWING_KIT.equals(item) ? "SEWING KIT: 3 USES WITH BANDAGE" :
+            ItemCatalog.REINFORCED_BANDAGE.equals(item) ? "REINFORCED BANDAGE: HEAL 2" :
             "BANDAGE x" + inventory.count(source >= 0 ? source : selected), left, bottom - 25f);
         if (craftFirst < 0 && !craftMessage.isEmpty())
             font.draw(batch, craftMessage, left, bottom - 113f);
@@ -284,6 +298,11 @@ final class BagOverlay implements Disposable {
         if (ItemCatalog.BLADE_SHARD.equals(id)) batch.setColor(.65f, .85f, 1f, 1f);
         else if (ItemCatalog.IMPACT_CORE.equals(id)) batch.setColor(1f, .65f, .45f, 1f);
         else if (ItemCatalog.FUSED_RELIC.equals(id)) batch.setColor(.9f, .55f, 1f, 1f);
+        else if (ItemCatalog.RED_BRACER.equals(id) || ItemCatalog.WEIGHTED_BRACER.equals(id))
+            batch.setColor(1f, .35f, .3f, 1f);
+        else if (ItemCatalog.SMOKE_INCENSE.equals(id)) batch.setColor(.65f, .72f, .73f, 1f);
+        else if (ItemCatalog.SEWING_KIT.equals(id)) batch.setColor(.97f, .82f, .52f, 1f);
+        else if (ItemCatalog.REINFORCED_BANDAGE.equals(id)) batch.setColor(.5f, 1f, .75f, 1f);
         batch.draw(ItemCatalog.FIELD_BANDAGE.equals(id) ? bandage : note,
             x + 9f, y + 9f, 48f, 48f);
         batch.setColor(Color.WHITE);

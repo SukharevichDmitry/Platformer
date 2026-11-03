@@ -24,7 +24,7 @@ public class EnemyController {
             if (!enemy.isAlive()) continue;
 
             enemy.update(delta);
-            enemy.updateSpecialActions(gameWorld.getHero(), enemies, delta);
+            enemy.updateSpecialActions(gameWorld, gameWorld.getHero(), enemies, delta);
         }
     }
 
@@ -45,6 +45,10 @@ public class EnemyController {
                 break;
             case "red_collector":
                 enemy = EnemyFactory.createRedCollector(world, worldPos);
+                enemy.setBrain(new SimpleEnemyBrain(gameWorld));
+                break;
+            case "heavy_hunter":
+                enemy = EnemyFactory.createHeavyHunter(world, worldPos);
                 enemy.setBrain(new SimpleEnemyBrain(gameWorld));
                 break;
         }

@@ -10,6 +10,11 @@ public final class InteractionData {
     public String itemId;
     public String visualId;
     public Vector2 position;
+    public String targetLocation;
+    public int targetRoomId;
+    public String targetSpawnId;
+    public boolean returnToOrigin;
+    public String requiresFlag;
 
     public InteractionData() { }
 }

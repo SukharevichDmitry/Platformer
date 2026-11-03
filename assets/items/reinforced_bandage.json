@@ -1,0 +1,5 @@
+{
+  "id": "reinforced_bandage",
+  "maxStack": 3,
+  "effect": "heal_two"
+}

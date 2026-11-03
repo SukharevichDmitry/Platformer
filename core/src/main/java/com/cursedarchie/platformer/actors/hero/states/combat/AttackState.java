@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx;
 import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.physics.CombatHit;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
 
 import java.util.HashSet;
@@ -69,8 +70,10 @@ public class AttackState implements HeroState {
                 float damage = hero.getDamage() * (heavy ? 2f : comboStep == 2 ? 1.5f : 1f) *
                     hero.meleeDamageMultiplier(heavy, comboStep);
                 if (target instanceof Enemy) {
-                    ((Enemy) target).takeMeleeHit(damage, hero.getPosition().x,
-                        (heavy ? 10f : comboStep == 2 ? 8f : 5f) + hero.meleeRecoilBonus(), heavy);
+                    ((Enemy) target).takeMeleeHit(new CombatHit(
+                        heavy ? CombatHit.Type.MELEE_HEAVY : CombatHit.Type.MELEE_LIGHT,
+                        damage, hero.getPosition().x, heavy ? 2f : 1f,
+                        (heavy ? 10f : comboStep == 2 ? 8f : 5f) + hero.meleeRecoilBonus(), hero));
                 } else target.takeDamage(damage);
                 hitTargets.add(target);
                 hit = true;

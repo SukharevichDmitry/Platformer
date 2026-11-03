@@ -7,7 +7,7 @@
     "id": 3
   },
   "forwardTransition": {
-    "location": "keeper_chamber",
+    "location": "transfer_gate",
     "id": 0
   },
   "roomCount": {

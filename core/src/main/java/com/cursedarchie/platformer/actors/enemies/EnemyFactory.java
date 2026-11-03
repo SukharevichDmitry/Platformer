@@ -23,18 +23,20 @@ public class EnemyFactory {
     private static final Definition BOSS = new Definition("boss", 3f, 3);
     private static final Definition SCAVENGER = new Definition("scavenger", 0.9f, 1);
     private static final Definition RED_COLLECTOR = new Definition("red_collector", 1.4f, 2);
+    private static final Definition HEAVY_HUNTER = new Definition("heavy_hunter", 1.5f, 3);
 
     public static Definition definition(String type) {
         if (DEFAULT.id.equals(type)) return DEFAULT;
         if (BOSS.id.equals(type)) return BOSS;
         if (SCAVENGER.id.equals(type)) return SCAVENGER;
         if (RED_COLLECTOR.id.equals(type)) return RED_COLLECTOR;
+        if (HEAVY_HUNTER.id.equals(type)) return HEAVY_HUNTER;
         throw new IllegalArgumentException("Unsupported enemy type: " + type);
     }
 
     public static boolean supportsType(String type) {
         return DEFAULT.id.equals(type) || BOSS.id.equals(type) ||
-            SCAVENGER.id.equals(type) || RED_COLLECTOR.id.equals(type);
+        SCAVENGER.id.equals(type) || RED_COLLECTOR.id.equals(type) || HEAVY_HUNTER.id.equals(type);
     }
 
     public static Enemy createDefaultEnemy(World world, Vector2 pos) {
@@ -97,6 +99,25 @@ public class EnemyFactory {
         cfg.attackRight = new AttackConfig(1.1f, 1f, 1.3f, 0f);
         Enemy enemy = new DefaultEnemy(world, pos, cfg);
         enemy.setArchetypeId(RED_COLLECTOR.id);
+        return enemy;
+    }
+
+    public static Enemy createHeavyHunter(World world, Vector2 pos) {
+        EnemyConfig cfg = new EnemyConfig();
+        cfg.size = HEAVY_HUNTER.bodySize;
+        cfg.maxHealth = 5f;
+        cfg.viewDistance = 5f;
+        cfg.viewAngle = 115f;
+        cfg.damage = 1.4f;
+        cfg.attackDuration = 1.08f;
+        cfg.attackStartup = .65f;
+        cfg.attackActiveEnd = .84f;
+        cfg.attackCooldown = 1.3f;
+        cfg.velocity = 3.8f;
+        cfg.attackLeft = new AttackConfig(1.2f, 1f, -1.3f, 0f);
+        cfg.attackRight = new AttackConfig(1.2f, 1f, 1.3f, 0f);
+        Enemy enemy = new DefaultEnemy(world, pos, cfg);
+        enemy.setArchetypeId(HEAVY_HUNTER.id);
         return enemy;
     }
 

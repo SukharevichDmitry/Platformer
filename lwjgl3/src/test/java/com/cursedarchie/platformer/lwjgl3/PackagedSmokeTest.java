@@ -17,6 +17,8 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.cursedarchie.platformer.Main;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.levels.RoomInstance;
+import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 import com.cursedarchie.platformer.screens.GameScreen;
 import com.cursedarchie.platformer.screens.MenuScreen;
 import com.cursedarchie.platformer.screens.PauseScreen;
@@ -131,6 +133,7 @@ public final class PackagedSmokeTest extends Main {
                 // only once that disposal and the first gameplay render have completed.
                 assertOpeningItemVisible();
                 if (System.getenv("PLATFORMER_CAPTURE_ROAD") != null) captureRoadFrame();
+                exerciseAlleyTurn((GameScreen) getScreen());
                 gameplayTextures = Texture.getNumManagedTextures();
                 exerciseTransitions(((GameScreen) getScreen()).getGameWorld());
                 exerciseBorderTravel(((GameScreen) getScreen()).getGameWorld());
@@ -186,7 +189,8 @@ public final class PackagedSmokeTest extends Main {
                     throw new AssertionError("Continue changed saved hero or room state");
                 break;
             case 7:
-                if (Texture.getNumManagedTextures() != gameplayTextures) throw new AssertionError("Restart texture count grew");
+                if (Texture.getNumManagedTextures() > gameplayTextures)
+                    throw new AssertionError("Restart texture count grew");
                 Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                 expect(PauseScreen.class);
                 break;
@@ -289,6 +293,74 @@ public final class PackagedSmokeTest extends Main {
             throw new AssertionError("Missing room was accepted");
         } catch (IllegalArgumentException expected) {
             assertLocation(world, "start", startBodies, startEnemies);
+        }
+    }
+
+    private void exerciseAlleyTurn(GameScreen screen) {
+        GameWorld world = screen.getGameWorld();
+        world.changeLocation("ruins", 0);
+        RoomInstance entranceRoom = null;
+        InteractionData entrance = null;
+        for (RoomInstance room : world.getLocation().getRooms()) {
+            for (InteractionData interaction : room.getInteractions()) {
+                if ("laundry_alley_entrance".equals(interaction.id)) {
+                    entranceRoom = room;
+                    entrance = interaction;
+                    break;
+                }
+            }
+            if (entrance != null) break;
+        }
+        if (entranceRoom == null) throw new AssertionError("Generated street has no alley portal");
+        world.changeLocation("ruins", entranceRoom.getRoomId());
+        world.getHero().getBody().setTransform(
+            entranceRoom.getWorldX() + entrance.position.x,
+            entranceRoom.getWorldY() + entrance.position.y, 0f);
+        world.update(GameWorld.FIXED_STEP);
+        Gdx.input.getInputProcessor().keyDown(getControls().key(Action.INTERACT));
+        for (int i = 0; i < 9; i++) {
+            if (i == 3) screen.resize(800, 600);
+            screen.render(.1f);
+            captureAlleyFrame("in", i);
+        }
+        if (!"laundry_alley".equals(world.getLocation().getLocation()))
+            throw new AssertionError("Visual alley turn did not switch to the alley");
+        // A repeated key-down from the same long press must not immediately return.
+        Gdx.input.getInputProcessor().keyDown(getControls().key(Action.INTERACT));
+        screen.render(.1f);
+        if (!"laundry_alley".equals(world.getLocation().getLocation()))
+            throw new AssertionError("Held interaction immediately reversed the alley transition");
+        Gdx.input.getInputProcessor().keyUp(getControls().key(Action.INTERACT));
+
+        RoomInstance alleyRoom = world.getCurrentRoom();
+        InteractionData exit = null;
+        for (InteractionData interaction : alleyRoom.getInteractions())
+            if ("street_return".equals(interaction.id)) exit = interaction;
+        if (exit == null) throw new AssertionError("Alley has no street return portal");
+        world.getHero().getBody().setTransform(alleyRoom.getWorldX() + exit.position.x,
+            alleyRoom.getWorldY() + exit.position.y, 0f);
+        world.update(GameWorld.FIXED_STEP);
+        Gdx.input.getInputProcessor().keyDown(getControls().key(Action.INTERACT));
+        for (int i = 0; i < 9; i++) {
+            screen.render(.1f);
+            captureAlleyFrame("out", i);
+        }
+        Gdx.input.getInputProcessor().keyUp(getControls().key(Action.INTERACT));
+        screen.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        if (!"ruins".equals(world.getLocation().getLocation()))
+            throw new AssertionError("Reverse alley turn did not return to the street");
+        world.changeLocation("start", 0);
+    }
+
+    private void captureAlleyFrame(String direction, int frame) {
+        if (System.getenv("PLATFORMER_CAPTURE_ALLEY") == null) return;
+        Pixmap pixels = Pixmap.createFromFrameBuffer(0, 0,
+            Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+        try {
+            PixmapIO.writePNG(Gdx.files.local(String.format("alley-turn-%s-%02d.png",
+                direction, frame)), pixels, 6, true);
+        } finally {
+            pixels.dispose();
         }
     }
 

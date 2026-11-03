@@ -3,6 +3,8 @@ package com.cursedarchie.platformer.run;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
+import java.util.HashMap;
+import java.util.Map;
 
 /** Small, validated gameplay catalog. Item IDs do not depend on texture names. */
 public final class ItemCatalog {
@@ -11,11 +13,17 @@ public final class ItemCatalog {
     public static final String BLADE_SHARD = "blade_shard";
     public static final String IMPACT_CORE = "impact_core";
     public static final String FUSED_RELIC = "fused_relic";
+    public static final String RED_BRACER = "red_bracer";
+    public static final String WEIGHTED_BRACER = "weighted_bracer";
+    public static final String SMOKE_INCENSE = "smoke_incense";
+    public static final String SEWING_KIT = "sewing_kit";
+    public static final String REINFORCED_BANDAGE = "reinforced_bandage";
     private static final String PATH = "items/field_bandage.json";
     private static ItemCatalog instance;
     private static ItemCatalog bladeShard;
     private static ItemCatalog impactCore;
     private static ItemCatalog fusedRelic;
+    private static final Map<String, Integer> extraStacks = new HashMap<>();
 
     public final String id;
     public final int maxStack;
@@ -77,11 +85,28 @@ public final class ItemCatalog {
         if (BLADE_SHARD.equals(id)) return bladeShard().maxStack;
         if (IMPACT_CORE.equals(id)) return impactCore().maxStack;
         if (FUSED_RELIC.equals(id)) return fusedRelic().maxStack;
+        if (RED_BRACER.equals(id) || WEIGHTED_BRACER.equals(id) || SMOKE_INCENSE.equals(id) ||
+            SEWING_KIT.equals(id) || REINFORCED_BANDAGE.equals(id)) return extraMaxStack(id);
         throw new IllegalArgumentException("Unknown item: " + id);
     }
 
     public static boolean supports(String id) {
         return FIELD_BANDAGE.equals(id) || SEALED_NOTE.equals(id) ||
-            BLADE_SHARD.equals(id) || IMPACT_CORE.equals(id) || FUSED_RELIC.equals(id);
+            BLADE_SHARD.equals(id) || IMPACT_CORE.equals(id) || FUSED_RELIC.equals(id) ||
+            RED_BRACER.equals(id) || WEIGHTED_BRACER.equals(id) ||
+            SMOKE_INCENSE.equals(id) || SEWING_KIT.equals(id) ||
+            REINFORCED_BANDAGE.equals(id);
+    }
+
+    private static int extraMaxStack(String id) {
+        Integer cached = extraStacks.get(id);
+        if (cached != null) return cached;
+        JsonValue data = new JsonReader().parse(Gdx.files.internal("items/" + id + ".json"));
+        int max = data.getInt("maxStack");
+        if (!id.equals(data.getString("id")) || max < 1 || max > 9 ||
+            data.getString("effect", "").isEmpty())
+            throw new IllegalArgumentException("Invalid item definition: " + id);
+        extraStacks.put(id, max);
+        return max;
     }
 }

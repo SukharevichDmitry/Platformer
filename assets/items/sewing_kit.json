@@ -1,0 +1,5 @@
+{
+  "id": "sewing_kit",
+  "maxStack": 3,
+  "effect": "bandage_crafting"
+}

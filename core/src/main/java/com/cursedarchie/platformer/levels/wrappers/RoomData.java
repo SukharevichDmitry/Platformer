@@ -18,6 +18,7 @@ public class RoomData {
 
     public Array<EnemySpawnData> enemySpawns = new Array<>();
     public Array<InteractionData> interactions = new Array<>();
+    public Array<SpawnPointData> spawnPoints = new Array<>();
 
     public Neighbors neighbors;
 

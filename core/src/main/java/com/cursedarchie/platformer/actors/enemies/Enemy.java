@@ -12,6 +12,8 @@ import com.cursedarchie.platformer.actors.enemies.states.motion.*;
 import com.cursedarchie.platformer.actors.enemies.machines.CombatStateMachine;
 import com.cursedarchie.platformer.physics.PhysicsTags;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
+import com.cursedarchie.platformer.physics.CombatHit;
+import com.cursedarchie.platformer.world.GameWorld;
 
 public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCombatState> {
 
@@ -44,6 +46,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private boolean attackRequested;
     private boolean lungeRequested;
     private boolean nextAttackLunge;
+    private boolean areaRequested;
+    private boolean nextAreaAttack;
     private final float attackStartup;
     private final float attackActiveEnd;
     private final float attackCooldown;
@@ -52,10 +56,16 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private float jumpCooldownRemaining;
     private float rangedCooldownRemaining = .8f;
     private float rangedWindupRemaining;
+    private float rangedWindupDuration;
+    private final Vector2 rangedAim = new Vector2();
+    private int rangedShotSequence;
+    private int rangedShotMode;
     private boolean rangedShotFacingLeft;
     private float rangedShotFlashRemaining;
     private float blockRemaining;
     private float blockCooldownRemaining = .8f;
+    private float dodgeCooldownRemaining;
+    private float dodgeFlashRemaining;
     private float supportCooldownRemaining;
     private float supportFlashRemaining;
     private Vector2 heroLastKnownPos = new Vector2();
@@ -213,17 +223,27 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isStaggered() { return staggerRemaining > 0f; }
     public boolean isRangedWindingUp() { return rangedWindupRemaining > 0f; }
     public boolean isRangedShotFacingLeft() { return rangedShotFacingLeft; }
+    public Vector2 getRangedAim() { return rangedAim; }
+    public float getRangedWindupProgress() { return rangedWindupDuration == 0f ? 0f :
+        1f - rangedWindupRemaining / rangedWindupDuration; }
+    public int getRangedShotMode() { return rangedShotMode; }
     public float getRangedShotFlashRemaining() { return rangedShotFlashRemaining; }
     public boolean isBlocking() { return blockRemaining > 0f; }
+    public float getDodgeFlashRemaining() { return dodgeFlashRemaining; }
     public boolean isNextAttackLunge() { return nextAttackLunge; }
     public boolean isAttacking() { return combatStateMachine.getCurrentState() instanceof AttackState; }
     public float getSupportFlashRemaining() { return supportFlashRemaining; }
     public void updateSpecialActions(Hero hero, Array<Enemy> allies, float delta) {
+        updateSpecialActions(null, hero, allies, delta);
+    }
+    public void updateSpecialActions(GameWorld gameWorld, Hero hero, Array<Enemy> allies, float delta) {
         if (!active || !alive) return;
         rangedCooldownRemaining = Math.max(0f, rangedCooldownRemaining - delta);
         rangedShotFlashRemaining = Math.max(0f, rangedShotFlashRemaining - delta);
         blockRemaining = Math.max(0f, blockRemaining - delta);
         blockCooldownRemaining = Math.max(0f, blockCooldownRemaining - delta);
+        dodgeCooldownRemaining = Math.max(0f, dodgeCooldownRemaining - delta);
+        dodgeFlashRemaining = Math.max(0f, dodgeFlashRemaining - delta);
         supportCooldownRemaining = Math.max(0f, supportCooldownRemaining - delta);
         supportFlashRemaining = Math.max(0f, supportFlashRemaining - delta);
         if ("scavenger".equals(archetypeId)) {
@@ -235,13 +255,23 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
                     rangedWindupRemaining = 0f;
                     rangedCooldownRemaining = 2.2f;
                     rangedShotFlashRemaining = .12f;
-                    if (hero.isAlive() && canSeeHero && Math.abs(dx) > 1.7f &&
-                        Math.abs(dx) < 7f && dy < 1.25f &&
-                        (dx < 0f) == rangedShotFacingLeft) hero.takeDamage(0.5f);
+                    if (!isStaggered()) {
+                        if (gameWorld != null) gameWorld.fireArrowVolley(this, rangedAim,
+                            rangedShotMode);
+                        else if (hero.isAlive() && Math.abs(dx) < 7f && dy < 1.25f &&
+                            (dx < 0f) == rangedShotFacingLeft)
+                            hero.receiveHit(new CombatHit(CombatHit.Type.PROJECTILE, .5f,
+                                getPosition().x, 0f, 0f, this));
+                    }
                 }
             } else if (rangedCooldownRemaining == 0f && canSeeHero &&
                 Math.abs(dx) > 2.4f && Math.abs(dx) < 7f && dy < 1.25f) {
-                rangedWindupRemaining = .7f;
+                rangedShotMode = ++rangedShotSequence % 5 == 0 ? 2 :
+                    rangedShotSequence % 3 == 0 ? 1 : 0;
+                rangedWindupDuration = rangedShotMode == 2 ? 1.2f :
+                    rangedShotMode == 1 ? 1.05f : .7f;
+                rangedWindupRemaining = rangedWindupDuration;
+                rangedAim.set(hero.getPosition()).sub(getPosition()).nor();
                 rangedShotFacingLeft = dx < 0f;
                 moveStop();
             }
@@ -274,7 +304,25 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
     /** Melee recoil is deliberately weaker on the collector and boss. */
     public void takeMeleeHit(float amount, float sourceX, float recoil, boolean heavy) {
+        takeMeleeHit(new CombatHit(heavy ? CombatHit.Type.MELEE_HEAVY :
+            CombatHit.Type.MELEE_LIGHT, amount, sourceX, heavy ? 2f : 1f, recoil, null));
+    }
+    public void takeMeleeHit(CombatHit hit) {
         if (!alive) return;
+        if ("scavenger".equals(archetypeId) && hit.type == CombatHit.Type.MELEE_LIGHT &&
+            dodgeCooldownRemaining == 0f && !isStaggered()) {
+            float away = hit.sourceX < getPosition().x ? 1f : -1f;
+            if (hasGroundAhead(away)) {
+                body.setLinearVelocity(away * 9f, body.getLinearVelocity().y);
+                dodgeCooldownRemaining = 2.5f;
+                dodgeFlashRemaining = .22f;
+                return;
+            }
+        }
+        float amount = hit.damage;
+        float sourceX = hit.sourceX;
+        float recoil = hit.recoil;
+        boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY;
         if (heavy && isBlocking()) blockRemaining = 0f;
         if (!heavy && "red_collector".equals(archetypeId) && isBlocking() && !isStaggered() &&
             ((sourceX < getPosition().x) == facingLeft) &&
@@ -323,6 +371,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             combatStateMachine.getCurrentState() instanceof AttackState) return;
 
         lungeRequested = "default".equals(archetypeId) && nextAttackLunge;
+        areaRequested = "heavy_hunter".equals(archetypeId) ||
+            "boss".equals(archetypeId) && nextAreaAttack;
         attackRequested = true;
     }
 
@@ -341,8 +391,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         }
 
         attackRequested = false;
-        combatStateMachine.changeState(new AttackState(lungeRequested));
+        combatStateMachine.changeState(new AttackState(lungeRequested, areaRequested));
         if ("default".equals(archetypeId)) nextAttackLunge = !nextAttackLunge;
+        if ("boss".equals(archetypeId)) nextAreaAttack = !nextAreaAttack;
     }
 
 

@@ -9,6 +9,7 @@ import com.cursedarchie.platformer.physics.PhysicsTags;
 import com.cursedarchie.platformer.physics.PhysicsCategories;
 import com.cursedarchie.platformer.run.Inventory;
 import com.cursedarchie.platformer.run.ItemCatalog;
+import com.cursedarchie.platformer.physics.CombatHit;
 
 public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public static final float BODY_SIZE = 1f;
@@ -43,6 +44,43 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     protected CombatStateMachine combatStateMachine;
     private float invulnerabilityRemaining;
     private float platformDropRemaining;
+    private boolean blockHeld;
+    private float blockStability = 3f;
+    private float blockBrokenRemaining;
+    private float blockCounterCooldown;
+    private float blockFlashRemaining;
+    public void setBlockHeld(boolean value) { blockHeld = value; }
+    public boolean isBlocking() { return blockHeld && blockBrokenRemaining == 0f && blockStability > 0f; }
+    public boolean isBlockBroken() { return blockBrokenRemaining > 0f; }
+    public float getBlockFlashRemaining() { return blockFlashRemaining; }
+    public float getBlockStability() { return blockStability; }
+    public float getMaxBlockStability() {
+        return inventory != null && inventory.count(ItemCatalog.WEIGHTED_BRACER) > 0 ? 3.75f :
+            inventory != null && inventory.count(ItemCatalog.RED_BRACER) > 0 ? 3.75f : 3f;
+    }
+    public void receiveHit(CombatHit hit) {
+        boolean frontal = (hit.sourceX < getPosition().x) == facingLeft;
+        if (hit.type != CombatHit.Type.PROJECTILE && frontal && isBlocking()) {
+            blockStability = Math.max(0f, blockStability - hit.stabilityDamage);
+            blockFlashRemaining = .18f;
+            if (hit.type == CombatHit.Type.MELEE_HEAVY) {
+                takeDamage(hit.damage * .5f);
+                if (inventory != null && inventory.count(ItemCatalog.WEIGHTED_BRACER) > 0 &&
+                    blockCounterCooldown == 0f && hit.source != null) {
+                    hit.source.getBody().setLinearVelocity(
+                        Math.copySign(3f, hit.sourceX - getPosition().x),
+                        hit.source.getBody().getLinearVelocity().y);
+                    blockCounterCooldown = 3f;
+                }
+            }
+            if (blockStability == 0f) blockBrokenRemaining = .85f;
+            return;
+        }
+        takeDamage(hit.damage);
+        if (hit.recoil > 0f && alive)
+            body.setLinearVelocity(Math.copySign(hit.recoil, getPosition().x - hit.sourceX),
+                body.getLinearVelocity().y);
+    }
     public float getPlatformDropRemaining() { return platformDropRemaining; }
     public void setPlatformDropRemaining(float seconds) { platformDropRemaining = Math.max(0f, seconds); }
     private Inventory inventory;
@@ -138,6 +176,11 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
 
     @Override
     public void update(float delta) {
+        blockBrokenRemaining = Math.max(0f, blockBrokenRemaining - delta);
+        blockCounterCooldown = Math.max(0f, blockCounterCooldown - delta);
+        blockFlashRemaining = Math.max(0f, blockFlashRemaining - delta);
+        if (!blockHeld && blockBrokenRemaining == 0f)
+            blockStability = Math.min(getMaxBlockStability(), blockStability + 1.15f * delta);
         invulnerabilityRemaining = Math.max(0f, invulnerabilityRemaining - delta);
         motionStateMachine.update(delta);
         combatStateMachine.update(delta);

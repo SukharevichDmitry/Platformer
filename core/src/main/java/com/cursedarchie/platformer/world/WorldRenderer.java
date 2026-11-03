@@ -35,6 +35,8 @@ import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.run.ItemCatalog;
+import com.cursedarchie.platformer.controllers.ControlBindings;
+import com.cursedarchie.platformer.controllers.ControlBindings.Action;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -59,6 +61,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     private final GameWorld gameWorld;
     private final Hero hero;
+    private ControlBindings controlBindings;
+    private InteractionData enteringPortal;
+    private float portalProgress;
+
+    public void setControlBindings(ControlBindings bindings) { controlBindings = bindings; }
+    public void setPortalTransition(InteractionData portal, float progress) {
+        enteringPortal = portal;
+        portalProgress = Math.max(0f, Math.min(1f, progress));
+    }
+    private String interactKey() { return controlBindings == null ? "E" : controlBindings.keyName(Action.INTERACT); }
 
     private final OrthographicCamera cam;
     private LocationInstance cameraLocation;
@@ -78,6 +90,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final Texture noteSprite;
     private final Texture keeperSprite;
     private final Texture sceneryPixel;
+    private final TextureRegion arrowPixel;
     private final Sound firstSlash;
     private final Sound secondSlash;
     private final Sound heavySlash;
@@ -186,6 +199,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         scenery.setColor(Color.WHITE);
         scenery.fill();
         sceneryPixel = new Texture(scenery);
+        arrowPixel = new TextureRegion(sceneryPixel);
         scenery.dispose();
         firstSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_light_1.wav"));
         secondSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_light_2.wav"));
@@ -333,6 +347,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     }
 
     public void render(float delta) {
+        renderWorldOnly(delta);
+        drawHitBar();
+    }
+
+    /** Draws only the world layer so transitions can capture it without HUD. */
+    public void renderWorldOnly(float delta) {
         updateCamera(delta);
 
         spriteBatch.setProjectionMatrix(cam.combined);
@@ -346,9 +366,13 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             roadSurface.draw(gameWorld.getLocation(), spriteBatch,
                 getVisibleLeftEdge(), getVisibleRightEdge());
             drawClimbShafts();
+            drawPortals(false);
             drawInteractions();
+            drawSmoke();
             drawHero();
             drawEnemy();
+            drawArrows();
+            drawPortals(true);
             drawDefeatEffects();
             drawDamageIndicators();
         spriteBatch.end();
@@ -361,7 +385,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawChainDebug();
         }
 
-        drawHitBar();
     }
 
     private void drawClimbShafts() {
@@ -383,6 +406,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         InteractionData nearby = gameWorld.getNearbyInteraction();
         for (InteractionData interaction : room.getInteractions()) {
             if (gameWorld.isInteractionConsumed(room, interaction)) continue;
+            if (interaction.requiresFlag != null && !gameWorld.hasRunFlag(interaction.requiresFlag)) continue;
+            if ("portal".equals(interaction.kind)) continue;
             float x = room.getWorldX() + interaction.position.x;
             float y = room.getWorldY() + interaction.position.y;
             if ("npc".equals(interaction.kind)) {
@@ -390,7 +415,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     x - .7f, y - 1f, 1.4f, 2.4f);
                 spriteBatch.setColor(Color.WHITE);
                 if (interaction == nearby)
-                    itemLabelFont.drawCentered(spriteBatch, "E", x, y + 1.96f, NOTE_LABEL);
+                    itemLabelFont.drawCentered(spriteBatch, interactKey(), x, y + 1.96f, NOTE_LABEL);
                 continue;
             }
             boolean bandage = ItemCatalog.FIELD_BANDAGE.equals(interaction.visualId);
@@ -398,17 +423,88 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             boolean impact = ItemCatalog.IMPACT_CORE.equals(interaction.visualId);
             if (blade) spriteBatch.setColor(.65f, .85f, 1f, 1f);
             else if (impact) spriteBatch.setColor(1f, .65f, .45f, 1f);
+            else if (ItemCatalog.RED_BRACER.equals(interaction.visualId))
+                spriteBatch.setColor(1f, .3f, .3f, 1f);
+            else if (ItemCatalog.SMOKE_INCENSE.equals(interaction.visualId))
+                spriteBatch.setColor(.66f, .72f, .73f, 1f);
+            else if (ItemCatalog.SEWING_KIT.equals(interaction.visualId))
+                spriteBatch.setColor(.98f, .81f, .5f, 1f);
             spriteBatch.draw(bandage ? bandageSprite : noteSprite,
                 x - 0.4f, y - 0.36f, 0.8f, 0.8f);
             spriteBatch.setColor(Color.WHITE);
             if (interaction == nearby) {
                 Color labelColor = bandage ? BANDAGE_LABEL : NOTE_LABEL;
-                itemLabelFont.drawCentered(spriteBatch, "E", x, y + 1.04f, labelColor);
+                itemLabelFont.drawCentered(spriteBatch, interactKey(), x, y + 1.04f, labelColor);
                 itemLabelFont.drawCentered(spriteBatch, bandage ? "BANDAGE" :
-                    blade ? "BLADE SHARD" : impact ? "IMPACT CORE" : "NOTE",
+                    blade ? "BLADE SHARD" : impact ? "IMPACT CORE" :
+                        ItemCatalog.RED_BRACER.equals(interaction.visualId) ? "RED BRACER" :
+                        ItemCatalog.SMOKE_INCENSE.equals(interaction.visualId) ? "SMOKE" :
+                        ItemCatalog.SEWING_KIT.equals(interaction.visualId) ? "SEWING KIT" :
+                        "CLUE",
                     x, y + 0.60f, labelColor);
             }
         }
+    }
+
+    private void drawPortals(boolean foreground) {
+        RoomInstance room = gameWorld.getCurrentRoom();
+        if (room == null) return;
+        for (int i = 0; i < room.getInteractions().size; i++) {
+            InteractionData portal = room.getInteractions().get(i);
+            if (!"portal".equals(portal.kind)) continue;
+            boolean locked = "locked_laundry_door".equals(portal.id) &&
+                gameWorld.hasRunFlag("laundry_access_locked") &&
+                !gameWorld.hasRunFlag("alley_key_found");
+            if (portal.requiresFlag != null && !gameWorld.hasRunFlag(portal.requiresFlag) && !locked) continue;
+            float x = room.getWorldX() + portal.position.x;
+            float y = room.getWorldY() + portal.position.y;
+            if (!foreground) {
+                spriteBatch.setColor(.08f, .07f, .09f, 1f);
+                spriteBatch.draw(sceneryPixel, x - .85f, y - .65f, 1.7f, 2.5f);
+                spriteBatch.setColor(.21f, .20f, .23f, 1f);
+                spriteBatch.draw(sceneryPixel, x - .48f, y - .65f, .96f, 2.1f);
+                spriteBatch.setColor(.44f, .34f, .25f, 1f);
+                spriteBatch.draw(sceneryPixel, x - 1.4f, y - .75f, 1.1f, .08f);
+                spriteBatch.draw(sceneryPixel, x + .3f, y - .75f, 1.1f, .08f);
+                if (locked && gameWorld.getHero().getPosition().dst(x, y) < 3f)
+                    itemLabelFont.drawCentered(spriteBatch, "LOCKED: FIND THE KEY", x, y + 2.3f, NOTE_LABEL);
+                else if (gameWorld.getNearbyInteraction() == portal)
+                    itemLabelFont.drawCentered(spriteBatch, interactKey() + ": " +
+                        ("alley_door".equals(portal.visualId) ? "ENTER ALLEY" :
+                            "street_exit".equals(portal.visualId) ? "RETURN" : "ENTER"),
+                        x, y + 2.3f, NOTE_LABEL);
+            } else {
+                spriteBatch.setColor(.36f, .27f, .20f, 1f);
+                spriteBatch.draw(sceneryPixel, x - 1.08f, y - .74f, .31f, 2.7f);
+                spriteBatch.draw(sceneryPixel, x + .77f, y - .74f, .31f, 2.7f);
+                spriteBatch.draw(sceneryPixel, x - 1.08f, y + 1.77f, 2.16f, .25f);
+                if (enteringPortal == portal) {
+                    spriteBatch.setColor(.03f, .03f, .05f, portalProgress * .75f);
+                    spriteBatch.draw(sceneryPixel, x - .77f, y - .65f, 1.54f, 2.42f);
+                }
+            }
+            spriteBatch.setColor(Color.WHITE);
+        }
+    }
+
+    private void drawSmoke() {
+        if (gameWorld.getSmokeRemaining() <= 0f) return;
+        Vector2 center = gameWorld.getSmokeCenter();
+        spriteBatch.setColor(.48f, .5f, .54f,
+            Math.min(.52f, gameWorld.getSmokeRemaining() * .26f));
+        spriteBatch.draw(sceneryPixel, center.x - 2.2f, center.y - .6f, 4.4f, 2.3f);
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    private void drawArrows() {
+        for (GameWorld.Arrow arrow : gameWorld.getArrows()) {
+            float angle = (float) Math.toDegrees(Math.atan2(arrow.velocity.y, arrow.velocity.x));
+            spriteBatch.setColor(arrow.charged ? 1f : .78f,
+                arrow.charged ? .47f : .67f, .25f, 1f);
+            spriteBatch.draw(arrowPixel, arrow.position.x - .3f, arrow.position.y - .045f,
+                .3f, .045f, .6f, .09f, 1f, 1f, angle);
+        }
+        spriteBatch.setColor(Color.WHITE);
     }
 
     private static Texture createKeeperSprite() {
@@ -670,13 +766,33 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         } else if (hero.getInvulnerabilityRemaining() > 0f) {
             spriteBatch.setColor(1f, 0.65f, 0.65f, 1f);
         }
+        float drawX = hero.getPosition().x - hero.getSize()/2f;
+        float drawY = hero.getPosition().y - hero.getSize()/2f;
+        float drawSize = hero.getSize();
+        if (enteringPortal != null) {
+            RoomInstance room = gameWorld.getCurrentRoom();
+            float targetX = room.getWorldX() + enteringPortal.position.x;
+            float targetY = room.getWorldY() + enteringPortal.position.y;
+            drawSize *= 1f - .62f * portalProgress;
+            drawX = hero.getPosition().x + (targetX - hero.getPosition().x) * portalProgress - drawSize / 2f;
+            drawY = hero.getPosition().y + (targetY - hero.getPosition().y + .8f) * portalProgress - drawSize / 2f;
+        }
         spriteBatch.draw(
             heroFrame,
-            (this.hero.getPosition().x - this.hero.getSize()/2f),
-            (this.hero.getPosition().y - this.hero.getSize()/2f),
-            this.hero.getSize(),
-            this.hero.getSize()
+            drawX, drawY, drawSize, drawSize
         );
+        if (hero.isBlocking() || hero.isBlockBroken() || hero.getBlockFlashRemaining() > 0f) {
+            float direction = hero.isFacingLeft() ? -1f : 1f;
+            spriteBatch.setColor(hero.isBlockBroken() ? 1f :
+                hero.getBlockFlashRemaining() > 0f ? .9f : .38f,
+                hero.isBlockBroken() ? .28f : .75f, .95f, .9f);
+            spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .5f - .11f,
+                hero.getPosition().y - .32f, .22f, .85f);
+            spriteBatch.setColor(.28f, .83f, 1f, .85f);
+            spriteBatch.draw(sceneryPixel, hero.getPosition().x - .48f,
+                hero.getPosition().y + .75f,
+                .96f * hero.getBlockStability() / hero.getMaxBlockStability(), .06f);
+        }
         if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
             AttackState attack = (AttackState) hero.getCombatStateMachine().getCurrentState();
             if (attack.isHeavy() && hero.getCombatStateTime() < attack.getStartup()) {
@@ -859,7 +975,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     }
                 }
 
-                if (enemy.getSupportFlashRemaining() > 0f) {
+                if (enemy.getDodgeFlashRemaining() > 0f) {
+                    spriteBatch.setColor(.4f, 1f, 1f, .8f);
+                } else if (enemy.getSupportFlashRemaining() > 0f) {
                     spriteBatch.setColor(.5f, 1f, .55f, 1f);
                 } else if (gameWorld.hasRecentDamage(enemy)) {
                     spriteBatch.setColor(1f, 0.35f, 0.35f, 1f);
@@ -883,6 +1001,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     spriteBatch.draw(character, flip ? left + visualWidth : left,
                         bottom, flip ? -visualWidth : visualWidth, visualHeight);
                 } else {
+                    if ("heavy_hunter".equals(enemy.getArchetypeId()))
+                        spriteBatch.setColor(.8f, .62f, .42f, 1f);
+                    else if ("boss".equals(enemy.getArchetypeId()))
+                        spriteBatch.setColor(.85f, .32f, .3f, 1f);
                     spriteBatch.draw(enemyFrame, enemy.getPosition().x - enemy.getSize()/2f,
                         enemy.getPosition().y - enemy.getSize()/2f, enemy.getSize(), enemy.getSize());
                 }
@@ -897,6 +1019,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                             enemy.getPosition().x + (attack.isFacingLeft() ? -1.6f : .35f),
                             enemy.getPosition().y - .3f, 1.25f, .09f);
                     }
+                    if (attack.isArea() && enemy.getCombatStateTime() < attack.startup(enemy)) {
+                        float left = enemy.getPosition().x - 2.4f;
+                        float ground = enemy.getPosition().y - enemy.getSize() / 2f + .03f;
+                        spriteBatch.setColor(1f, .25f, .16f,
+                            .45f + .4f * enemy.getCombatStateTime() / attack.startup(enemy));
+                        spriteBatch.draw(sceneryPixel, left, ground, 4.8f, .13f);
+                        spriteBatch.setColor(.3f, 1f, .52f, .7f);
+                        spriteBatch.draw(sceneryPixel, left - .28f, ground, .12f, .25f);
+                        spriteBatch.draw(sceneryPixel, left + 4.96f, ground, .12f, .25f);
+                    }
                 }
                 if (enemy.isBlocking()) {
                     float direction = enemy.isFacingLeft() ? -1f : 1f;
@@ -905,11 +1037,13 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                         enemy.getPosition().y - .4f, .18f, 1.1f);
                 }
                 if (enemy.isRangedWindingUp() || enemy.getRangedShotFlashRemaining() > 0f) {
-                    float direction = enemy.isRangedShotFacingLeft() ? -1f : 1f;
                     spriteBatch.setColor(1f, enemy.isRangedWindingUp() ? .45f : .92f, .2f, .8f);
-                    spriteBatch.draw(sceneryPixel,
-                        enemy.getPosition().x + (direction < 0f ? -6f : 0f),
-                        enemy.getPosition().y, 6f, .08f);
+                    float angle = (float) Math.toDegrees(Math.atan2(
+                        enemy.getRangedAim().y, enemy.getRangedAim().x));
+                    spriteBatch.draw(arrowPixel, enemy.getPosition().x,
+                        enemy.getPosition().y, 0f, .04f,
+                        6f, enemy.getRangedShotMode() == 2 ? .16f : .08f,
+                        1f, 1f, angle);
                 }
                 spriteBatch.setColor(Color.WHITE);
             }

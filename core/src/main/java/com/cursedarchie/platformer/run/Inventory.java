@@ -32,6 +32,11 @@ public final class Inventory {
         return false;
     }
 
+    public boolean hasFreeBagSlot() {
+        for (int i = 0; i < CAPACITY; i++) if (ids[i] == null) return true;
+        return false;
+    }
+
     public boolean removeOne(int slot) {
         checkSlot(slot);
         if (ids[slot] == null) return false;
@@ -43,18 +48,49 @@ public final class Inventory {
         checkSlot(first);
         checkSlot(second);
         if (first == second) return null;
-        return (ItemCatalog.BLADE_SHARD.equals(ids[first]) && ItemCatalog.IMPACT_CORE.equals(ids[second])) ||
-            (ItemCatalog.IMPACT_CORE.equals(ids[first]) && ItemCatalog.BLADE_SHARD.equals(ids[second]))
-            ? ItemCatalog.FUSED_RELIC : null;
+        if ((ItemCatalog.BLADE_SHARD.equals(ids[first]) && ItemCatalog.IMPACT_CORE.equals(ids[second])) ||
+            (ItemCatalog.IMPACT_CORE.equals(ids[first]) && ItemCatalog.BLADE_SHARD.equals(ids[second])))
+            return ItemCatalog.FUSED_RELIC;
+        if ((ItemCatalog.RED_BRACER.equals(ids[first]) && ItemCatalog.IMPACT_CORE.equals(ids[second])) ||
+            (ItemCatalog.IMPACT_CORE.equals(ids[first]) && ItemCatalog.RED_BRACER.equals(ids[second])))
+            return ItemCatalog.WEIGHTED_BRACER;
+        if ((ItemCatalog.SEWING_KIT.equals(ids[first]) && ItemCatalog.FIELD_BANDAGE.equals(ids[second])) ||
+            (ItemCatalog.FIELD_BANDAGE.equals(ids[first]) && ItemCatalog.SEWING_KIT.equals(ids[second])))
+            return ItemCatalog.REINFORCED_BANDAGE;
+        return null;
     }
 
     public boolean combine(int first, int second) {
         String result = combinationResult(first, second);
-        if (result == null || count(result) != 0) return false;
-        ids[first] = result;
-        counts[first] = 1;
-        removeOne(second);
+        if (result == null || (!ItemCatalog.REINFORCED_BANDAGE.equals(result) && count(result) != 0))
+            return false;
+        if (ItemCatalog.REINFORCED_BANDAGE.equals(result)) {
+            int stack = findStack(result);
+            if (stack >= 0 && counts[stack] < ItemCatalog.maxStack(result)) {
+                removeOne(first);
+                removeOne(second);
+                counts[stack]++;
+                return true;
+            }
+            int output = counts[first] == 1 ? first : counts[second] == 1 ? second : -1;
+            if (output < 0) for (int i = 0; i < CAPACITY; i++)
+                if (ids[i] == null) { output = i; break; }
+            if (output < 0) return false;
+            removeOne(first);
+            removeOne(second);
+            ids[output] = result;
+            counts[output] = 1;
+        } else {
+            ids[first] = result;
+            counts[first] = 1;
+            removeOne(second);
+        }
         return true;
+    }
+
+    private int findStack(String id) {
+        for (int i = 0; i < TOTAL_SLOTS; i++) if (id.equals(ids[i])) return i;
+        return -1;
     }
 
     public int firstSlot(String id) {

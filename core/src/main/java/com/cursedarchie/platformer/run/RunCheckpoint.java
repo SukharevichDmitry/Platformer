@@ -12,6 +12,12 @@ public final class RunCheckpoint {
     public float heroX;
     public float heroY;
     public float heroHealth;
+    public String portalOriginLocation;
+    public int portalOriginRoomId;
+    public String portalOriginSpawnId;
+    public float smokeSeconds;
+    public float smokeX;
+    public float smokeY;
     public Array<String> visitedRooms = new Array<>();
     public Array<String> consumedInteractionIds = new Array<>();
     public Array<String> runFlags = new Array<>();
