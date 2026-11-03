@@ -28,8 +28,8 @@ public final class AttackDefinition {
     public final float nextInputTime;
     /** Total length of the attack; the state ends once this has elapsed. */
     public final float duration;
-    /** Optional short pause after a connecting hit (0 when unused). */
-    public final float hitPause;
+    /** Extra recovery added when the attack finishes without striking any target (0 when unused). */
+    public final float missRecovery;
 
     public AttackDefinition(String id, CombatHit.Type type, float startupDuration, float activeDuration,
                             float recoveryDuration, float range, float hitboxWidth, float hitboxHeight,
@@ -44,7 +44,7 @@ public final class AttackDefinition {
                             float recoveryDuration, float range, float hitboxWidth, float hitboxHeight,
                             float offsetY, float damageMultiplier, float knockback, float staggerDuration,
                             float stabilityDamage, boolean blockable, float nextInputTime, float duration,
-                            float hitPause) {
+                            float missRecovery) {
         this.id = id;
         this.type = type;
         this.startupDuration = startupDuration;
@@ -61,7 +61,7 @@ public final class AttackDefinition {
         this.blockable = blockable;
         this.nextInputTime = nextInputTime;
         this.duration = duration;
-        this.hitPause = hitPause;
+        this.missRecovery = missRecovery;
     }
 
     /** Time since the start at which the active phase ends and recovery begins. */

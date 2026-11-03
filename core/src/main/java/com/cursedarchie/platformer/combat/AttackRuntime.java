@@ -26,7 +26,8 @@ public final class AttackRuntime {
     /** Direction locked when the attack began: -1 left, +1 right. */
     public float direction() { return facesLeft ? -1f : 1f; }
     public float elapsed() { return elapsed; }
-    public float duration() { return definition.duration; }
+    /** Total length of this swing: a swing that struck nothing pays the definition's miss recovery. */
+    public float duration() { return definition.duration + (struck.size > 0 ? 0f : definition.missRecovery); }
 
     public void advance(float delta) { elapsed += delta; }
 
@@ -37,7 +38,7 @@ public final class AttackRuntime {
     }
 
     public boolean isActive() { return phase() == Phase.ACTIVE; }
-    public boolean isComplete() { return elapsed + EPSILON >= definition.duration; }
+    public boolean isComplete() { return elapsed + EPSILON >= duration(); }
 
     /** A follow-up press is accepted only during recovery, once the combo window has opened. */
     public boolean acceptsNextInput() {
