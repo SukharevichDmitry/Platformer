@@ -7,6 +7,9 @@ import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
 import com.cursedarchie.platformer.levels.wrappers.LocationTransition;
 import com.cursedarchie.platformer.levels.wrappers.Neighbors;
 import com.cursedarchie.platformer.levels.wrappers.RoomData;
+import com.cursedarchie.platformer.levels.wrappers.InteractionData;
+import com.cursedarchie.platformer.levels.wrappers.SpawnPointData;
+import com.cursedarchie.platformer.tiles.Tile;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +57,16 @@ final class GeneratedLocationFactory {
         if (profile.forwardLocation != null) tiles = openExteriorExit(tiles, exitRoomId);
         RoomRouteReachability.validate(tiles);
         GeneratedRoomEncounters encounters = new RoomEncounterGenerator().generate(tiles, catalog, profile);
+        int alleyRouteIndex = Math.min(2, graph.mainRoute.size() - 2);
+        boolean shooterBeforeAlley = false;
+        for (int i = 1; i < graph.mainRoute.size() - 1; i++) {
+            boolean metScavenger = false;
+            for (GeneratedRoomEncounters.Spawn spawn : encounters.roomSpawns(graph.mainRoute.get(i - 1)))
+                if ("scavenger".equals(spawn.type)) metScavenger = true;
+            if (metScavenger) { alleyRouteIndex = i; shooterBeforeAlley = true; break; }
+        }
+        int alleyRoomId = graph.mainRoute.get(alleyRouteIndex);
+        int forcedShooterRoomId = shooterBeforeAlley ? -1 : graph.mainRoute.get(alleyRouteIndex - 1);
         GeneratedRunSave run = describeRun(profile, catalog, graph, layout, restored);
 
         LocationInstance location = new LocationInstance(profile.locationId);
@@ -79,6 +92,13 @@ final class GeneratedLocationFactory {
                 enemy.position = new Vector2(spawn.x, spawn.y);
                 data.enemySpawns.add(enemy);
             }
+            if (placed.id == forcedShooterRoomId) {
+                Vector2 position = findShooterPosition(tiles, placed.id, placed.width, placed.height);
+                EnemySpawnData shooter = new EnemySpawnData();
+                shooter.type = "scavenger";
+                shooter.position = position;
+                data.enemySpawns.add(shooter);
+            }
             if (placed.id == entryRoomId) {
                 LocationTransition transition = new LocationTransition();
                 transition.location = profile.returnLocation;
@@ -94,6 +114,7 @@ final class GeneratedLocationFactory {
             RoomInstance room = new RoomInstance(data);
             room.buildTiles();
             RoomFineDecorator.decorate(room, catalog.templates.get(placed.templateId));
+            if (placed.id == alleyRoomId) addAlleyPortal(room);
             location.addRoom(room);
         }
         for (PlacedRoomGraph.DoorJoin join : layout.doorJoins) {
@@ -106,6 +127,48 @@ final class GeneratedLocationFactory {
         }
         location.setGeneration(run, entryRoomId, exitRoomId);
         return location;
+    }
+
+    /** The selected street instance is stable for a generated run and owns its return point. */
+    private static void addAlleyPortal(RoomInstance room) {
+        Tile[][] tiles = room.getTiles();
+        for (int offset = 0; offset < room.getWidth(); offset++) {
+            int x = room.getWidth() / 2 + (offset % 2 == 0 ? offset / 2 : -(offset + 1) / 2);
+            if (x < 5 || x >= room.getWidth() - 5) continue;
+            for (int y = 2; y < Math.min(6, room.getHeight() - 2); y++) {
+                if (tiles[x][y - 1] == null || tiles[x][y] != null || tiles[x][y + 1] != null ||
+                    tiles[x - 1][y] != null || tiles[x + 1][y] != null) continue;
+                InteractionData portal = new InteractionData();
+                portal.id = "laundry_alley_entrance";
+                portal.kind = "portal";
+                portal.visualId = "alley_door";
+                portal.eventId = "alley_discovered";
+                portal.position = new Vector2(x + .5f, y + .5f);
+                portal.targetLocation = "laundry_alley";
+                portal.targetRoomId = 0;
+                portal.targetSpawnId = "street_entry";
+                room.getInteractions().add(portal);
+                SpawnPointData returnPoint = new SpawnPointData();
+                returnPoint.id = "alley_return";
+                returnPoint.position = new Vector2(x + .5f, y + .5f);
+                room.getSpawnPoints().add(returnPoint);
+                return;
+            }
+        }
+        throw new IllegalArgumentException("Generated entry room has no clear alley portal position");
+    }
+
+    private static Vector2 findShooterPosition(GeneratedRoomTiles tiles, int roomId, int width, int height) {
+        List<String> rows = tiles.roomRows(roomId);
+        for (int x = width / 2; x < width - 5; x++) {
+            for (int y = 2; y < Math.min(height - 2, 7); y++) {
+                if (rows.get(height - y).charAt(x) != ' ' &&
+                    rows.get(height - 1 - y).charAt(x) == ' ' &&
+                    rows.get(height - 2 - y).charAt(x) == ' ')
+                    return new Vector2(x + .5f, y + .5f);
+            }
+        }
+        throw new IllegalArgumentException("No clear scavenger position before alley");
     }
 
     private static String sceneryTheme(String templateId, int roomId) {

@@ -106,10 +106,25 @@ above the nearby object. Press E near the bandage to take it. Open the six-cell
 bag with I, select the bandage with the movement keys, and press 1 or 2 to
 exchange it with the corresponding pocket. During play, press that pocket's
 key while injured to heal one health. Items cannot be used directly from the
-bag. SETTINGS is available from the main and pause menus. Its Controls and
-Display tabs let you change keys, the window resolution, and fullscreen mode. Press Enter to
-save both tabs across game sessions, or Esc to leave without saving. Esc also
+bag. In the bag, select a source with the interaction key, move the cursor with
+arrows, and press interaction again to move or swap it. Mouse clicks and dragging
+also move stacks between bag cells and either pocket. The bag shows the current
+keys for closing, selecting, and pocket shortcuts. SETTINGS is available from
+the main and pause menus. Control changes and Reset Defaults save immediately;
+the Display tab stages resolution and fullscreen changes until Enter or Save.
+Esc leaves the settings screen without applying staged display changes. Esc also
 continues the game from the pause menu. These settings are separate from the run.
+Ground movement starts, stops, and reverses in one simulation step. X makes a short
+light strike; tap X again during its follow-up window for a second pose, higher
+slash, distinct sound, and stronger recoil. Z winds up for about 0.52 seconds,
+slows movement, then delivers a heavy strike. A miss leaves a longer recovery.
+It breaks the Red collector's raised frontal guard. Confirmed
+melee hits push ordinary enemies back; the collector and boss resist the push.
+The blade shard in the courtyard increases melee damage. The impact core in the
+broad street adds knockback. In the bag, select one relic and press C, choose the
+highlighted second relic, inspect the result, then press C or Interact to confirm.
+Incompatible pairs leave both items intact. The fused relic retains both bonuses and adds 25% heavy-strike
+damage. The fused relic persists with the run.
 One map character now represents one 1 × 1 terrain tile and one world unit.
 Room JSON rows directly define the collision grid; there is no runtime 2 × 2
 expansion. Existing maps, actor dimensions, movement, gravity, and camera view
@@ -145,7 +160,11 @@ The shelter warden, scavenger, and Red collector have separate character sprites
 The shelter warden in the courtyard asks the hero to find the missing-neighbors
 list. The list lies in the broad street; return it to her or keep it. This choice
 is saved for the current run. The ruins currently feature two additional hostile
-roles, a quick scavenger and a tougher Red collector. Their sprites are tinted
+roles: the scavenger retreats at close range and fires a directionally telegraphed
+shot; the tougher Red collector raises a timed guard and heals nearby wounded allies.
+Regular enemies alternate a quick strike and a telegraphed lunge with miss recovery.
+Enemies patrol within their spawn area, search briefly after losing sight of
+the hero, and can pursue a target on a higher platform. Their sprites are tinted
 placeholders until the faction art is ready.
 Open the inventory with I and press Tab for the Abilities page. It records
 Echo Dash, its key, origin, and maximum-health cost after the Keeper's offer.
@@ -153,9 +172,12 @@ The final ruins room leads to the Keeper Chamber. Approach the hooded Keeper and
 press E to open a dialogue panel. Accepting the offer reduces maximum health
 from 3 to 2 and grants Echo Dash (Left Shift by default, remappable in Controls).
 Refusing keeps maximum health and closes the offer for the current run. Either
-choice survives Continue, while New Run and death clear it. Esc closes dialogue.
+choice survives Continue, while New Run and death clear it. Space reveals text
+and continues or closes the conversation; arrows select a reply and Interact
+confirms it. Esc closes dialogue.
 The new ruins route stays on one level under open sky. Wooden one-way ledges can be jumped through
-from below and landed on from above. Heavily cracked blocks can be broken with
+from below and landed on from above. Press Down while standing on a wooden ledge
+to drop through it. Heavily cracked blocks can be broken with
 X in attack range; they stay broken when the generated run reloads. The muted
 masonry behind rooms is decorative and has no collision.
 Structural stone now uses one compatible nine-face masonry family across

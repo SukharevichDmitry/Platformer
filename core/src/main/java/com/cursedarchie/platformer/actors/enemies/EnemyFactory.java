@@ -23,18 +23,20 @@ public class EnemyFactory {
     private static final Definition BOSS = new Definition("boss", 3f, 3);
     private static final Definition SCAVENGER = new Definition("scavenger", 0.9f, 1);
     private static final Definition RED_COLLECTOR = new Definition("red_collector", 1.4f, 2);
+    private static final Definition HEAVY_HUNTER = new Definition("heavy_hunter", 1.5f, 3);
 
     public static Definition definition(String type) {
         if (DEFAULT.id.equals(type)) return DEFAULT;
         if (BOSS.id.equals(type)) return BOSS;
         if (SCAVENGER.id.equals(type)) return SCAVENGER;
         if (RED_COLLECTOR.id.equals(type)) return RED_COLLECTOR;
+        if (HEAVY_HUNTER.id.equals(type)) return HEAVY_HUNTER;
         throw new IllegalArgumentException("Unsupported enemy type: " + type);
     }
 
     public static boolean supportsType(String type) {
         return DEFAULT.id.equals(type) || BOSS.id.equals(type) ||
-            SCAVENGER.id.equals(type) || RED_COLLECTOR.id.equals(type);
+        SCAVENGER.id.equals(type) || RED_COLLECTOR.id.equals(type) || HEAVY_HUNTER.id.equals(type);
     }
 
     public static Enemy createDefaultEnemy(World world, Vector2 pos) {
@@ -43,8 +45,8 @@ public class EnemyFactory {
         cfg.size = DEFAULT.bodySize;
         cfg.maxHealth = 3f;
 
-        cfg.viewDistance = 10f;
-        cfg.viewAngle = 45f;
+        cfg.viewDistance = 5.5f;
+        cfg.viewAngle = 110f;
 
         cfg.damage = 1f;
         cfg.attackDuration = 0.65f;
@@ -65,14 +67,14 @@ public class EnemyFactory {
         EnemyConfig cfg = new EnemyConfig();
         cfg.size = SCAVENGER.bodySize;
         cfg.maxHealth = 2f;
-        cfg.viewDistance = 12f;
-        cfg.viewAngle = 70f;
+        cfg.viewDistance = 6f;
+        cfg.viewAngle = 125f;
         cfg.damage = 1f;
         cfg.attackDuration = .55f;
         cfg.attackStartup = .20f;
         cfg.attackActiveEnd = .31f;
         cfg.attackCooldown = .8f;
-        cfg.velocity = 8.6f;
+        cfg.velocity = 6.2f;
         cfg.attackLeft = new AttackConfig(.7f, .7f, -.86f, 0f);
         cfg.attackRight = new AttackConfig(.7f, .7f, .86f, 0f);
         Enemy enemy = new DefaultEnemy(world, pos, cfg);
@@ -85,8 +87,8 @@ public class EnemyFactory {
         EnemyConfig cfg = new EnemyConfig();
         cfg.size = RED_COLLECTOR.bodySize;
         cfg.maxHealth = 5f;
-        cfg.viewDistance = 10f;
-        cfg.viewAngle = 55f;
+        cfg.viewDistance = 5.5f;
+        cfg.viewAngle = 105f;
         cfg.damage = 1.5f;
         cfg.attackDuration = 1f;
         cfg.attackStartup = .46f;
@@ -100,14 +102,33 @@ public class EnemyFactory {
         return enemy;
     }
 
+    public static Enemy createHeavyHunter(World world, Vector2 pos) {
+        EnemyConfig cfg = new EnemyConfig();
+        cfg.size = HEAVY_HUNTER.bodySize;
+        cfg.maxHealth = 5f;
+        cfg.viewDistance = 5f;
+        cfg.viewAngle = 115f;
+        cfg.damage = 1.4f;
+        cfg.attackDuration = 1.08f;
+        cfg.attackStartup = .65f;
+        cfg.attackActiveEnd = .84f;
+        cfg.attackCooldown = 1.3f;
+        cfg.velocity = 3.8f;
+        cfg.attackLeft = new AttackConfig(1.2f, 1f, -1.3f, 0f);
+        cfg.attackRight = new AttackConfig(1.2f, 1f, 1.3f, 0f);
+        Enemy enemy = new DefaultEnemy(world, pos, cfg);
+        enemy.setArchetypeId(HEAVY_HUNTER.id);
+        return enemy;
+    }
+
     public static Enemy createBoss(World world, Vector2 pos) {
 
         EnemyConfig cfg = new EnemyConfig();
         cfg.size = BOSS.bodySize;
         cfg.maxHealth = 8f;
 
-        cfg.viewDistance = 8f;
-        cfg.viewAngle = 90f;
+        cfg.viewDistance = 5f;
+        cfg.viewAngle = 115f;
 
         cfg.damage = 2f;
         cfg.attackDuration = 1.1f;

@@ -405,8 +405,12 @@ public abstract class Actor<M extends Enum<M>, C extends Enum<C>> {
     }
 
     public boolean isTargetInFacingAttack(Actor target) {
+        return isTargetInAttack(target, facingLeft);
+    }
+
+    public boolean isTargetInAttack(Actor target, boolean attackFacesLeft) {
         if (target == null || !target.isAlive()) return false;
-        AttackConfig attack = facingLeft ? attackLeft : attackRight;
+        AttackConfig attack = attackFacesLeft ? attackLeft : attackRight;
         Vector2 origin = body.getPosition();
         Vector2 targetPosition = target.getPosition();
         return Math.abs(targetPosition.x - (origin.x + attack.offsetX)) <

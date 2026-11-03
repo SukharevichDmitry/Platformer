@@ -1,0 +1,5 @@
+{
+  "id": "smoke_incense",
+  "maxStack": 3,
+  "effect": "smoke_cover"
+}

@@ -43,8 +43,10 @@ final class DialogueOverlay implements Disposable {
     private final TextureRegionDrawable[] npcDrawables = new TextureRegionDrawable[3];
     private final Label name;
     private final Label message;
+    private final Label hint;
     private final TextButton accept;
     private final TextButton refuse;
+    private final TextButton third;
     private String fullText = "";
     private int visibleCharacters;
     private float letterProgress;
@@ -58,6 +60,7 @@ final class DialogueOverlay implements Disposable {
         this.world = world;
         this.bindings = bindings;
         skin.add("dialogue", new Label.LabelStyle(skin.getFont("default-font"), INK));
+        skin.add("dialogue-hint", new Label.LabelStyle(skin.getFont("default-font"), PARCHMENT));
         TextButton.TextButtonStyle choiceStyle = new TextButton.TextButtonStyle();
         choiceStyle.font = skin.getFont("default-font");
         choiceStyle.fontColor = new Color(.97f, .88f, .69f, 1f);
@@ -81,11 +84,15 @@ final class DialogueOverlay implements Disposable {
         message.setWrap(true);
         root.addActor(name);
         root.addActor(message);
+        hint = new Label("", skin, "dialogue-hint");
+        root.addActor(hint);
 
-        accept = choice("ACCEPT (-1 MAX HP)", true);
-        refuse = choice("REFUSE", false);
+        accept = choice("ACCEPT (-1 MAX HP)", 0);
+        refuse = choice("REFUSE", 1);
+        third = choice("CONTINUE", 2);
         root.addActor(accept);
         root.addActor(refuse);
+        root.addActor(third);
 
         for (int i = 0; i < npcTextures.length; i++) {
             npcTextures[i] = createFigure(i);
@@ -100,11 +107,11 @@ final class DialogueOverlay implements Disposable {
         return new Image(skin.newDrawable("white", color));
     }
 
-    private TextButton choice(String title, boolean yes) {
+    private TextButton choice(String title, int option) {
         TextButton button = new TextButton(title, skin, "choice");
         button.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                if (textComplete()) choose(yes);
+                if (textComplete()) choose(option);
             }
         });
         return button;
@@ -119,7 +126,8 @@ final class DialogueOverlay implements Disposable {
         root.setVisible(true);
         selected = 0;
         animationTime = 0f;
-        name.setText("shelter_warden".equals(npcId) ? "THE WARDEN" : "THE KEEPER");
+        name.setText("shelter_warden".equals(npcId) ? "THE WARDEN" :
+            "cellar_prisoner".equals(npcId) ? "THE CAPTIVE" : "THE KEEPER");
         npcFigure.setColor("shelter_warden".equals(npcId) ?
             new Color(.83f, .64f, .43f, 1f) : Color.WHITE);
         refresh();
@@ -127,14 +135,16 @@ final class DialogueOverlay implements Disposable {
 
     boolean keyDown(int keycode) {
         if (!open) return false;
-        if (bindings.matches(Action.PAUSE, keycode) || keycode == Keys.ESCAPE) close();
-        else if (keycode == Keys.SPACE) revealAll();
+        if (keycode == Keys.ESCAPE) close();
+        else if ((keycode == Keys.SPACE || keycode == Keys.ENTER) && !textComplete()) revealAll();
         else if (textComplete() && accept.isVisible()) {
-            if (bindings.matches(Action.UP, keycode)) selected = 0;
-            else if (bindings.matches(Action.DOWN, keycode)) selected = 1;
-            else if (keycode == Keys.ENTER || keycode == Keys.NUMPAD_ENTER) choose(selected == 0);
+            if (bindings.matches(Action.UP, keycode)) selected = Math.max(0, selected - 1);
+            else if (bindings.matches(Action.DOWN, keycode))
+                selected = Math.min(third.isVisible() ? 2 : 1, selected + 1);
+            else if (bindings.matches(Action.INTERACT, keycode)) choose(selected);
             refreshSelection();
-        } else if (textComplete() && (keycode == Keys.ENTER || keycode == Keys.NUMPAD_ENTER)) close();
+        } else if (textComplete() && (keycode == Keys.SPACE || keycode == Keys.ENTER)) close();
+        refreshHint();
         return true;
     }
 
@@ -149,6 +159,7 @@ final class DialogueOverlay implements Disposable {
         visibleCharacters = fullText.length();
         message.setText(fullText);
         refreshChoices();
+        refreshHint();
     }
 
     private void setDialogue(String text) {
@@ -157,26 +168,46 @@ final class DialogueOverlay implements Disposable {
         letterProgress = 0f;
         message.setText("");
         refreshChoices();
+        refreshHint();
     }
 
-    private void choose(boolean acceptOffer) {
+    private void refreshHint() {
+        hint.setText(!textComplete() ? "Space: show text   Esc: close" :
+            accept.isVisible() ? "Up/Down: choose   " + bindings.keyName(Action.INTERACT) +
+                ": confirm   Esc: close" : "Space: continue   Esc: close");
+    }
+
+    private void choose(int option) {
         if (!textComplete() || !accept.isVisible()) return;
+        if ("cellar_prisoner".equals(npcId)) {
+            world.resolvePrisonerChoice(option);
+            refresh();
+            return;
+        }
         if ("shelter_warden".equals(npcId)) {
-            if (world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND))
-                world.resolveNeighborList(acceptOffer);
-            else if (acceptOffer) world.acceptNeighborSearch();
+            if (world.hasRunFlag(GameWorld.GATE_VICTORY)) world.resolveFinalReport(option);
+            else if (world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND)) {
+                if (option == 2) { close(); return; }
+                world.resolveNeighborList(option == 0);
+            } else if (option == 0) world.acceptNeighborSearch();
             else { close(); return; }
             refresh();
             return;
         }
-        if (acceptOffer) world.acceptKeeperOffer();
+        if (option == 0) world.acceptKeeperOffer();
         else world.refuseKeeperOffer();
         refresh();
     }
 
     private void refresh() {
         if ("shelter_warden".equals(npcId)) {
-            if (world.hasRunFlag(GameWorld.NEIGHBOR_LIST_RETURNED))
+            if (world.hasFinalReport())
+                setDialogue("The names and the missing numbers are on record. The Mercy House and labor marks are our next leads.");
+            else if (world.hasRunFlag(GameWorld.GATE_VICTORY))
+                setDialogue(world.hasEarlyReport() ?
+                    "The gate is open. What shall we tell the families about the captive and these records?" :
+                    "Why did you delay the names? The gate is open now. What shall we tell the families?");
+            else if (world.hasRunFlag(GameWorld.NEIGHBOR_LIST_RETURNED))
                 setDialogue("The families have their names. We will find a way to bring them home.");
             else if (world.hasRunFlag(GameWorld.NEIGHBOR_LIST_KEPT))
                 setDialogue("Keep the list, then. Those names are people, not a bargaining chip.");
@@ -186,6 +217,14 @@ final class DialogueOverlay implements Disposable {
                 setDialogue("The raiders went down the open street. Look for the list they dropped before the patrol returns.");
             else
                 setDialogue("People vanished in the raid. If you find the captors' list, bring their names back to us.");
+        } else if ("cellar_prisoner".equals(npcId)) {
+            if (world.hasPrisonerChoice())
+                setDialogue(world.hasRunFlag(GameWorld.PRISONER_ESCORTED) ?
+                    "I can testify to the mixed crew and the route they took." :
+                    world.hasRunFlag(GameWorld.PRISONER_HIDDEN) ?
+                        "I will stay hidden. Watch the shift, then take the short route." :
+                        "Your intermediary has the warning. They will speak first.");
+            else setDialogue("The convoy moves at the next shift. Will you take me out, hide me while you follow, or pass my account to an intermediary?");
         } else if (world.hasEchoDash()) {
             setDialogue("The echo is yours. Press " + bindings.keyName(Action.DASH) +
                 " to dash. Guard the heart you kept.");
@@ -198,24 +237,34 @@ final class DialogueOverlay implements Disposable {
     }
 
     private void refreshChoices() {
-        boolean show = textComplete() && ("shelter_warden".equals(npcId) ?
-            !world.hasRunFlag(GameWorld.NEIGHBOR_LIST_RETURNED) &&
-                !world.hasRunFlag(GameWorld.NEIGHBOR_LIST_KEPT) &&
-                (!world.hasRunFlag(GameWorld.NEIGHBOR_SEARCH) ||
+        boolean warden = "shelter_warden".equals(npcId);
+        boolean prisoner = "cellar_prisoner".equals(npcId);
+        boolean show = textComplete() && (warden ?
+            world.hasRunFlag(GameWorld.GATE_VICTORY) ? !world.hasFinalReport() :
+                !world.hasEarlyReport() && (!world.hasRunFlag(GameWorld.NEIGHBOR_SEARCH) ||
                     world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND)) :
-            !world.hasEchoDash() && !world.hasRunFlag(GameWorld.KEEPER_REFUSAL));
+            prisoner ? !world.hasPrisonerChoice() :
+                !world.hasEchoDash() && !world.hasRunFlag(GameWorld.KEEPER_REFUSAL));
         accept.setVisible(show);
         refuse.setVisible(show);
+        third.setVisible(show && (prisoner || warden &&
+            (world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND) || world.hasRunFlag(GameWorld.GATE_VICTORY))));
     }
 
     private void refreshSelection() {
-        String yes = "shelter_warden".equals(npcId) ?
-            world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND) ? "GIVE THE NAMES" : "HELP SEARCH" :
-            "ACCEPT (-1 MAX HP)";
-        String no = "shelter_warden".equals(npcId) ?
-            world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND) ? "KEEP THE LIST" : "LATER" : "REFUSE";
+        String yes, no, last;
+        if ("cellar_prisoner".equals(npcId)) {
+            yes = "ESCORT NOW"; no = "HIDE AND FOLLOW SHIFT"; last = "SEND WORD TO INTERMEDIARY";
+        } else if ("shelter_warden".equals(npcId) && world.hasRunFlag(GameWorld.GATE_VICTORY)) {
+            yes = "SHARE ALL WITH NEIGHBORS"; no = "KEEP KEY EVIDENCE"; last = "GIVE ACCOUNT TO A FACTION";
+        } else if ("shelter_warden".equals(npcId)) {
+            yes = world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND) ? "GIVE THE NAMES" : "HELP SEARCH";
+            no = world.hasRunFlag(GameWorld.NEIGHBOR_LIST_FOUND) ? "SHOW AND KEEP LIST" : "LATER";
+            last = "FOLLOW THE CONVOY NOW";
+        } else { yes = "ACCEPT (-1 MAX HP)"; no = "REFUSE"; last = ""; }
         accept.setText((selected == 0 ? "> " : "  ") + yes);
         refuse.setText((selected == 1 ? "> " : "  ") + no);
+        third.setText((selected == 2 ? "> " : "  ") + last);
     }
 
     void render(float delta) {
@@ -229,6 +278,7 @@ final class DialogueOverlay implements Disposable {
                 visibleCharacters = next;
                 message.setText(fullText.substring(0, visibleCharacters));
                 refreshChoices();
+                refreshHint();
             }
         }
         animationTime += elapsed;
@@ -246,7 +296,7 @@ final class DialogueOverlay implements Disposable {
         float panelX = margin;
         float panelY = Math.max(10f, height * .016f);
         float panelWidth = width - margin * 2f;
-        float panelHeight = Math.min(300f, Math.max(190f, height * .235f));
+        float panelHeight = Math.min(340f, Math.max(245f, height * .38f));
         frame.setBounds(panelX, panelY, panelWidth, panelHeight);
         frameInset.setBounds(panelX + 5f, panelY + 5f, panelWidth - 10f, panelHeight - 10f);
 
@@ -263,17 +313,21 @@ final class DialogueOverlay implements Disposable {
         float fontScale = Math.min(1.65f, Math.max(.9f, width / 1000f));
         name.setFontScale(fontScale);
         message.setFontScale(fontScale);
+        hint.setFontScale(Math.min(1.2f, fontScale));
         accept.getLabel().setFontScale(fontScale);
         refuse.getLabel().setFontScale(fontScale);
+        third.getLabel().setFontScale(fontScale);
         name.setBounds(textX + inset, textY + textHeight - 35f, textWidth - inset * 2f, 28f);
         float buttonHeight = Math.max(29f, Math.min(39f, panelHeight * .16f));
         float buttonWidth = Math.min(430f, textWidth - inset * 2f);
-        float firstButtonY = textY + inset + buttonHeight + 7f;
+        float firstButtonY = textY + inset + 2f * (buttonHeight + 5f);
         accept.setBounds(textX + inset, firstButtonY, buttonWidth, buttonHeight);
-        refuse.setBounds(textX + inset, textY + inset, buttonWidth, buttonHeight);
+        refuse.setBounds(textX + inset, textY + inset + buttonHeight + 5f, buttonWidth, buttonHeight);
+        third.setBounds(textX + inset, textY + inset, buttonWidth, buttonHeight);
         float messageBottom = firstButtonY + buttonHeight + 6f;
         message.setBounds(textX + inset, messageBottom,
             textWidth - inset * 2f, Math.max(22f, textY + textHeight - 35f - messageBottom));
+        hint.setBounds(textX + inset, panelY + 1f, textWidth - inset * 2f, 17f);
 
         float figureHeight = Math.min(height * .48f, 470f);
         float figureWidth = Math.min(npcWidth * .9f, figureHeight * .62f);

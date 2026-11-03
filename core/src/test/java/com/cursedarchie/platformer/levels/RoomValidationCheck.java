@@ -15,6 +15,10 @@ public final class RoomValidationCheck {
         RoomValidator.validateLocation(levels.child("start"));
         RoomValidator.validateLocation(levels.child("forest"));
         RoomValidator.validateLocation(levels.child("keeper_chamber"));
+        RoomValidator.validateLocation(levels.child("laundry_alley"));
+        RoomValidator.validateLocation(levels.child("laundry_house"));
+        RoomValidator.validateLocation(levels.child("catchment_cellar"));
+        RoomValidator.validateLocation(levels.child("transfer_gate"));
 
         FileHandle sample = new FileHandle(new File(args[1], "levels/sample"));
         sample.mkdirs();

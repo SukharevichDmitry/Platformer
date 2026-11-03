@@ -41,6 +41,7 @@ public final class RoomValidator {
                 throw invalid(roomFile, "width and height must be between 1 and " + MAX_DIMENSION);
             checkTiles(room.get("tileRows"), roomFile, width, height);
             checkSpawns(room.get("enemySpawns"), roomFile, width, height);
+            checkArrivalPoints(room.get("spawnPoints"), room.get("tileRows"), roomFile, width, height);
             checkInteractions(room.get("interactions"), room.get("tileRows"), roomFile, width, height);
             if (room.get("neighbors") == null || !room.get("neighbors").isObject())
                 throw invalid(roomFile, "neighbors must be an object");
@@ -58,6 +59,51 @@ public final class RoomValidator {
             }
             checkTransition(room.get("locationEntry"), roomFile, directory, ids, "locationEntry");
             checkTransition(room.get("locationExit"), roomFile, directory, ids, "locationExit");
+            checkPortals(room.get("interactions"), roomFile, directory);
+        }
+    }
+
+    private static void checkArrivalPoints(JsonValue points, JsonValue rows, FileHandle file,
+                                           int width, int height) {
+        if (points == null) return;
+        if (!points.isArray() || points.size > MAX_INTERACTIONS)
+            throw invalid(file, "spawnPoints must be an array of at most " + MAX_INTERACTIONS);
+        Set<String> names = new HashSet<>();
+        for (JsonValue point : points) {
+            String id = string(point.get("id"), file, "spawnPoints.id");
+            if (!id.matches("[A-Za-z0-9_-]{1,64}") || !names.add(id))
+                throw invalid(file, "invalid or duplicate named spawn " + id);
+            JsonValue pos = point.get("position");
+            if (pos == null || !pos.isObject()) throw invalid(file, "spawnPoints.position is missing");
+            double x = number(pos.get("x"), file, "spawnPoints.position.x");
+            double y = number(pos.get("y"), file, "spawnPoints.position.y");
+            if (x < .6 || x >= width - .6 || y < .6 || y >= height - .6 ||
+                rows.get(height - 1 - (int) y).asString().charAt((int) x) != ' ')
+                throw invalid(file, "named spawn " + id + " is not clear");
+        }
+    }
+
+    private static void checkPortals(JsonValue interactions, FileHandle file, FileHandle directory) {
+        if (interactions == null) return;
+        for (JsonValue portal : interactions) {
+            if (!"portal".equals(portal.getString("kind", ""))) continue;
+            if (portal.getBoolean("returnToOrigin", false)) {
+                if (!"laundry_alley".equals(directory.name()))
+                    throw invalid(file, "returnToOrigin is only valid at the alley street exit");
+                continue;
+            }
+            String target = string(portal.get("targetLocation"), file, "portal.targetLocation");
+            int roomId = integer(portal.get("targetRoomId"), file, "portal.targetRoomId");
+            String spawnId = string(portal.get("targetSpawnId"), file, "portal.targetSpawnId");
+            FileHandle targetDirectory = directory.parent().child(target);
+            if (!readRoomIds(targetDirectory.child("index.json")).contains(roomId))
+                throw invalid(file, "portal target room is missing");
+            JsonValue targetRoom = readObject(targetDirectory.child(roomId + ".json"));
+            boolean found = false;
+            JsonValue points = targetRoom.get("spawnPoints");
+            if (points != null) for (JsonValue point : points)
+                if (spawnId.equals(point.getString("id", ""))) found = true;
+            if (!found) throw invalid(file, "portal target spawn is missing: " + target + "/" + roomId + ":" + spawnId);
         }
     }
 
@@ -126,13 +172,21 @@ public final class RoomValidator {
             if (!id.matches("[A-Za-z0-9_-]{1,64}") || !ids.add(id))
                 throw invalid(file, field + ".id is invalid or duplicated");
             String kind = string(interaction.get("kind"), file, field + ".kind");
-            if (!"evidence".equals(kind) && !"pickup".equals(kind) && !"npc".equals(kind))
+            if (!"evidence".equals(kind) && !"pickup".equals(kind) && !"npc".equals(kind) &&
+                !"portal".equals(kind))
                 throw invalid(file, field + ".kind is unsupported");
             String visualId = string(interaction.get("visualId"), file, field + ".visualId");
             if (!("evidence".equals(kind) && "sealed_note".equals(visualId)) &&
                 !("pickup".equals(kind) && "field_bandage".equals(visualId)) &&
                 !("pickup".equals(kind) && "sealed_note".equals(visualId)) &&
-                !("npc".equals(kind) && ("keeper".equals(visualId) || "warden".equals(visualId))))
+                !("pickup".equals(kind) && "blade_shard".equals(visualId)) &&
+                !("pickup".equals(kind) && "impact_core".equals(visualId)) &&
+                !("pickup".equals(kind) && ItemCatalog.supports(visualId)) &&
+                !("npc".equals(kind) && ("keeper".equals(visualId) || "warden".equals(visualId))) &&
+                !("portal".equals(kind) && ("alley_door".equals(visualId) ||
+                    "laundry_door".equals(visualId) || "cellar_stairs".equals(visualId) ||
+                    "street_exit".equals(visualId) || "rubble_gap".equals(visualId) ||
+                    "upper_window".equals(visualId))))
                 throw invalid(file, field + ".visualId is unsupported for " + kind);
             JsonValue itemId = interaction.get("itemId");
             if ("pickup".equals(kind)) {

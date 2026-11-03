@@ -21,8 +21,11 @@
         private final FpsOverlay fpsOverlay;
         private final BagOverlay bagOverlay;
         private final DialogueOverlay dialogue;
+        private final AlleyTurnTransition alleyTurn;
         private boolean bagOpen;
         private boolean npcInteractHeld;
+        private InteractionData enteringPortal;
+        private float portalProgress;
         private final boolean[] pocketTransferHeld = new boolean[2];
         private final Main game;
         private final long constructionStartedNs = System.nanoTime();
@@ -45,12 +48,14 @@
             this.gameWorld = gameWorld;
             lastSavedRevision = gameWorld.getPersistenceRevision();
             renderer = new WorldRenderer(gameWorld, false);
+            renderer.setControlBindings(game.getControls());
             seedOverlay = new GenerationSeedOverlay(gameWorld);
             miniMap = new MiniMapRenderer(gameWorld);
             locationTitle = new LocationTitleOverlay(gameWorld);
             fpsOverlay = new FpsOverlay();
             bagOverlay = new BagOverlay();
             dialogue = new DialogueOverlay(gameWorld, game.getControls());
+            alleyTurn = new AlleyTurnTransition();
             initializationMs = (System.nanoTime() - constructionStartedNs) / 1_000_000f;
         }
 
@@ -61,10 +66,30 @@
             multiplexer.addProcessor(new InputAdapter() {
                 @Override
                 public boolean keyDown(int keycode) {
-                    if (dialogue.isOpen()) return dialogue.keyDown(keycode);
+                    if (enteringPortal != null) return true;
+                    if (dialogue.isOpen()) {
+                        if (game.getControls().matches(Action.INTERACT, keycode)) {
+                            if (npcInteractHeld) return true;
+                            npcInteractHeld = true;
+                        }
+                        return dialogue.keyDown(keycode);
+                    }
                     if (!bagOpen && game.getControls().matches(Action.INTERACT, keycode)) {
                         if (npcInteractHeld) return true;
                         InteractionData nearby = gameWorld.getNearbyInteraction();
+                        if (nearby != null && "portal".equals(nearby.kind)) {
+                            npcInteractHeld = true;
+                            enteringPortal = nearby;
+                            portalProgress = 0f;
+                            if (AlleyTurnTransition.supports(
+                                gameWorld.getLocation().getLocation(), nearby)) {
+                                boolean returning = "laundry_alley".equals(
+                                    gameWorld.getLocation().getLocation());
+                                alleyTurn.begin(returning, renderer);
+                            }
+                            gameWorld.getHeroController().clearInput();
+                            return true;
+                        }
                         if (nearby != null && "npc".equals(nearby.kind)) {
                             npcInteractHeld = true;
                             dialogue.open(nearby);
@@ -75,6 +100,7 @@
                     if (game.getControls().matches(Action.BAG, keycode) ||
                         (bagOpen && game.getControls().matches(Action.PAUSE, keycode))) {
                         bagOpen = !bagOpen;
+                        if (!bagOpen) bagOverlay.cancelSelection();
                         pocketTransferHeld[0] = false;
                         pocketTransferHeld[1] = false;
                         gameWorld.getHeroController().clearInput();
@@ -86,15 +112,27 @@
                             return true;
                         }
                         if (bagOverlay.isAbilitiesPage()) return true;
+                        if (game.getControls().matches(Action.INTERACT, keycode)) {
+                            bagOverlay.confirm(gameWorld);
+                            return true;
+                        }
+                        if (keycode == Input.Keys.C) {
+                            bagOverlay.combine(gameWorld);
+                            return true;
+                        }
                         if (game.getControls().matches(Action.LEFT, keycode)) bagOverlay.move(-1, 0);
                         else if (game.getControls().matches(Action.RIGHT, keycode)) bagOverlay.move(1, 0);
                         else if (game.getControls().matches(Action.UP, keycode)) bagOverlay.move(0, -1);
                         else if (game.getControls().matches(Action.DOWN, keycode)) bagOverlay.move(0, 1);
                         else if (game.getControls().matches(Action.POCKET_1, keycode)) {
-                            if (!pocketTransferHeld[0]) gameWorld.moveToPocket(bagOverlay.selectedSlot(), 0);
+                            if (!pocketTransferHeld[0] && bagOverlay.selectedSlot() <
+                                com.cursedarchie.platformer.run.Inventory.CAPACITY)
+                                gameWorld.moveToPocket(bagOverlay.selectedSlot(), 0);
                             pocketTransferHeld[0] = true;
                         } else if (game.getControls().matches(Action.POCKET_2, keycode)) {
-                            if (!pocketTransferHeld[1]) gameWorld.moveToPocket(bagOverlay.selectedSlot(), 1);
+                            if (!pocketTransferHeld[1] && bagOverlay.selectedSlot() <
+                                com.cursedarchie.platformer.run.Inventory.CAPACITY)
+                                gameWorld.moveToPocket(bagOverlay.selectedSlot(), 1);
                             pocketTransferHeld[1] = true;
                         }
                         return true;
@@ -112,6 +150,16 @@
                     if (game.getControls().matches(Action.POCKET_2, keycode)) pocketTransferHeld[1] = false;
                     return bagOpen;
                 }
+                @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                    if (!bagOpen || pointer != 0 || button != Input.Buttons.LEFT) return false;
+                    if (!bagOverlay.isAbilitiesPage()) bagOverlay.pointerDown(screenX, screenY);
+                    return true;
+                }
+                @Override public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+                    if (!bagOpen || pointer != 0 || button != Input.Buttons.LEFT) return false;
+                    if (!bagOverlay.isAbilitiesPage()) bagOverlay.pointerUp(screenX, screenY, gameWorld);
+                    return true;
+                }
             });
             multiplexer.addProcessor(dialogue.stage());
             multiplexer.addProcessor(gameWorld.getHeroController());
@@ -125,7 +173,22 @@
             Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
             long updateStartedNs = System.nanoTime();
-            if (!bagOpen && !dialogue.isOpen()) gameWorld.update(delta);
+            if (enteringPortal != null) {
+                if (alleyTurn.isActive()) {
+                    if (alleyTurn.update(delta)) {
+                        boolean changed = gameWorld.enterPortal(enteringPortal);
+                        alleyTurn.switched(changed, renderer);
+                    }
+                } else {
+                    portalProgress = Math.min(1f, portalProgress + Math.max(0f, delta) / .42f);
+                    renderer.setPortalTransition(enteringPortal, portalProgress);
+                    if (portalProgress >= 1f) {
+                        gameWorld.enterPortal(enteringPortal);
+                        enteringPortal = null;
+                        renderer.setPortalTransition(null, 0f);
+                    }
+                }
+            } else if (!bagOpen && !dialogue.isOpen()) gameWorld.update(delta);
             autosaveSeconds += Math.max(0f, delta);
             if (!gameWorld.getHero().isAlive()) {
                 if (!deathSaveCleared) {
@@ -140,14 +203,22 @@
             locationTitle.update(delta);
             float updateMs = (System.nanoTime() - updateStartedNs) / 1_000_000f;
             long renderStartedNs = System.nanoTime();
-            renderer.render(delta);
-            miniMap.render();
-            seedOverlay.render();
-            locationTitle.render();
-            fpsOverlay.render();
-            if (!bagOpen) bagOverlay.renderPockets(gameWorld);
-            if (bagOpen) bagOverlay.render(gameWorld, game.getControls().keyName(Action.DASH));
-            dialogue.render(delta);
+            if (alleyTurn.isActive()) {
+                alleyTurn.render();
+                if (alleyTurn.isComplete()) {
+                    alleyTurn.finish();
+                    enteringPortal = null;
+                }
+            } else {
+                renderer.render(delta);
+                miniMap.render();
+                seedOverlay.render();
+                locationTitle.render();
+                fpsOverlay.render();
+                if (!bagOpen) bagOverlay.renderPockets(gameWorld);
+                if (bagOpen) bagOverlay.render(gameWorld, game.getControls());
+                dialogue.render(delta);
+            }
             float renderMs = (System.nanoTime() - renderStartedNs) / 1_000_000f;
             recordStartupTiming(delta, updateMs, renderMs);
 
@@ -187,6 +258,7 @@
             fpsOverlay.resize(width, height);
             bagOverlay.resize(width, height);
             dialogue.resize(width, height);
+            alleyTurn.resize(width, height);
         }
 
         @Override
@@ -214,6 +286,7 @@
             fpsOverlay.dispose();
             bagOverlay.dispose();
             dialogue.dispose();
+            alleyTurn.dispose();
             gameWorld.dispose();
         }
 

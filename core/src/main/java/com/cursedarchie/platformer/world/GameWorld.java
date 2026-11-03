@@ -13,6 +13,7 @@ import com.cursedarchie.platformer.levels.*;
 import com.cursedarchie.platformer.levels.wrappers.LocationTransition;
 import com.cursedarchie.platformer.physics.GameContactListener;
 import com.cursedarchie.platformer.physics.OneWaySurface;
+import com.cursedarchie.platformer.physics.CombatHit;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.tiles.types.BreakableBlock;
 import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
@@ -36,6 +37,14 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public static final String NEIGHBOR_LIST_FOUND = "ruins_missing_list_found";
     public static final String NEIGHBOR_LIST_RETURNED = "neighbor_list_returned";
     public static final String NEIGHBOR_LIST_KEPT = "neighbor_list_kept";
+    public static final String EARLY_SKIPPED = "neighbor_early_report_skipped";
+    public static final String PRISONER_ESCORTED = "prisoner_escorted";
+    public static final String PRISONER_HIDDEN = "prisoner_hidden";
+    public static final String PRISONER_INFORMANT = "prisoner_information_sent";
+    public static final String GATE_VICTORY = "gate_victory";
+    public static final String FINAL_SHARE = "neighbor_final_shared";
+    public static final String FINAL_KEEP = "neighbor_final_kept";
+    public static final String FINAL_FACTION = "neighbor_final_faction";
     public static final float FIXED_STEP = 1f / 60f;
     public static final float GRAVITY = 80f;
     private static final int MAX_STEPS_PER_FRAME = 6;
@@ -58,12 +67,18 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private final Array<Enemy> enemies = new Array<>();
     private final Array<DefeatEffect> defeatEffects = new Array<>();
     private final Array<DamageIndicator> damageIndicators = new Array<>();
+    private final Array<Arrow> arrows = new Array<>();
     private final Map<Actor, Float> observedHealth = new IdentityHashMap<>();
     private final EnemyController enemyController;
     private boolean disposed;
     private float accumulator;
     private boolean breakHitThisSwing;
     private long persistenceRevision;
+    private String portalOriginLocation;
+    private int portalOriginRoomId;
+    private String portalOriginSpawnId;
+    private float smokeRemaining;
+    private final Vector2 smokeCenter = new Vector2();
 
 
     public GameWorld() { this(new RoomManager()); }
@@ -85,6 +100,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private GameWorld(RoomManager roomManager) {
         this.roomManager = roomManager;
+        runFlags.add("laundry_access_" + new String[]{"open", "locked", "rubble", "window"}
+            [Math.floorMod(roomManager.getRunSeed(), 4)]);
         this.world = new World(new Vector2(0, -GRAVITY), true);
         this.currentLocationName = "start";
         this.currentRoomId = 0;
@@ -93,6 +110,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         markCurrentRoomVisited();
 
         this.hero = new Hero(new Vector2(10, 10), world);
+        hero.setInventory(inventory);
         observedHealth.put(hero, hero.getHealth());
         world.setContactListener(new GameContactListener());
 
@@ -112,6 +130,11 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void simulateStep(float delta) {
+        if (runFlags.contains("sewing_kit_pending") && inventory.hasFreeBagSlot()) {
+            runFlags.remove("sewing_kit_pending");
+            awardSewingKit();
+        }
+        smokeRemaining = Math.max(0f, smokeRemaining - delta);
         updateDefeatEffects(delta);
         updateDamageIndicators(delta);
         recordDamage();
@@ -120,6 +143,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         heroController.update(delta);
         updateBreakableAttack();
         world.step(delta, 6, 2);
+        updateArrows(delta);
         // Contacts from this step affect input on the next step (including buffered jumps).
         refreshHeroGrounding();
 
@@ -178,6 +202,12 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         float feet = hero.getPosition().y - Hero.BODY_SIZE / 2f;
         return feet >= ((OneWaySurface) platform.getUserData()).topY - 0.14f &&
             hero.getBody().getLinearVelocity().y <= 0.2f;
+    }
+
+    public boolean isHeroOnOneWaySurface() {
+        for (Contact contact : world.getContactList())
+            if (isOneWaySupport(contact)) return true;
+        return false;
     }
 
     private void updateBreakableAttack() {
@@ -306,7 +336,15 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void rememberDefeatedEnemy(Enemy enemy) {
-        if (!location.isGenerated() || enemy.getPersistentSpawnId() == null) return;
+        if ("transfer_gate".equals(currentLocationName) && "boss".equals(enemy.getArchetypeId())) {
+            runFlags.add("gate_victory");
+            persistenceRevision++;
+        }
+        if (enemy.getPersistentSpawnId() == null) return;
+        if (!location.isGenerated()) {
+            if (runFlags.add("defeated:" + enemy.getPersistentSpawnId())) persistenceRevision++;
+            return;
+        }
         GeneratedRunSave run = location.getGeneratedRun();
         if (!run.defeatedSpawnIds.contains(enemy.getPersistentSpawnId(), false)) {
             run.defeatedSpawnIds.add(enemy.getPersistentSpawnId());
@@ -333,6 +371,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void unloadLocation() {
+        arrows.clear();
         defeatEffects.clear();
         damageIndicators.clear();
         for (int i = enemies.size - 1; i >= 0; i--) {
@@ -348,6 +387,36 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     public void changeLocation(String locationName, int roomId) {
         changeLocation(locationName, roomId, false);
+    }
+
+    public void changeLocation(String locationName, int roomId, String spawnId) {
+        changeLocation(locationName, roomId, false);
+        Vector2 spawn = currentRoom.namedSpawn(spawnId);
+        if (spawn == null || !isRestoredPositionClear(spawn))
+            throw new IllegalArgumentException("Invalid portal spawn " + locationName + "/" + roomId + ":" + spawnId);
+        hero.getBody().setTransform(spawn, 0f);
+        hero.getBody().setLinearVelocity(0f, 0f);
+        heroController.clearInput();
+        persistenceRevision++;
+    }
+
+    public boolean enterPortal(InteractionData portal) {
+        if (portal == null || !"portal".equals(portal.kind) ||
+            getNearbyInteraction() != portal) return false;
+        if (portal.returnToOrigin) {
+            if (portalOriginLocation == null) return false;
+            changeLocation(portalOriginLocation, portalOriginRoomId, portalOriginSpawnId);
+        } else {
+            if ("ruins".equals(currentLocationName) && "laundry_alley".equals(portal.targetLocation)) {
+                portalOriginLocation = currentLocationName;
+                portalOriginRoomId = currentRoomId;
+                portalOriginSpawnId = "alley_return";
+            }
+            changeLocation(portal.targetLocation, portal.targetRoomId, portal.targetSpawnId);
+        }
+        runFlags.add(portal.eventId);
+        persistenceRevision++;
+        return true;
     }
 
     private void changeLocation(String locationName, int roomId, boolean enterFromRight) {
@@ -369,8 +438,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         markCurrentRoomVisited();
 
         buildLocation();
+        float entryInset = "start".equals(locationName) && nextRoom.getRoomId() == 0 ? 8f : 2f;
         Vector2 spawn = new Vector2(
-            currentRoom.getWorldX() + (enterFromRight ? currentRoom.getWidth() - 3f : 2f),
+            currentRoom.getWorldX() + (enterFromRight ? currentRoom.getWidth() - 3f : entryInset),
             currentRoom.getWorldY() + 4
         );
 
@@ -401,13 +471,15 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         Vector2 pos = hero.getBody().getPosition();
         float buffer = 0.4f;
         LocationTransition rightExit = currentRoom.getLocationExit();
-        if (rightExit != null && pos.x >= currentRoom.getWorldX() + currentRoom.getWidth() - buffer) {
+        if (rightExit != null && (rightExit.requiresFlag == null || hasRunFlag(rightExit.requiresFlag)) &&
+            pos.x >= currentRoom.getWorldX() + currentRoom.getWidth() - buffer) {
             changeLocation(rightExit.location, rightExit.id, false);
             return;
         }
 
         LocationTransition leftExit = currentRoom.getLocationEntry();
-        if (leftExit != null && pos.x <= currentRoom.getWorldX() + buffer) {
+        if (leftExit != null && (leftExit.requiresFlag == null || hasRunFlag(leftExit.requiresFlag)) &&
+            pos.x <= currentRoom.getWorldX() + buffer) {
             changeLocation(leftExit.location, leftExit.id, true);
         }
     }
@@ -426,12 +498,14 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 EnemySpawnData spawn = room.getSpawns().get(spawnIndex);
                 // Stable per-room ID lets a generated run omit enemies defeated earlier.
                 String persistentId = room.getRoomId() + ":" + spawnIndex;
+                if (runFlags.contains("defeated:" + currentLocationName + ":" + persistentId)) continue;
                 if (location.isGenerated() &&
                     location.getGeneratedRun().defeatedSpawnIds.contains(persistentId, false)) continue;
 
                 Vector2 pos = room.localToWorld(spawn.position);
                 Enemy enemy = enemyController.spawnEnemy(spawn, pos, world);
-                if (enemy != null && location.isGenerated()) enemy.setPersistentSpawnId(persistentId);
+                if (enemy != null) enemy.setPersistentSpawnId(location.isGenerated() ?
+                    persistentId : currentLocationName + ":" + persistentId);
             }
 
             state.setEnemiesSpawned(true);
@@ -447,6 +521,60 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
     public Array<DefeatEffect> getDefeatEffects() { return defeatEffects; }
     public Array<DamageIndicator> getDamageIndicators() { return damageIndicators; }
+    public Array<Arrow> getArrows() { return arrows; }
+
+    public static final class Arrow {
+        public final Vector2 position = new Vector2();
+        public final Vector2 velocity = new Vector2();
+        public final boolean charged;
+        public float age;
+        private Arrow(float x, float y, float vx, float vy, boolean charged) {
+            position.set(x, y);
+            velocity.set(vx, vy);
+            this.charged = charged;
+        }
+    }
+
+    public void fireArrowVolley(Enemy source, Vector2 direction, int mode) {
+        int count = mode == 2 ? 3 : 1;
+        float speed = mode == 1 ? 18f : 15f;
+        for (int i = 0; i < count; i++) {
+            float angle = mode == 2 ? (i - 1) * .22f : 0f;
+            float cosine = (float) Math.cos(angle), sine = (float) Math.sin(angle);
+            float dx = direction.x * cosine - direction.y * sine;
+            float dy = direction.x * sine + direction.y * cosine;
+            arrows.add(new Arrow(source.getPosition().x + dx * .65f,
+                source.getPosition().y + .1f + dy * .65f,
+                dx * speed, dy * speed, mode == 1));
+        }
+    }
+
+    private void updateArrows(float delta) {
+        for (int i = arrows.size - 1; i >= 0; i--) {
+            Arrow arrow = arrows.get(i);
+            float toX = arrow.position.x + arrow.velocity.x * delta;
+            float toY = arrow.position.y + arrow.velocity.y * delta;
+            final float[] closest = {1f};
+            final boolean[] hitHero = {false};
+            world.rayCast((fixture, point, normal, fraction) -> {
+                if (fixture.isSensor()) return -1f;
+                Object owner = fixture.getBody().getUserData();
+                if (owner != hero && !"level".equals(owner)) return -1f;
+                if (fraction < closest[0]) {
+                    closest[0] = fraction;
+                    hitHero[0] = owner == hero;
+                }
+                return fraction;
+            }, arrow.position.x, arrow.position.y, toX, toY);
+            arrow.age += delta;
+            if (closest[0] < 1f || arrow.age > 2f) {
+                if (hitHero[0]) hero.receiveHit(new CombatHit(CombatHit.Type.PROJECTILE,
+                    arrow.charged ? 1f : .5f, arrow.position.x, 0f,
+                    arrow.charged ? 5f : 0f, null));
+                arrows.removeIndex(i);
+            } else arrow.position.set(toX, toY);
+        }
+    }
     public boolean hasRecentDamage(Actor actor) {
         for (DamageIndicator indicator : damageIndicators)
             if (indicator.target == actor && indicator.elapsed < DamageIndicator.FLASH_DURATION)
@@ -481,10 +609,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         float nearestDistance2 = 1.7f * 1.7f;
         for (InteractionData interaction : currentRoom.getInteractions()) {
             if (isInteractionConsumed(currentRoom, interaction)) continue;
+            if (interaction.requiresFlag != null && !runFlags.contains(interaction.requiresFlag)) continue;
             float dx = currentRoom.getWorldX() + interaction.position.x - hero.getPosition().x;
             float dy = currentRoom.getWorldY() + interaction.position.y - hero.getPosition().y;
             float distance2 = dx * dx + dy * dy;
-            if (distance2 <= nearestDistance2) {
+            if (distance2 < nearestDistance2 ||
+                (distance2 == nearestDistance2 && nearest != null &&
+                    "portal".equals(interaction.kind))) {
                 nearestDistance2 = distance2;
                 nearest = interaction;
             }
@@ -495,17 +626,29 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public boolean interact() {
         InteractionData interaction = getNearbyInteraction();
         if (interaction == null) return false;
-        if ("npc".equals(interaction.kind)) return false;
+        if ("npc".equals(interaction.kind) || "portal".equals(interaction.kind)) return false;
         if ("pickup".equals(interaction.kind)) {
             if (!ItemCatalog.supports(interaction.itemId) || !inventory.add(interaction.itemId)) return false;
         }
         consumedInteractionIds.add(interactionId(currentRoom, interaction));
         runFlags.add(interaction.eventId);
+        if ("cellar_key_mold".equals(interaction.eventId)) runFlags.add("cellar_key_found");
         persistenceRevision++;
         return true;
     }
 
     public boolean hasRunFlag(String eventId) { return runFlags.contains(eventId); }
+    public boolean isHeroInSmoke() {
+        return smokeRemaining > 0f && hero.getPosition().dst2(smokeCenter) < 3f * 3f;
+    }
+    public float getSmokeRemaining() { return smokeRemaining; }
+    public Vector2 getSmokeCenter() { return smokeCenter; }
+    public boolean hasEarlyReport() { return hasRunFlag(NEIGHBOR_LIST_RETURNED) ||
+        hasRunFlag(NEIGHBOR_LIST_KEPT); }
+    public boolean hasPrisonerChoice() { return hasRunFlag(PRISONER_ESCORTED) ||
+        hasRunFlag(PRISONER_HIDDEN) || hasRunFlag(PRISONER_INFORMANT); }
+    public boolean hasFinalReport() { return hasRunFlag(FINAL_SHARE) ||
+        hasRunFlag(FINAL_KEEP) || hasRunFlag(FINAL_FACTION); }
     public boolean hasEchoDash() { return hasRunFlag(KEEPER_BARGAIN); }
 
     private boolean isNearWarden() {
@@ -524,8 +667,54 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         if (!isNearWarden() || !hasRunFlag(NEIGHBOR_LIST_FOUND) ||
             hasRunFlag(NEIGHBOR_LIST_RETURNED) || hasRunFlag(NEIGHBOR_LIST_KEPT)) return false;
         runFlags.add(returnToFamilies ? NEIGHBOR_LIST_RETURNED : NEIGHBOR_LIST_KEPT);
+        runFlags.add("laundry_clue");
+        runFlags.add(returnToFamilies ? "families_told_early" : "list_original_kept");
         persistenceRevision++;
         return true;
+    }
+
+    public boolean resolvePrisonerChoice(int choice) {
+        InteractionData nearby = getNearbyInteraction();
+        if (nearby == null || !"cellar_prisoner".equals(nearby.id) ||
+            hasPrisonerChoice() || choice < 0 || choice > 2) return false;
+        runFlags.add(choice == 0 ? PRISONER_ESCORTED : choice == 1 ? PRISONER_HIDDEN : PRISONER_INFORMANT);
+        if (choice == 0) {
+            runFlags.add("clue_prisoner_witness");
+            runFlags.add("cellar_key_found");
+            awardSewingKit();
+        }
+        if (choice == 1) { runFlags.add("clue_shift_schedule"); runFlags.add("gate_shortcut_known"); }
+        if (choice == 2) runFlags.add("intermediary_contact");
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean resolveFinalReport(int choice) {
+        if (!isNearWarden() || !hasRunFlag(GATE_VICTORY) || hasFinalReport() ||
+            choice < 0 || choice > 2) return false;
+        if (!hasEarlyReport()) runFlags.add(EARLY_SKIPPED);
+        runFlags.add(choice == 0 ? FINAL_SHARE : choice == 1 ? FINAL_KEEP : FINAL_FACTION);
+        runFlags.add("lead_people_without_number");
+        runFlags.add("lead_house_of_mercy");
+        runFlags.add("lead_fit_for_labor");
+        if (choice == 0) {
+            runFlags.add("neighbors_trust");
+            awardSewingKit();
+        }
+        else if (choice == 1) runFlags.add("evidence_retained");
+        else runFlags.add("faction_first_account");
+        persistenceRevision++;
+        return true;
+    }
+
+    private void awardSewingKit() {
+        if (inventory.count(ItemCatalog.SEWING_KIT) > 0) return;
+        if (!inventory.hasFreeBagSlot()) {
+            runFlags.add("sewing_kit_pending");
+            return;
+        }
+        for (int i = 0; i < 3; i++) inventory.add(ItemCatalog.SEWING_KIT);
+        persistenceRevision++;
     }
 
     private boolean isNearKeeper() {
@@ -551,10 +740,21 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         return true;
     }
     public Inventory getInventory() { return inventory; }
+    public boolean combineItems(int first, int second) {
+        if (!inventory.combine(first, second)) return false;
+        persistenceRevision++;
+        return true;
+    }
     public int getFieldBandages() { return inventory.count(ItemCatalog.FIELD_BANDAGE); }
 
     public boolean moveToPocket(int bagSlot, int pocket) {
         if (!inventory.swapWithPocket(bagSlot, pocket)) return false;
+        persistenceRevision++;
+        return true;
+    }
+
+    public boolean moveInventorySlot(int source, int destination) {
+        if (!inventory.swapSlots(source, destination)) return false;
         persistenceRevision++;
         return true;
     }
@@ -564,10 +764,21 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public boolean useFieldBandage(int slot) {
-        if (!hero.isAlive() || slot < Inventory.CAPACITY || slot >= Inventory.TOTAL_SLOTS ||
-            !ItemCatalog.FIELD_BANDAGE.equals(inventory.itemId(slot)) ||
-            hero.getHealth() >= hero.getMaxHealth()) return false;
-        hero.setHealth(Math.min(hero.getMaxHealth(), hero.getHealth() + ItemCatalog.bandage().heal));
+        return usePocketItem(slot);
+    }
+
+    public boolean usePocketItem(int slot) {
+        if (!hero.isAlive() || slot < Inventory.CAPACITY || slot >= Inventory.TOTAL_SLOTS) return false;
+        String id = inventory.itemId(slot);
+        if (ItemCatalog.SMOKE_INCENSE.equals(id)) {
+            smokeCenter.set(hero.getPosition());
+            smokeRemaining = 3f;
+        } else if (ItemCatalog.FIELD_BANDAGE.equals(id) ||
+            ItemCatalog.REINFORCED_BANDAGE.equals(id)) {
+            if (hero.getHealth() >= hero.getMaxHealth()) return false;
+            float heal = ItemCatalog.REINFORCED_BANDAGE.equals(id) ? 2f : ItemCatalog.bandage().heal;
+            hero.setHealth(Math.min(hero.getMaxHealth(), hero.getHealth() + heal));
+        } else return false;
         observedHealth.put(hero, hero.getHealth());
         inventory.removeOne(slot);
         persistenceRevision++;
@@ -575,6 +786,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public boolean isInteractionConsumed(RoomInstance room, InteractionData interaction) {
+        if ("portal".equals(interaction.kind)) return false;
         return consumedInteractionIds.contains(interactionId(room, interaction));
     }
 
@@ -592,6 +804,12 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         checkpoint.heroX = hero.getPosition().x;
         checkpoint.heroY = hero.getPosition().y;
         checkpoint.heroHealth = hero.getHealth();
+        checkpoint.portalOriginLocation = portalOriginLocation;
+        checkpoint.portalOriginRoomId = portalOriginRoomId;
+        checkpoint.portalOriginSpawnId = portalOriginSpawnId;
+        checkpoint.smokeSeconds = smokeRemaining;
+        checkpoint.smokeX = smokeCenter.x;
+        checkpoint.smokeY = smokeCenter.y;
         for (int i = 0; i < Inventory.TOTAL_SLOTS; i++) {
             RunCheckpoint.InventorySlot slot = new RunCheckpoint.InventorySlot();
             slot.itemId = inventory.itemId(i);
@@ -635,6 +853,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 !run.placementSignature.equals(ref.placementSignature))
                 throw new IllegalArgumentException("Generated location no longer matches checkpoint");
         }
+        for (String flag : checkpoint.runFlags) runFlags.add(flag);
         changeLocation(checkpoint.locationId, checkpoint.roomId);
         RoomInstance room = location.getRoom(checkpoint.roomId);
         Vector2 savedPosition = new Vector2(checkpoint.heroX, checkpoint.heroY);
@@ -645,6 +864,11 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             throw new IllegalArgumentException("Invalid saved hero state");
         currentRoomId = checkpoint.roomId;
         currentRoom = room;
+        portalOriginLocation = checkpoint.portalOriginLocation;
+        portalOriginRoomId = checkpoint.portalOriginRoomId;
+        portalOriginSpawnId = checkpoint.portalOriginSpawnId;
+        smokeRemaining = Math.max(0f, Math.min(3f, checkpoint.smokeSeconds));
+        smokeCenter.set(checkpoint.smokeX, checkpoint.smokeY);
         hero.getBody().setTransform(savedPosition, 0);
         hero.getBody().setLinearVelocity(0, 0);
         hero.setHealth(checkpoint.heroHealth);

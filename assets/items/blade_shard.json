@@ -1,0 +1,6 @@
+{
+  "id": "blade_shard",
+  "effect": "melee_damage",
+  "bonus": 0.1,
+  "maxStack": 1
+}

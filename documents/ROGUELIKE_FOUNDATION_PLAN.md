@@ -76,3 +76,8 @@ stage-3 ability and stage-4 choice slice; later story consequences remain to be 
 - Whether abilities are found, taught, granted by faction offers, or some combination.
 - Whether a district can be revisited after its critical beat and how choices alter later encounters.
 - Art contract: virtual resolution, pixels per world unit, atlas naming, pivots, animation events, and layered foreground/background rules with the artists.
+
+Согласованный порядок обновления окружения и требования к переиспользуемым
+модулям стен, платформ, блоков и остальных текстур записаны в
+[ENVIRONMENT_TEXTURE_PLAN.md](ENVIRONMENT_TEXTURE_PLAN.md). Сначала решаем
+стены, платформы и малые блоки; расширение дороги пока приостановлено.

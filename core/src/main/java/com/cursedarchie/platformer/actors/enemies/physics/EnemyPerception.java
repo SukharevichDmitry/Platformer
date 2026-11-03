@@ -35,14 +35,16 @@ public class EnemyPerception {
                     Math.toRadians(enemy.getViewAngle() / 2f)
                 );
 
-            if (dot < viewCosThreshold) {
+            // A nearby target remains noticeable even after jumping over the enemy.
+            if (dot < viewCosThreshold && enemyCenter.dst2(heroCenter) > 2.5f * 2.5f) {
                 continue;
             }
 
             boolean blocked =
                 isLineBlocked(enemyCenter, heroCenter);
 
-            if (!blocked && actor instanceof Hero) {
+            if (!blocked && actor instanceof Hero &&
+                !("scavenger".equals(enemy.getArchetypeId()) && gameWorld.isHeroInSmoke())) {
                 canSeeHero = true;
                 updateHeroLastKnownPos(enemy, actor);
                 break;

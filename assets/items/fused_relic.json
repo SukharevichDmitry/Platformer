@@ -1,0 +1,6 @@
+{
+  "id": "fused_relic",
+  "effect": "melee_combo",
+  "bonus": 0.25,
+  "maxStack": 1
+}

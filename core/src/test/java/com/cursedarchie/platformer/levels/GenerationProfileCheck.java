@@ -11,7 +11,7 @@ public final class GenerationProfileCheck {
         GenerationProfile profile = GenerationProfile.load(sample);
         if (profile.version != 10 || !"ruins".equals(profile.locationId) ||
             !"start".equals(profile.returnLocation) || profile.returnRoomId != 3 ||
-            !"keeper_chamber".equals(profile.forwardLocation) || profile.forwardRoomId != 0 ||
+            !"transfer_gate".equals(profile.forwardLocation) || profile.forwardRoomId != 0 ||
             !"production".equals(profile.status) || profile.tuningTargets == null ||
             profile.roomCount.min != 11 || profile.roomCount.max != 14 ||
             profile.roomPatterns.size() != 2 || profile.roomPatterns.get(0).width.min != 40 ||
@@ -24,7 +24,7 @@ public final class GenerationProfileCheck {
         check(fixture, valid, "\"roomCount\":{\"min\":11,\"max\":14",
             "\"roomCount\":{\"min\":15,\"max\":14", "roomCount");
         check(fixture, valid, "\"version\":10", "\"version\":0", "version");
-        check(fixture, valid, "\"forwardTransition\":{\"location\":\"keeper_chamber\",\"id\":0}",
+        check(fixture, valid, "\"forwardTransition\":{\"location\":\"transfer_gate\",\"id\":0}",
             "\"forwardTransition\":{\"location\":\"ruins\",\"id\":0}", "forwardTransition");
         check(fixture, valid, "\"status\":\"production\"", "\"status\":\"released\"", "status");
         check(fixture, valid, "\"combatRoomPercent\":{\"min\":40,\"max\":65}",

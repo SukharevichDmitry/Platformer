@@ -18,8 +18,11 @@ public class ChaseState implements EnemyState {
             return;
         }
 
-        if (target.x < enemy.getPosition().x) enemy.moveLeft();
+        float dx = target.x - enemy.getPosition().x;
+        if (Math.abs(dx) < .55f) enemy.moveStop();
+        else if (dx < 0f) enemy.moveLeft();
         else enemy.moveRight();
+        if (Math.abs(dx) < 3f) enemy.pursueElevatedTarget(target.y);
     }
 
     @Override

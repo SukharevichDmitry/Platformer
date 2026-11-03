@@ -1,0 +1,5 @@
+{
+  "id": "weighted_bracer",
+  "maxStack": 1,
+  "effect": "block_counter"
+}

@@ -7,6 +7,7 @@ import com.cursedarchie.platformer.levels.wrappers.RoomData;
 import com.cursedarchie.platformer.tiles.Tile;
 import com.cursedarchie.platformer.levels.wrappers.EnemySpawnData;
 import com.cursedarchie.platformer.levels.wrappers.InteractionData;
+import com.cursedarchie.platformer.levels.wrappers.SpawnPointData;
 import com.cursedarchie.platformer.tiles.TileFactory;
 import com.cursedarchie.platformer.tiles.TileMetrics;
 
@@ -71,6 +72,12 @@ public class RoomInstance {
 
     public Array<EnemySpawnData> getSpawns() { return data.enemySpawns; }
     public Array<InteractionData> getInteractions() { return data.interactions; }
+    public Array<SpawnPointData> getSpawnPoints() { return data.spawnPoints; }
+    public Vector2 namedSpawn(String id) {
+        for (SpawnPointData spawn : data.spawnPoints)
+            if (spawn.id.equals(id)) return localToWorld(spawn.position);
+        return null;
+    }
     public Vector2 getWorldSpawnPosition(EnemySpawnData spawn) {
         return new Vector2(
             getWorldX() + spawn.position.x,

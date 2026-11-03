@@ -2,6 +2,7 @@ package com.cursedarchie.platformer.physics;
 
 import com.badlogic.gdx.physics.box2d.*;
 import com.cursedarchie.platformer.actors.Actor;
+import com.cursedarchie.platformer.actors.hero.Hero;
 
 /** Maintains sensor overlap sets; never creates or destroys Box2D bodies in callbacks. */
 public class GameContactListener implements ContactListener {
@@ -133,6 +134,10 @@ public class GameContactListener implements ContactListener {
             return;
         }
         Actor actor = (Actor) actorFixture.getBody().getUserData();
+        if (actor instanceof Hero && ((Hero) actor).getPlatformDropRemaining() > 0f) {
+            contact.setEnabled(false);
+            return;
+        }
         float top = ((OneWaySurface) platform.getUserData()).topY;
         float feet = actor.getPosition().y - actor.getSize() / 2f;
         // Keep an already-supported body on top, but never snag a rising body or its side.

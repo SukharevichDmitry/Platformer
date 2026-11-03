@@ -8,7 +8,8 @@ public final class ControlBindings {
     public enum Action {
         LEFT("Move left", Keys.LEFT), RIGHT("Move right", Keys.RIGHT),
         UP("Move up", Keys.UP), DOWN("Move down", Keys.DOWN),
-        JUMP("Jump", Keys.SPACE), ATTACK("Attack", Keys.X), DASH("Echo dash", Keys.SHIFT_LEFT),
+        JUMP("Jump", Keys.SPACE), ATTACK("Attack", Keys.X), BLOCK("Block", Keys.B),
+        HEAVY_ATTACK("Heavy attack", Keys.Z), DASH("Echo dash", Keys.SHIFT_LEFT),
         INTERACT("Interact", Keys.E), BAG("Inventory", Keys.I),
         POCKET_1("Left pocket", Keys.NUM_1), POCKET_2("Right pocket", Keys.NUM_2),
         PAUSE("Pause", Keys.ESCAPE);
@@ -41,7 +42,7 @@ public final class ControlBindings {
     public boolean matches(Action action, int keycode) { return key(action) == keycode; }
     public String keyName(Action action) { return Keys.toString(key(action)); }
 
-    /** Editable copy: changes are applied to the live bindings only on Save. */
+    /** Editable copy for validating a proposed binding before applying it live. */
     public ControlBindings draft() {
         ControlBindings copy = new ControlBindings(null);
         System.arraycopy(keys, 0, copy.keys, 0, keys.length);

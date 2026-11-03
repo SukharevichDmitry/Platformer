@@ -9,6 +9,7 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.levels.GeneratedRunSave;
 import com.cursedarchie.platformer.levels.RoomInstance;
+import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 import com.cursedarchie.platformer.run.RunCheckpoint;
 import com.cursedarchie.platformer.run.RunCheckpointStore;
 import com.cursedarchie.platformer.run.Inventory;
@@ -93,6 +94,8 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
             checkStartCreatesFreshRun();
             checkSuspendResume(preferences);
             checkKeeperChoice(preferences);
+            checkSlicePersistence(preferences);
+            checkGeneratedAlleyVariants();
             passed = true;
         } finally {
             preferences.clear();
@@ -247,13 +250,23 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
             first.changeLocation("ruins", 0);
             RoomInstance exit = first.getLocation().getRoom(first.getLocation().getExitRoomId());
             if (exit.getLocationExit() == null ||
-                !"keeper_chamber".equals(exit.getLocationExit().location))
+                !"transfer_gate".equals(exit.getLocationExit().location))
                 throw new AssertionError("Final ruins room has no story exit");
             first.getHero().getBody().setTransform(exit.getWorldX() + exit.getWidth() - .2f,
                 exit.getWorldY() + 3f, 0f);
             first.update(GameWorld.FIXED_STEP);
+            if (!"transfer_gate".equals(first.getLocation().getLocation()))
+                throw new AssertionError("Ruins exit did not enter the transfer gate");
+            for (Enemy enemy : first.getEnemies())
+                if ("boss".equals(enemy.getArchetypeId())) enemy.setAlive(false);
+            first.update(GameWorld.FIXED_STEP);
+            if (!first.hasRunFlag(GameWorld.GATE_VICTORY))
+                throw new AssertionError("Gate victory was not recorded");
+            first.getHero().getBody().setTransform(first.getCurrentRoom().getWorldX() +
+                first.getCurrentRoom().getWidth() - .2f, 3f, 0f);
+            first.update(GameWorld.FIXED_STEP);
             if (!"keeper_chamber".equals(first.getLocation().getLocation()))
-                throw new AssertionError("Ruins exit did not enter the keeper chamber");
+                throw new AssertionError("Won gate did not open the keeper chamber");
             first.getHero().getBody().setTransform(12f, 3f, 0f);
             if (first.getNearbyInteraction() == null ||
                 !"keeper".equals(first.getNearbyInteraction().id) ||
@@ -321,6 +334,112 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
                 fresh.getHero().getMaxHealth() != 3f)
                 throw new AssertionError("New run inherited the keeper choice");
         } finally { fresh.dispose(); }
+    }
+
+    private void checkSlicePersistence(Preferences preferences) {
+        RunCheckpointStore store = new RunCheckpointStore(preferences);
+        store.clearRun();
+        GameWorld first = new GameWorld(41L, preferences);
+        int originRoom;
+        try {
+            first.changeLocation("ruins", 0);
+            for (RoomInstance room : first.getLocation().getRooms()) {
+                for (InteractionData candidate : room.getInteractions())
+                    if ("laundry_alley_entrance".equals(candidate.id)) {
+                        first.changeLocation("ruins", room.getRoomId());
+                        break;
+                    }
+            }
+            originRoom = first.getCurrentRoom().getRoomId();
+            InteractionData entry = interaction(first, "laundry_alley_entrance");
+            first.getHero().getBody().setTransform(first.getCurrentRoom().getWorldX() +
+                entry.position.x, first.getCurrentRoom().getWorldY() + entry.position.y, 0f);
+            if (!first.enterPortal(entry) || !"laundry_alley".equals(first.getLocation().getLocation()) ||
+                !first.hasRunFlag("laundry_access_locked"))
+                throw new AssertionError("Generated street portal or locked route failed");
+            first.changeLocation("laundry_alley", roomWithInteraction(first, "locked_laundry_door"));
+            InteractionData locked = interaction(first, "locked_laundry_door");
+            first.getHero().getBody().setTransform(locked.position.x + first.getCurrentRoom().getWorldX(),
+                locked.position.y, 0f);
+            if (first.enterPortal(locked)) throw new AssertionError("Locked door opened without a key");
+            first.changeLocation("laundry_alley", 1);
+            InteractionData key = interaction(first, "alley_door_key");
+            first.getHero().getBody().setTransform(key.position.x + first.getCurrentRoom().getWorldX(),
+                key.position.y, 0f);
+            if (!first.interact() || !first.hasRunFlag("alley_key_found"))
+                throw new AssertionError("Alley key did not unlock the door");
+            first.changeLocation("laundry_alley", roomWithInteraction(first, "locked_laundry_door"));
+            locked = interaction(first, "locked_laundry_door");
+            first.getHero().getBody().setTransform(locked.position.x + first.getCurrentRoom().getWorldX(),
+                locked.position.y, 0f);
+            if (!first.enterPortal(locked)) throw new AssertionError("Unlocked laundry door failed");
+            Enemy collector = first.getEnemies().first();
+            collector.takeDamage(10000f);
+            first.update(GameWorld.FIXED_STEP);
+            if (!first.hasRunFlag("defeated:laundry_house:0:0"))
+                throw new AssertionError("Authored enemy defeat was not recorded");
+            first.changeLocation("catchment_cellar", 0);
+            InteractionData prisoner = interaction(first, "cellar_prisoner");
+            first.getHero().getBody().setTransform(prisoner.position, 0f);
+            if (!first.resolvePrisonerChoice(0) || !first.hasRunFlag("cellar_key_found") ||
+                !first.hasRunFlag(GameWorld.PRISONER_ESCORTED))
+                throw new AssertionError("Prisoner decision did not unlock the vault");
+            store.save(first.checkpoint());
+        } finally { first.dispose(); }
+        GameWorld resumed = new GameWorld(store.load(), preferences);
+        try {
+            if (!"catchment_cellar".equals(resumed.getLocation().getLocation()) ||
+                !resumed.hasRunFlag("alley_key_found") || !resumed.hasRunFlag("cellar_key_found") ||
+                !resumed.hasRunFlag(GameWorld.PRISONER_ESCORTED))
+                throw new AssertionError("Route or prisoner decision was lost on Continue");
+            resumed.changeLocation("laundry_house", 0);
+            if (resumed.getEnemies().size != 0)
+                throw new AssertionError("Defeated collector respawned after Continue");
+            resumed.changeLocation("laundry_alley", 0);
+            InteractionData exit = interaction(resumed, "street_return");
+            resumed.getHero().getBody().setTransform(exit.position, 0f);
+            if (!resumed.enterPortal(exit) || !"ruins".equals(resumed.getLocation().getLocation()) ||
+                resumed.getCurrentRoom().getRoomId() != originRoom)
+                throw new AssertionError("Return portal lost its generated origin");
+        } finally { resumed.dispose(); }
+    }
+
+    private InteractionData interaction(GameWorld world, String id) {
+        for (InteractionData value : world.getCurrentRoom().getInteractions())
+            if (id.equals(value.id)) return value;
+        throw new AssertionError("Missing interaction: " + id);
+    }
+
+    private int roomWithInteraction(GameWorld world, String id) {
+        for (RoomInstance room : world.getLocation().getRooms())
+            for (InteractionData value : room.getInteractions())
+                if (id.equals(value.id)) return room.getRoomId();
+        throw new AssertionError("Missing interaction: " + id);
+    }
+
+    private void checkGeneratedAlleyVariants() {
+        boolean[] lengths = new boolean[4];
+        for (long seed = 0; seed < 24; seed++) {
+            GameWorld world = new GameWorld(seed);
+            try {
+                world.changeLocation("laundry_alley", 0);
+                int count = world.getLocation().getRooms().size();
+                if (count < 4 || count > 7) throw new AssertionError("Invalid alley length: " + count);
+                lengths[count - 4] = true;
+                if (roomWithInteraction(world, "street_return") != 0 ||
+                    roomWithInteraction(world, "locked_laundry_door") != count - 2 ||
+                    roomWithInteraction(world, "alley_cellar_stairs") != count - 1)
+                    throw new AssertionError("Required alley landmarks changed order");
+                world.changeLocation("laundry_house", 0);
+                if (interaction(world, "alley_return").targetRoomId != count - 2)
+                    throw new AssertionError("Laundry return targets the wrong generated room");
+                world.changeLocation("catchment_cellar", 0);
+                if (interaction(world, "alley_return").targetRoomId != count - 1)
+                    throw new AssertionError("Cellar return targets the wrong generated room");
+            } finally { world.dispose(); }
+        }
+        for (boolean seen : lengths)
+            if (!seen) throw new AssertionError("Alley room count does not vary across seeds");
     }
 
     private String roomSignature(GameWorld world) {
