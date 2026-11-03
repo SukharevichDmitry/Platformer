@@ -5,9 +5,9 @@ Status: agreed direction, 2026-10-26. This plan supersedes the first-release sco
 ## Product contract
 
 - Aim for a complete run of roughly **1–2 hours**. This is a pacing target, not a room-count constant; tune it after playable routes exist.
-- Death ends the current run. A new run begins with a new seed and without its items, abilities, faction reputation, decisions, defeated enemies, or altered tiles.
+- Death ends the current run. A new run begins with a new seed and without its items, abilities, faction reputation, decisions, defeated enemies, or altered tiles. A suitably completed ending may additionally create a small permanent narrative legacy record for a former hero; this record describes the role they later occupy in the city and never restores their gameplay state.
 - Quitting or pausing must permit **Continue** from the current run. A checkpoint is a suspend/resume record, not a death respawn.
-- Narrative decisions affect only the current run. The city's districts, history, key places, and major story beats stay authored; routes, room variants, encounters, opportunities, and consequences vary per seed and choices.
+- Most narrative decisions affect only the current run. Selected completed endings can enter the authored history of later runs, allowing a new hero to meet a former hero as a leader, high-ranking member, ordinary servant, or other consequence of that ending. The city's districts, deeper history, key places, and major story beats stay authored; routes, room variants, encounters, opportunities, and local consequences vary per seed and choices. Persistent story unlocks can reveal the old-faith and God-hunt branches only after several different endings, but do not carry inventory, abilities, reputation, or ordinary quest flags between heroes.
 - World rules and interactive content use stable IDs and data independent of texture names. Art can be replaced without changing collision, saves, or story logic. Audio follows the playable systems and visual pass.
 
 ## Runtime boundaries
