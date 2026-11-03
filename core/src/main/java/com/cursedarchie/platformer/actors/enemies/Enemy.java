@@ -113,6 +113,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private float blockRemaining;
     private float blockCooldownRemaining = .8f;
     private float dodgeCooldownRemaining;
+    /** While > 0 the dodge impulse is protected from stop/chase commands so the evasion visibly travels. */
+    private float dodgeSlideRemaining;
+    public static final float DODGE_SLIDE_TIME = .18f;
     private float dodgeFlashRemaining;
     private float supportCooldownRemaining;
     private float supportFlashRemaining;
@@ -336,6 +339,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         blockRemaining = Math.max(0f, blockRemaining - delta);
         blockCooldownRemaining = Math.max(0f, blockCooldownRemaining - delta);
         dodgeCooldownRemaining = Math.max(0f, dodgeCooldownRemaining - delta);
+        dodgeSlideRemaining = Math.max(0f, dodgeSlideRemaining - delta);
         dodgeFlashRemaining = Math.max(0f, dodgeFlashRemaining - delta);
         supportCooldownRemaining = Math.max(0f, supportCooldownRemaining - delta);
         supportFlashRemaining = Math.max(0f, supportFlashRemaining - delta);
@@ -521,6 +525,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
                 dodgeDirection = away;
                 body.setLinearVelocity(away * 9f, body.getLinearVelocity().y);
                 dodgeCooldownRemaining = 2.5f;
+                dodgeSlideRemaining = DODGE_SLIDE_TIME;
                 dodgeFlashRemaining = DODGE_EFFECT_DURATION;
                 retreatRepeatRemaining = Math.max(retreatRepeatRemaining, .6f);
                 beginTrail(away, true);
@@ -630,6 +635,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public void moveHorizontal(float dir) {
 
         if (staggerRemaining > 0f) return;
+        // The dodge impulse must not be cancelled by an idle/chase command in the same frame.
+        if (dodgeSlideRemaining > 0f) return;
         // Let the retreat dash skid to a halt instead of being cut off by a stop command.
         if (dir == 0f && retreatPhase == RetreatPhase.RECOVER) return;
 
