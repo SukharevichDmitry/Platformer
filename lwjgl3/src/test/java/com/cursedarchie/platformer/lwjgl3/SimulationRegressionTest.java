@@ -886,8 +886,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             breaker.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, hero, breaker, -1f, 1f, 5f, .14f, true));
             if (breaker.isStaggered() && breaker.getBody().getLinearVelocity().x < -2f)
                 throw new AssertionError("Breaker was knocked back by a light hit");
-            var sweep = breaker.attackDefinition(false, true, false);
-            var slam = breaker.attackDefinition(false, true, true);
+            com.cursedarchie.platformer.combat.AttackDefinition sweep = breaker.attackDefinition(false, true, false);
+            com.cursedarchie.platformer.combat.AttackDefinition slam = breaker.attackDefinition(false, true, true);
             if (slam.startupDuration <= sweep.startupDuration)
                 throw new AssertionError("Ground slam must have a longer startup than the sweep");
             if (slam.knockback <= sweep.knockback) throw new AssertionError("Slam knockback must be stronger");
