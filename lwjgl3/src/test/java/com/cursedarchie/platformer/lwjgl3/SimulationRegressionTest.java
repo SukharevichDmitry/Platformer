@@ -83,6 +83,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkGroupAttackSlots();
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
+        checkMeleeReachMatchesHitbox();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -913,6 +914,50 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (hero.attackDefinition(false, 4).missRecovery < .4f) throw new AssertionError("Jump attack landing recovery too short");
             if (hero.attackDefinition(false, 3).staggerDuration <= hero.attackDefinition(false, 1).staggerDuration)
                 throw new AssertionError("Counter must stagger more than a light strike");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    /** Every melee archetype must stop where its real hitbox reaches the hero, whatever its body size. */
+    private void checkMeleeReachMatchesHitbox() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            String[] types = {"default", "scavenger", "infiltrator", "overseer", "red_collector", "heavy_hunter"};
+            for (String type : types) {
+                Enemy e;
+                switch (type) {
+                    case "scavenger": e = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(20f, 2.5f)); break;
+                    case "infiltrator": e = EnemyFactory.createInfiltrator(fight.getWorld(), new Vector2(20f, 2.5f)); break;
+                    case "overseer": e = EnemyFactory.createOverseer(fight.getWorld(), new Vector2(20f, 2.5f)); break;
+                    case "red_collector": e = EnemyFactory.createRedCollector(fight.getWorld(), new Vector2(20f, 2.5f)); break;
+                    case "heavy_hunter": e = EnemyFactory.createHeavyHunter(fight.getWorld(), new Vector2(20f, 2.5f)); break;
+                    default: e = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(20f, 2.5f));
+                }
+                e.setFacingLeft(false);
+                float approach = e.getAttackApproachDistance(hero);
+                if (approach <= 0.3f) throw new AssertionError(type + ": approach distance is not positive");
+                com.badlogic.gdx.math.Rectangle box = new com.badlogic.gdx.math.Rectangle();
+                com.badlogic.gdx.math.Rectangle hurt = new com.badlogic.gdx.math.Rectangle();
+                // Just inside the approach distance: reach says yes and the real strike geometry agrees.
+                hero.getBody().setTransform(20f + approach - .06f, 2.5f, 0f);
+                if (!e.isTargetInStandardReach(hero))
+                    throw new AssertionError(type + ": hero inside approach distance is out of reach");
+                com.cursedarchie.platformer.combat.AttackRuntime strike =
+                    new com.cursedarchie.platformer.combat.AttackRuntime(e.attackDefinition(false, false), false);
+                if (!strike.canHit(e, hero, box, hurt))
+                    throw new AssertionError(type + ": reach check and strike hitbox disagree (would whiff)");
+                // Clearly outside: no attack may start; the enemy has to step closer first.
+                hero.getBody().setTransform(20f + approach + .3f, 2.5f, 0f);
+                if (e.isTargetInStandardReach(hero))
+                    throw new AssertionError(type + ": enemy would attack from outside its reach");
+                // Facing away: no attack even when the hero is in front of the weapon's back.
+                hero.getBody().setTransform(20f + approach - .06f, 2.5f, 0f);
+                e.setFacingLeft(true);
+                if (e.isTargetInStandardReach(hero))
+                    throw new AssertionError(type + ": enemy reaches the hero behind it");
+            }
         } finally {
             fight.dispose();
         }

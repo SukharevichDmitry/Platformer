@@ -1869,6 +1869,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     com.cursedarchie.platformer.actors.enemies.states.combat.AttackState attack =
                         (com.cursedarchie.platformer.actors.enemies.states.combat.AttackState)
                             enemy.getCombatStateMachine().getCurrentState();
+                    if (attack.getRuntime() != null && attack.getRuntime().isActive() && !attack.isArea()) {
+                        // The weapon swing is drawn across the real hitbox, so what you see is what can hit you.
+                        Rectangle hb = attack.getRuntime().hitbox(enemy.getPosition(), new Rectangle());
+                        spriteBatch.setColor(1f, .92f, .7f, .85f);
+                        barCentered(hb.x + hb.width / 2f, hb.y + hb.height * .55f, hb.width, .09f,
+                            attack.isFacingLeft() ? 12f : -12f);
+                        spriteBatch.setColor(1f, .5f, .3f, .25f);
+                        spriteBatch.draw(sceneryPixel, hb.x, hb.y, hb.width, hb.height);
+                    }
                     if (attack.isLunge() && enemy.getCombatStateTime() < attack.startup(enemy)) {
                         spriteBatch.setColor(1f, .5f, .15f, .8f);
                         spriteBatch.draw(sceneryPixel,

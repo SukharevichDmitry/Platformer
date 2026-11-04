@@ -85,14 +85,19 @@ public class EnemyPerception {
         enemy.setHeroLastKnownPos(hero.getPosition());
     }
 
+    /**
+     * The enemy may start its standard attack only when the hero is on the side it faces, visible with no wall
+     * between them, and already inside the real attack hitbox. Stopping distance therefore equals attack reach.
+     */
     public void prepareToAttack(Enemy enemy) {
         boolean canAttack = false;
         if (enemy.isCanSeeHero()) {
             float enemyX = enemy.getPosition().x;
-            for (Actor target : enemy.getAttackTargets()) {
+            for (Actor target : enemy.getVisibleActors()) {
                 if (!(target instanceof Hero) || !target.isAlive()) continue;
                 float dx = target.getPosition().x - enemyX;
-                if ((enemy.isFacingLeft() && dx < 0f) || (!enemy.isFacingLeft() && dx > 0f)) {
+                boolean facingTarget = enemy.isFacingLeft() ? dx < 0f : dx > 0f;
+                if (facingTarget && enemy.isTargetInStandardReach(target)) {
                     canAttack = true;
                     break;
                 }

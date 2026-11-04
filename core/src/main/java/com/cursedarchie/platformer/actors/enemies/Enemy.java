@@ -672,7 +672,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         }
         // Priority 4: short dash when the hero hovers just outside attack range.
         if (!isBlocking() && dashCooldownRemaining == 0f && attackCooldownRemaining == 0f && canSeeHero &&
-            dy < 1f && dist > 1.5f && dist < 2.6f && hasClearRetreatPath(Math.signum(dx))) {
+            dy < 1f && dist > getAttackApproachDistance(hero) + .15f && dist < getAttackApproachDistance(hero) + 1.1f &&
+            hasClearRetreatPath(Math.signum(dx))) {
             dashDirection = Math.signum(dx);
             facingLeft = dashDirection < 0f;
             dashWindupRemaining = DASH_WINDUP;
@@ -890,6 +891,33 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             .48f, .19f, .21f, 1.9f, 1.25f, 1f, 0f,
             1f, 3f, .22f, 2f, true, .88f, .88f);
         return baseAttackDefinition;
+    }
+
+    private final com.badlogic.gdx.math.Rectangle reachBox = new com.badlogic.gdx.math.Rectangle();
+    private final com.badlogic.gdx.math.Rectangle reachHurt = new com.badlogic.gdx.math.Rectangle();
+
+    /**
+     * True when this enemy's standard-attack hitbox, placed where it would be at the strike, already overlaps the
+     * target's hurtbox. This is the same geometry the strike itself uses, so "in reach" never disagrees with a hit.
+     */
+    public boolean isTargetInStandardReach(Actor target) {
+        if (target == null || !target.isAlive()) return false;
+        AttackDefinition d = baseAttackDefinition;
+        float dir = facingLeft ? -1f : 1f;
+        float centreX = getPosition().x + dir * (d.range - d.hitboxWidth / 2f);
+        reachBox.set(centreX - d.hitboxWidth / 2f, getPosition().y + d.offsetY - d.hitboxHeight / 2f,
+            d.hitboxWidth, d.hitboxHeight);
+        target.getHurtboxBounds(reachHurt);
+        return reachBox.overlaps(reachHurt);
+    }
+
+    /**
+     * Centre-to-centre horizontal distance at which the standard hitbox just touches the target's hurtbox:
+     * the stopping distance is derived from the weapon's reach and the hero's hurtbox, never from body size.
+     */
+    public float getAttackApproachDistance(Actor target) {
+        target.getHurtboxBounds(reachHurt);
+        return baseAttackDefinition.range + reachHurt.width / 2f;
     }
 
     public void beginAttackCooldown() {
