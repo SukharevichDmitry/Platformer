@@ -19,6 +19,7 @@ import com.cursedarchie.platformer.physics.CombatHit;
 
 /** Gameplay authority for one hero strike; rendering only reads its runtime. */
 public class AttackState implements HeroState {
+    private static final float DASH_WALL_SKIN = .02f;
     public enum Phase { STARTUP, ACTIVE, RECOVERY }
     private final boolean heavy;
     private final int comboStep;
@@ -28,10 +29,10 @@ public class AttackState implements HeroState {
     private boolean lunged;
     // Breakthrough dash bookkeeping (heavy strike only).
     private boolean dashing, dashEnded;
-    private float dashOriginX, dashPrevX, dashExpectedStep, dashScale = 1f;
+    private float dashOriginX, dashElapsed;
     private float plannedDistance, dashEndX, firstHitX, firstHitY = Float.NaN, firstHitTime = -1f;
     private boolean wallLimited;
-    private int dashFrames, dashHits;
+    private int dashHits;
     private final Array<Enemy> sweepFound = new Array<Enemy>();
     private final Rectangle sweepBox = new Rectangle();
 
@@ -72,7 +73,6 @@ public class AttackState implements HeroState {
     public boolean usesRhythm() { return !heavy && (comboStep == 1 || comboStep == 2); }
 
     @Override public void enter(Hero hero) {
-        runtime = new AttackRuntime(hero.attackDefinition(heavy, comboStep), hero.isFacingLeft());
         lunged = false;
         dashing = false;
         firstHitY = Float.NaN;
@@ -80,14 +80,18 @@ public class AttackState implements HeroState {
         plannedDistance = 0f;
         wallLimited = false;
         dashEnded = false;
-        dashScale = 1f;
+        dashElapsed = 0f;
         dashHits = 0;
-        dashFrames = 0;
         hero.setLeftAttackActive(false);
         hero.setRightAttackActive(false);
         if (heavy) {
             hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);
-            planDash(hero);
+            float direction = hero.isFacingLeft() ? -1f : 1f;
+            planDash(hero, direction);
+            float chargeTime = BreakthroughConfig.get().chargeTimeForDistance(plannedDistance);
+            runtime = new AttackRuntime(hero.breakthroughDefinition(chargeTime), hero.isFacingLeft());
+        } else {
+            runtime = new AttackRuntime(hero.attackDefinition(false, comboStep), hero.isFacingLeft());
         }
         Gdx.app.log("HERO", "Start Attacking " + runtime.definition().id);
     }
@@ -139,7 +143,7 @@ public class AttackState implements HeroState {
         if (runtime.isComplete()) hero.getCombatStateMachine().changeState(new CombatIdleState());
     }
 
-    /** Charge -> locked charge -> dash -> recovery; the dash sweeps its path and hits each enemy once. */
+    /** Charge -> constant-speed dash -> stationary recovery; the dash sweeps its path and hits each enemy once. */
     private void updateBreakthrough(Hero hero, float delta) {
         BreakthroughConfig cfg = BreakthroughConfig.get();
         AttackRuntime.Phase phase = runtime.phase();
@@ -154,37 +158,32 @@ public class AttackState implements HeroState {
             if (!dashing) {
                 dashing = true;
                 dashOriginX = hero.getPosition().x;
-                dashPrevX = dashOriginX;
-                dashExpectedStep = 0f;
+                dashElapsed = 0f;
                 hero.setBreakthroughDashing(true);
             }
             float curX = hero.getPosition().x;
-            sweep(hero, dashPrevX, curX);
-            float remaining = plannedDistance - Math.abs(curX - dashOriginX);
-            if (remaining <= .01f) {
-                // Arrived at the arrow's end: an abrupt stop (with an impact when a wall shortened the path).
-                if (wallLimited) hero.noteBreakthroughImpact(curX + dir * hero.getSize() / 2f, hero.getPosition().y, dir);
+            float duration = Math.max(cfg.dashDuration, delta);
+            dashElapsed = Math.min(duration, dashElapsed + delta);
+            float progress = dashElapsed / duration;
+            float targetX = dashOriginX + dir * plannedDistance * progress;
+            sweep(hero, curX, targetX);
+            if (progress >= 1f || plannedDistance <= .01f) {
+                hero.getBody().setTransform(dashOriginX + dir * plannedDistance,
+                    hero.getPosition().y, hero.getBody().getAngle());
                 runtime.jumpTo(runtime.definition().activeEnd());
                 endDash(hero, dir, wallLimited);
-                return;
+            } else {
+                // Constant route speed. Box2D advances to targetX this step; no damping/easing participates.
+                hero.getBody().setLinearVelocity((targetX - curX) / delta, 0f);
             }
-            if (dashFrames >= 2 && Math.abs(curX - dashPrevX) < dashExpectedStep * .35f) {
-                // Solid geometry stopped the hero: impact, then straight into recovery.
-                hero.noteBreakthroughImpact(curX + dir * hero.getSize() / 2f, hero.getPosition().y, dir);
-                hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);
-                runtime.jumpTo(runtime.definition().activeEnd());
-                endDash(hero, dir, true);
-                return;
+        } else if (phase == AttackRuntime.Phase.RECOVERY) {
+            if (dashing && !dashEnded) {
+                float endX = dashOriginX + runtime.direction() * plannedDistance;
+                sweep(hero, hero.getPosition().x, endX);
+                hero.getBody().setTransform(endX, hero.getPosition().y, hero.getBody().getAngle());
+                endDash(hero, runtime.direction(), wallLimited);
             }
-            float speed = (cfg.dashSpeed > 0f ? cfg.dashSpeed : cfg.dashDistance / cfg.dashDuration) * dashScale;
-            speed = Math.min(speed, remaining / delta);   // never overshoot the planned end point
-            hero.getBody().setLinearVelocity(dir * speed, 0f);
-            dashExpectedStep = speed * delta;
-            dashPrevX = curX;
-            dashFrames++;
-        } else if (dashing && !dashEnded) {
-            sweep(hero, dashPrevX, hero.getPosition().x);
-            endDash(hero, runtime.direction(), false);
+            hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);
         }
     }
 
@@ -192,13 +191,15 @@ public class AttackState implements HeroState {
         dashEnded = true;
         dashEndX = hero.getPosition().x;
         hero.setBreakthroughDashing(false);
-        hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);   // abrupt stop, no glide
+        hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);
+        if (blocked)
+            hero.noteBreakthroughImpact(dashEndX + dir * hero.getSize() / 2f, hero.getPosition().y, dir);
     }
 
     /** Fixes the dash length before it starts: horizontal probes ahead, minus the body's half width. */
-    private void planDash(Hero hero) {
+    private void planDash(Hero hero, final float dir) {
         BreakthroughConfig cfg = BreakthroughConfig.get();
-        final float dir = runtime.direction(), half = hero.getSize() / 2f;
+        final float half = hero.getSize() / 2f;
         final float max = Math.max(cfg.dashDistance, cfg.minDistance);
         final float[] free = {max};
         float x = hero.getPosition().x, y = hero.getPosition().y;
@@ -212,7 +213,10 @@ public class AttackState implements HeroState {
                     return fraction;
                 }
             }, new com.badlogic.gdx.math.Vector2(x, y + dy), new com.badlogic.gdx.math.Vector2(x + dir * (max + half), y + dy));
-            free[0] = Math.min(free[0], best[0] - half);
+            // Preserve the configured distance on an unobstructed route. The skin is only
+            // needed when a ray actually found level geometry in front of the body.
+            if (best[0] < max + half - .001f)
+                free[0] = Math.min(free[0], best[0] - half - DASH_WALL_SKIN);
         }
         wallLimited = free[0] < cfg.dashDistance - .01f;
         plannedDistance = free[0] < cfg.minDistance ? 0f : Math.min(cfg.dashDistance, free[0]);
@@ -278,7 +282,6 @@ public class AttackState implements HeroState {
                 firstHitTime = runtime.elapsed();
             }
             dashHits++;
-            if (target.getSize() >= 2f) dashScale = Math.min(dashScale, cfg.heavyEnemySlow);
             Gdx.app.log("HERO", "breakthrough hit " + dashHits + " on " + target.getClass().getSimpleName());
         }
     }
@@ -286,7 +289,7 @@ public class AttackState implements HeroState {
     @Override public void exit(Hero hero) {
         if (heavy) {
             hero.setBreakthroughDashing(false);
-            hero.beginHeavyCooldown();   // the cooldown counts from the end of the recovery
+            hero.beginHeavyCooldown();   // the cooldown counts from the end of stationary recovery
         }
         hero.setAttackHandled(false);
         hero.setLeftAttackActive(false);

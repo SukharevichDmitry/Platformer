@@ -1514,8 +1514,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             // A hurried strike snaps through its pose faster: a sharp, jerky motion with a cut-short wind-up.
             if (attack.getRuntime().isHurried() && !attack.isHeavy()) time *= 1.35f;
             float pose = attack.isHeavy() ?
-                // Braced stance while charging, a coiled crouch once locked, a full lunge in the dash,
-                // then a slowly straightening recovery.
+                // Braced stance while charging, a full lunge only during movement, then a fixed recovery pose.
                 time < attack.getStartup() * .7f ? 0f :
                     time < attack.getStartup() ? .13f :
                     time < attack.getActiveEnd() ? .26f :
@@ -1792,9 +1791,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         return best[0];
     }
 
-    /** Range arrow, dash effects and the winded recovery of the breakthrough attack. */
+    /** Range arrow, movement-only dash effects and a stationary recovery cue. */
     private void drawBreakthroughEffects(AttackState attack) {
-        com.cursedarchie.platformer.combat.BreakthroughConfig cfg = com.cursedarchie.platformer.combat.BreakthroughConfig.get();
         float dir = attack.isFacingLeft() ? -1f : 1f;
         float hx = hero.getPosition().x, hy = hero.getPosition().y;
         float footY = hy - hero.getSize() / 2f + .12f;
@@ -1819,7 +1817,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             float walked = Math.abs(hx - originX);
             // The arrow is erased as the hero runs over it: only the part still ahead is left.
             if (!attack.isDashEnded()) drawDashArrow(hx + dir * .4f, footY, dir, Math.max(0f, planned - walked), 1f, 1f, walked);
-            // Acceleration burst at the start of the dash.
+            // Launch burst at the start of the constant-speed dash.
             if (sinceDash < .12f) {
                 float k = sinceDash / .12f;
                 spriteBatch.setColor(1f, .95f, .75f, 1f - k);
@@ -1849,19 +1847,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             }
         } else {
             float since = t - attack.getActiveEnd();
-            float p = clamp01(since / Math.max(.05f, attack.getRuntime().duration() - attack.getActiveEnd()));
-            // Stop effect where the dash ended: dust, a ring and braking streaks.
-            if (since < .3f && attack.isDashEnded()) {
-                float k = since / .3f, ex = attack.getDashEndX();
-                spriteBatch.setColor(.85f, .8f, .7f, .8f * (1f - k));
-                ring(ex, footY + .1f, .3f + k * .8f);
-                for (int i = 0; i < 4; i++)
-                    spriteBatch.draw(sceneryPixel, ex - dir * (.2f + i * .22f * (1f + k)) - .1f, footY + k * .3f * (i % 2 + 1), .22f, .08f);
+            // One stationary stop flash. Trails and afterimages end with HEAVY_DASH, never in recovery.
+            if (since < .06f && attack.isDashEnded()) {
+                float k = since / .06f;
+                spriteBatch.setColor(1f, .9f, .65f, .7f * (1f - k));
+                ring(attack.getDashEndX(), footY + .1f, .28f + .2f * k);
             }
-            // The hero is spent and open until the amber bar runs out.
-            float flicker = .7f + .3f * (float) Math.sin(effectClock * 30f);
-            spriteBatch.setColor(1f, .55f, .25f, .8f * flicker);
-            spriteBatch.draw(sceneryPixel, hx - .4f * (1f - p), hy + hero.getSize() / 2f + .12f, .8f * (1f - p), .05f);
         }
         spriteBatch.setColor(Color.WHITE);
     }

@@ -68,12 +68,13 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         CombatHit.Type.MELEE_LIGHT, .08f, .15f, .23f,
         2.04f, 1.32f, .66f, .16f, 1.1f, 8.5f, .2f, 1f, true, .46f, .46f);
     /** The breakthrough dash: charge (startup), dash (active), recovery; timings come from the config file. */
-    private static AttackDefinition heavyDefinition() {
+    private static AttackDefinition heavyDefinition(float chargeTime) {
         BreakthroughConfig c = BreakthroughConfig.get();
-        float total = c.chargeTime + c.dashDuration + c.recoveryTime;
-        return new AttackDefinition("hero_heavy", CombatHit.Type.MELEE_HEAVY, c.chargeTime, c.dashDuration,
+        float total = chargeTime + c.dashDuration + c.recoveryTime;
+        return new AttackDefinition("hero_heavy", CombatHit.Type.MELEE_HEAVY, chargeTime, c.dashDuration,
             c.recoveryTime, 1.9f, 1.3f, 1.05f, .04f, c.damageMultiplier, c.knockback, .3f, 2f, true, total, total, 0f);
     }
+    public AttackDefinition breakthroughDefinition(float chargeTime) { return heavyDefinition(chargeTime); }
     private boolean breakthroughDashing;
     private int breakthroughImpactId;
     private float breakthroughImpactRemaining, breakthroughImpactX, breakthroughImpactY, breakthroughImpactDir;
@@ -339,7 +340,8 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public AttackDefinition attackDefinition(boolean heavy, int comboStep) {
         if (!heavy && comboStep == 3) return COUNTER;
         if (!heavy && comboStep == 4) return JUMP_ATTACK;
-        return heavy ? heavyDefinition() : comboStep == 2 ? LIGHT_2 : LIGHT_1;
+        BreakthroughConfig cfg = BreakthroughConfig.get();
+        return heavy ? heavyDefinition(cfg.chargeTimeForDistance(cfg.dashDistance)) : comboStep == 2 ? LIGHT_2 : LIGHT_1;
     }
 
     /** The two light strikes intentionally use different logical hitboxes. */

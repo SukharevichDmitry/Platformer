@@ -220,6 +220,9 @@ public class HeroController implements InputProcessor {
     }
 
     private void handleMovementInput(float delta) {
+        AttackState heavyAttack = hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
+            ((AttackState) hero.getCombatStateMachine().getCurrentState()).isHeavy() ?
+            (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
         if (hero.isBreakthroughDashing()) {
             // The dash owns the hero's velocity; walking physics, steering and jumping are suspended.
             climbing = false;
@@ -259,13 +262,10 @@ public class HeroController implements InputProcessor {
             if (dashRemaining == 0f) hero.getBody().setGravityScale(1f);
             return;
         }
-        AttackState heavyAttack = hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
-            ((AttackState) hero.getCombatStateMachine().getCurrentState()).isHeavy() ?
-            (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
         if (heavyAttack != null) {
-            // Charge and recovery take no movement, turning or jump input; the dash is driven by the attack itself.
-            float vx = heavyAttack.isInRecovery(hero) ? approach(hero.getBody().getLinearVelocity().x, 0f, 60f * delta) : 0f;
-            hero.getBody().setLinearVelocity(vx, Math.max(hero.getBody().getLinearVelocity().y, -Hero.MAX_FALL_SPEED));
+            // Charge and recovery are stationary; only HEAVY_DASH changes horizontal position.
+            hero.getBody().setLinearVelocity(0f,
+                Math.max(hero.getBody().getLinearVelocity().y, -Hero.MAX_FALL_SPEED));
             jumpBufferRemaining = 0f;
             return;
         }

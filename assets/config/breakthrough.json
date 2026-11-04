@@ -1,10 +1,13 @@
 {
-  "chargeTime": 0.75,
+  "heavyDash": {
+    "referenceRunSpeed": 5.0,
+    "minChargeTime": 0.15,
+    "maxChargeTime": 0.8
+  },
   "dashDistance": 3.0,
   "minDistance": 0.5,
-  "dashDuration": 0.25,
-  "dashSpeed": 0.0,
-  "recoveryTime": 0.7,
+  "dashDuration": 0.18,
+  "recoveryTime": 0.1,
   "cooldown": 1.6,
   "damageMultiplier": 2.0,
   "knockback": 10.0,
@@ -12,6 +15,5 @@
   "firstHitMultiplier": 1.0,
   "followHitMultiplier": 0.5,
   "followKnockbackMultiplier": 0.5,
-  "followStaggerMultiplier": 0.5,
-  "heavyEnemySlow": 0.55
+  "followStaggerMultiplier": 0.5
 }
