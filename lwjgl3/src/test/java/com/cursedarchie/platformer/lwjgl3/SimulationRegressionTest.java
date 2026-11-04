@@ -1307,7 +1307,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 com.cursedarchie.platformer.combat.HeavyState st = hero.getHeavyState();
                 if (st == CHARGE) {
                     charge++;
-                    maxChargeSpeed = Math.max(maxChargeSpeed, Math.abs(hero.getBody().getLinearVelocity().x));
+                    // The very first frame still carries the walking speed from before the charge began.
+                    if (charge > 2)
+                        maxChargeSpeed = Math.max(maxChargeSpeed, Math.abs(hero.getBody().getLinearVelocity().x));
                 } else if (st == DASH) {
                     dash++;
                     if (Float.isNaN(dashStartX)) dashStartX = hero.getPosition().x;
