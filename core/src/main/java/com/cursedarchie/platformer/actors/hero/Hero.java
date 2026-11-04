@@ -70,6 +70,14 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         1.9f, 1.3f, 1.05f, .04f, 2f, 10f, .3f, 2f, true, .92f, .92f, .2f);
     public void setBlockHeld(boolean value) { blockHeld = value; }
     public boolean isBlocking() { return blockHeld && blockBrokenRemaining == 0f && blockStability > 0f; }
+    /** True while a hero swing is winding up or active: the signal enemies use to decide to guard. */
+    public boolean isAttackTelegraphing() {
+        Object cur = combatStateMachine.getCurrentState();
+        if (!(cur instanceof AttackState)) return false;
+        AttackState a = (AttackState) cur;
+        return a != null && a.getRuntime() != null &&
+            a.getRuntime().phase() != com.cursedarchie.platformer.combat.AttackRuntime.Phase.RECOVERY;
+    }
     public boolean isBlockBroken() { return blockBrokenRemaining > 0f; }
     public float getBlockFlashRemaining() { return blockFlashRemaining; }
     public float getBlockStability() { return blockStability; }

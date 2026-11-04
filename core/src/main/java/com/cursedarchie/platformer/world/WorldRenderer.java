@@ -1720,6 +1720,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
                 if (enemy.getDodgeFlashRemaining() > 0f) {
                     spriteBatch.setColor(.4f, 1f, 1f, .8f);
+                } else if (enemy.isDashWindingUp()) {
+                    spriteBatch.setColor(1f, .85f, .3f, 1f);   // crouched, amber: dash is coming
+                } else if (enemy.isDashing()) {
+                    spriteBatch.setColor(1f, 1f, 1f, .75f);
                 } else if (enemy.getSupportFlashRemaining() > 0f) {
                     spriteBatch.setColor(.5f, 1f, .55f, 1f);
                 } else if (gameWorld.hasRecentDamage(enemy)) {
@@ -1773,7 +1777,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                         spriteBatch.draw(sceneryPixel, left + 4.96f, ground, .12f, .25f);
                     }
                 }
-                if (enemy.isBlocking()) {
+                if ("default".equals(enemy.getArchetypeId())) drawRaiderEffects(enemy);
+                if (enemy.isBlocking() && !"default".equals(enemy.getArchetypeId())) {
                     float direction = enemy.isFacingLeft() ? -1f : 1f;
                     spriteBatch.setColor(.35f, .75f, 1f, .9f);
                     spriteBatch.draw(sceneryPixel, enemy.getPosition().x + direction * .68f - .09f,
@@ -1782,6 +1787,49 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 spriteBatch.setColor(Color.WHITE);
             }
         }
+    }
+
+    /** Raider presentation: dash telegraph/trail, raised-weapon guard stance, block sparks and guard break. */
+    private void drawRaiderEffects(Enemy enemy) {
+        float dir = enemy.isFacingLeft() ? -1f : 1f;
+        float x = enemy.getPosition().x, y = enemy.getPosition().y;
+        float ground = y - enemy.getSize() / 2f;
+        if (enemy.isDashWindingUp()) {
+            // Amber ground line pointing where the raider will lunge to.
+            spriteBatch.setColor(1f, .8f, .2f, .75f);
+            spriteBatch.draw(sceneryPixel, dir > 0f ? x + .4f : x - 2.2f, ground + .03f, 1.8f, .08f);
+        }
+        if (enemy.isDashing()) {
+            spriteBatch.setColor(1f, 1f, 1f, .45f);
+            for (int i = 1; i <= 3; i++)
+                spriteBatch.draw(sceneryPixel, x - dir * (.35f + i * .3f) - .12f, y - .2f, .24f, .5f - i * .1f);
+        }
+        if (enemy.isBlocking()) {
+            // Weapon raised in front: bright steel plate, taller than the old marker, fading as the guard ends.
+            float a = .55f + .4f * clamp01(enemy.getBlockProgress() * 3f);
+            spriteBatch.setColor(.75f, .85f, 1f, a);
+            spriteBatch.draw(sceneryPixel, x + dir * .62f - .07f, y - .45f, .14f, 1.25f);
+            spriteBatch.setColor(.35f, .6f, 1f, a * .7f);
+            spriteBatch.draw(sceneryPixel, x + dir * .62f - .16f, y + .78f, .32f, .1f);
+        }
+        if (enemy.getBlockHitFlashRemaining() > 0f) {
+            float t = enemy.getBlockHitFlashRemaining() / .22f;
+            spriteBatch.setColor(1f, .95f, .6f, t);
+            float sx = x + dir * .8f, sy = y + .2f;
+            for (int i = 0; i < 6; i++) {
+                float ang = (i - 2.5f) * 28f + (dir < 0f ? 180f : 0f);
+                barFrom(sx, sy, .1f + .45f * (1f - t), .045f, ang);
+            }
+            glow(sx, sy, .3f * t + .1f);
+        }
+        if (enemy.getBlockBreakFlashRemaining() > 0f) {
+            float t = enemy.getBlockBreakFlashRemaining() / .4f;
+            spriteBatch.setColor(1f, .45f, .2f, t);
+            ring(x + dir * .7f, y + .2f, .3f + (1f - t) * .8f);
+            barCentered(x + dir * .7f, y + .2f, .9f * t + .2f, .07f, 45f);
+            barCentered(x + dir * .7f, y + .2f, .9f * t + .2f, .07f, -45f);
+        }
+        spriteBatch.setColor(Color.WHITE);
     }
 
     private void drawDefeatEffects() {

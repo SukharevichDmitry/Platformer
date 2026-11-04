@@ -77,6 +77,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkLockedAttackDirection();
         checkSpecialEnemyRoles();
         checkScavengerActionPriority();
+        checkRaiderBlockAndDash();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -867,6 +868,37 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             flank.takeMeleeHit(2f, flank.getPosition().x + 1f, 0f, false);
             closeTo(flank.getHealth(), flank.getMaxHealth() - 2f,
                 "Rear light strike did not bypass guard");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkRaiderBlockAndDash() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            // Light hit on a guarding raider: zero damage, no stagger. Heavy: 35% damage, guard broken.
+            Enemy raider = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(11f, 2.5f));
+            raider.setCanSeeHero(true);
+            raider.setFacingLeft(true);
+            raider.forceBlockForTest();
+            float hp = raider.getHealth();
+            raider.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, 10f, 1f, 3f, hero));
+            closeTo(raider.getHealth(), hp, "light hit on raider block must deal no damage");
+            if (raider.isStaggered()) throw new AssertionError("Blocked light hit staggered the raider");
+            raider.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_HEAVY, 2f, 10f, 2f, 5f, hero));
+            closeTo(raider.getHealth(), hp - .7f, "heavy hit on raider block must deal 35% damage");
+            if (raider.isBlocking()) throw new AssertionError("Heavy hit did not break the raider block");
+            // Attack from behind ignores the guard.
+            Enemy back = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(15f, 2.5f));
+            back.setFacingLeft(false);
+            back.forceBlockForTest();
+            float backHp = back.getHealth();
+            back.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, 14f, 1f, 3f, hero));
+            closeTo(back.getHealth(), backHp - 1f, "attack from behind must ignore the raider block");
+            if (raider.getCombatPhase() == com.cursedarchie.platformer.combat.CombatPhase.DEAD)
+                throw new AssertionError("Raider phase wrong");
         } finally {
             fight.dispose();
         }

@@ -118,6 +118,11 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private float dodgeDirection;
     private final Array<Cue> cues = new Array<>(true, MAX_QUEUED_CUES);
     private float blockRemaining;
+    // Raider pre-attack dash: windup (telegraph) -> dash (no damage) -> normal attack.
+    public static final float DASH_WINDUP = .22f, DASH_DURATION = .16f, DASH_COOLDOWN = 2.4f, DASH_SPEED = 11f;
+    public static final float RAIDER_BLOCK_DURATION = .8f, RAIDER_BLOCK_COOLDOWN = 3f, BLOCK_HEAVY_DAMAGE = .35f;
+    private float dashWindupRemaining, dashRemaining, dashCooldownRemaining = 1f, dashDirection;
+    private float blockHitFlashRemaining, blockBreakFlashRemaining;
     private float blockCooldownRemaining = .8f;
     private float dodgeCooldownRemaining;
     private float dodgeFlashRemaining;
@@ -382,6 +387,23 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public void emitCue(Cue cue) { if (cues.size < MAX_QUEUED_CUES) cues.add(cue); }
 
     public boolean isBlocking() { return blockRemaining > 0f; }
+    /** Test hook: raise the raider guard immediately. */
+    public void forceBlockForTest() { blockRemaining = RAIDER_BLOCK_DURATION; }
+    public boolean isDashWindingUp() { return dashWindupRemaining > 0f; }
+    public boolean isDashing() { return dashRemaining > 0f; }
+    public boolean isDashPhase() { return dashWindupRemaining > 0f || dashRemaining > 0f; }
+    public float getBlockHitFlashRemaining() { return blockHitFlashRemaining; }
+    public float getBlockBreakFlashRemaining() { return blockBreakFlashRemaining; }
+    public float getBlockProgress() { return blockRemaining / RAIDER_BLOCK_DURATION; }
+    public com.cursedarchie.platformer.combat.CombatPhase getCombatPhase() {
+        if (!alive) return com.cursedarchie.platformer.combat.CombatPhase.DEAD;
+        if (isStaggered()) return com.cursedarchie.platformer.combat.CombatPhase.STAGGER;
+        if (isDodging() || isDashing()) return com.cursedarchie.platformer.combat.CombatPhase.DODGE;
+        if (isBlocking()) return com.cursedarchie.platformer.combat.CombatPhase.BLOCK;
+        if (isDashWindingUp() || isRangedWindingUp()) return com.cursedarchie.platformer.combat.CombatPhase.WINDUP;
+        if (isActionRecovering()) return com.cursedarchie.platformer.combat.CombatPhase.RECOVERY;
+        return com.cursedarchie.platformer.combat.CombatPhase.IDLE;
+    }
     public float getDodgeFlashRemaining() { return dodgeFlashRemaining; }
     public boolean isNextAttackLunge() { return nextAttackLunge; }
     public boolean isAttacking() { return combatStateMachine.getCurrentState() instanceof AttackState; }
@@ -420,6 +442,26 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         rangedShotFlashRemaining = Math.max(0f, rangedShotFlashRemaining - delta);
         blockRemaining = Math.max(0f, blockRemaining - delta);
         blockCooldownRemaining = Math.max(0f, blockCooldownRemaining - delta);
+        blockHitFlashRemaining = Math.max(0f, blockHitFlashRemaining - delta);
+        blockBreakFlashRemaining = Math.max(0f, blockBreakFlashRemaining - delta);
+        dashCooldownRemaining = Math.max(0f, dashCooldownRemaining - delta);
+        if (dashWindupRemaining > 0f) {
+            dashWindupRemaining = Math.max(0f, dashWindupRemaining - delta);
+            if (dashWindupRemaining == 0f) {
+                dashRemaining = DASH_DURATION;
+                body.setLinearVelocity(dashDirection * DASH_SPEED, body.getLinearVelocity().y);
+            }
+        } else if (dashRemaining > 0f) {
+            dashRemaining = Math.max(0f, dashRemaining - delta);
+            body.setLinearVelocity(dashDirection * DASH_SPEED, body.getLinearVelocity().y);
+            if (dashRemaining == 0f) {
+                moveStop();
+                dashCooldownRemaining = DASH_COOLDOWN;
+                attackCooldownRemaining = 0f;
+                attackRequested = false;
+                requestAttack();
+            }
+        }
         dodgeCooldownRemaining = Math.max(0f, dodgeCooldownRemaining - delta);
         dodgeFlashRemaining = Math.max(0f, dodgeFlashRemaining - delta);
         dodgeRemaining = Math.max(0f, dodgeRemaining - delta);
@@ -434,6 +476,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         retreatCooldownRemaining = Math.max(0f, retreatCooldownRemaining - delta);
         supportCooldownRemaining = Math.max(0f, supportCooldownRemaining - delta);
         supportFlashRemaining = Math.max(0f, supportFlashRemaining - delta);
+        if ("default".equals(archetypeId)) updateRaider(hero);
         if ("scavenger".equals(archetypeId)) {
             float dx = hero.getPosition().x - getPosition().x;
             float dy = Math.abs(hero.getPosition().y - getPosition().y);
@@ -483,6 +526,34 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         int sequence = rangedShotSequence + 1;
         return sequence % 5 == 0 ? RangedAttackConfig.VOLLEY :
             sequence % 3 == 0 ? RangedAttackConfig.CHARGED : RangedAttackConfig.NORMAL;
+    }
+
+    private boolean raiderBusy() {
+        return isStaggered() || isAttacking() || isDodging() || isActionRecovering() || isDashPhase();
+    }
+    private void updateRaider(Hero hero) {
+        if (raiderBusy()) return;
+        float dx = hero.getPosition().x - getPosition().x;
+        float dy = Math.abs(hero.getPosition().y - getPosition().y);
+        float dist = Math.abs(dx);
+        // Priority 2: block a telegraphed hero attack that is about to land on this side.
+        if (blockCooldownRemaining == 0f && !isBlocking() && canSeeHero && dist < 2.2f && dy < 1.2f &&
+            (dx < 0) == facingLeft && hero.isAttackTelegraphing()) {
+            blockRemaining = RAIDER_BLOCK_DURATION;
+            blockCooldownRemaining = RAIDER_BLOCK_COOLDOWN;
+            moveStop();
+            return;
+        }
+        // Priority 4: short dash when the hero hovers just outside attack range.
+        if (!isBlocking() && dashCooldownRemaining == 0f && attackCooldownRemaining == 0f && canSeeHero &&
+            dy < 1f && dist > 1.5f && dist < 2.6f && hasClearRetreatPath(Math.signum(dx))) {
+            dashDirection = Math.signum(dx);
+            facingLeft = dashDirection < 0f;
+            dashWindupRemaining = DASH_WINDUP;
+            dashCooldownRemaining = DASH_COOLDOWN;
+            attackRequested = false;
+            moveStop();
+        }
     }
 
     public boolean beginRangedAttack(RangedAttackConfig config, Hero hero) {
@@ -600,7 +671,23 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         float sourceX = hit.sourceX;
         float recoil = hit.recoil;
         boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY;
-        if (heavy && hit.blockable && isBlocking()) blockRemaining = 0f;
+        boolean raiderGuard = "default".equals(archetypeId) && hit.blockable && isBlocking() && !isStaggered() &&
+            !isAttacking() && ((sourceX < getPosition().x) == facingLeft);
+        if (raiderGuard) {
+            if (heavy) {
+                // Heavy strikes break the guard, hurt for a fraction and knock the raider back.
+                amount *= BLOCK_HEAVY_DAMAGE;
+                blockRemaining = 0f;
+                blockBreakFlashRemaining = .4f;
+            } else {
+                // Light strikes bounce off: no damage, no stagger, only a small slide.
+                takeDamage(0f);
+                lastHitSourceX = sourceX;
+                blockHitFlashRemaining = .22f;
+                body.setLinearVelocity(Math.copySign(1.2f, getPosition().x - sourceX), body.getLinearVelocity().y);
+                return true;
+            }
+        } else if (heavy && hit.blockable && isBlocking()) blockRemaining = 0f;
         if (!heavy && hit.blockable && "red_collector".equals(archetypeId) && isBlocking() && !isStaggered() &&
             ((sourceX < getPosition().x) == facingLeft) &&
             !(combatStateMachine.getCurrentState() instanceof AttackState)) {
@@ -744,13 +831,14 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
         // Reactions and evasive movement own the actor until they finish. This keeps
         // the priority chain deterministic and prevents attacks from running together.
-        if (isStaggered() || isDodging() || isActionRecovering()) {
+        if (isStaggered() || isDodging() || isActionRecovering() || isDashPhase()) {
             cancelRangedAttack();
             attackRequested = false;
             currentIntent = Intent.IDLE;
             if (combatStateMachine.getCurrentState() instanceof AttackState)
                 combatStateMachine.changeState(new CombatIdleState());
-            if (!isDodging()) moveStop();
+            if (!isDodging() && !isDashing()) moveStop();
+            if (isStaggered()) { dashWindupRemaining = 0f; dashRemaining = 0f; }
             return;
         }
 
