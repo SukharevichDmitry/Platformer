@@ -407,6 +407,12 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isBlocking() { return blockRemaining > 0f; }
     /** Test hook: raise the raider guard immediately. */
     public void forceBlockForTest() { blockRemaining = RAIDER_BLOCK_DURATION; }
+    public void applyStagger(float seconds) {
+        if (!alive) return;
+        staggerRemaining = Math.max(staggerRemaining, seconds);
+        blockRemaining = 0f;
+        cancelRangedAttack();
+    }
     public void setAttackPermit(boolean permit) { attackPermit = permit; }
     public boolean hasAttackPermit() { return attackPermit; }
     public boolean isLineBlocked() { return lineBlockedRemaining > 0f; }

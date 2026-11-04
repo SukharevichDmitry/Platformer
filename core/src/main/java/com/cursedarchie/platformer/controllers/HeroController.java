@@ -213,6 +213,20 @@ public class HeroController implements InputProcessor {
                 0f, Hero.AIR_BRAKING * delta), hero.getBody().getLinearVelocity().y);
             return;
         }
+        if (hero.isRolling()) {
+            // Roll: direction was fixed when it began; steering and gravity-drop are ignored until it ends.
+            hero.getBody().setLinearVelocity(hero.getRollDirection() * Hero.ROLL_SPEED, hero.getBody().getLinearVelocity().y);
+            dashQueued = false;
+            return;
+        }
+        if (dashQueued && !gameWorld.hasEchoDash()) {
+            float dir = leftHeld && !rightHeld ? -1f : rightHeld && !leftHeld ? 1f : 0f;
+            if (hero.tryRoll(dir)) {
+                climbing = false;
+                dashQueued = false;
+                return;
+            }
+        }
         if (dashQueued && gameWorld.hasEchoDash() && dashCooldownRemaining <= 0f) {
             dashRemaining = DASH_SECONDS;
             dashCooldownRemaining = DASH_COOLDOWN;
@@ -315,6 +329,24 @@ public class HeroController implements InputProcessor {
         return Math.max(current - step, target);
     }
     private void handleCombatInput(float delta) {
+        if (hero.isRolling()) {
+            attackBufferRemaining = 0f;
+            heavyAttackBufferRemaining = 0f;
+            comboQueued = false;
+            return;
+        }
+        boolean counterPressed = hero.isCounterReady() && attackBufferRemaining > 0f && !hero.isStaggered() &&
+            !(hero.getCombatStateMachine().getCurrentState() instanceof AttackState);
+        if (counterPressed) {
+            hero.consumeCounter();
+            blockHeld = false;
+            hero.setBlockHeld(false);
+            comboStep = 0;
+            comboQueued = false;
+            attackBufferRemaining = 0f;
+            hero.getCombatStateMachine().changeState(new AttackState(false, 3));
+            return;
+        }
         if (blockHeld || hero.isStaggered()) {
             attackBufferRemaining = 0f;
             heavyAttackBufferRemaining = 0f;
@@ -335,6 +367,11 @@ public class HeroController implements InputProcessor {
                 comboStep = 2;
                 hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
                 comboQueued = false;
+                attackBufferRemaining = 0f;
+            } else if (attackBufferRemaining > 0f && hero.canJumpAttack()) {
+                hero.markJumpAttackUsed();
+                comboStep = 0;
+                hero.getCombatStateMachine().changeState(new AttackState(false, 4));
                 attackBufferRemaining = 0f;
             } else if (attackBufferRemaining > 0f) {
                 comboStep = 1;

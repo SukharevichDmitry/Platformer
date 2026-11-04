@@ -1548,6 +1548,34 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 hero.getPosition().y + .75f,
                 .96f * hero.getBlockStability() / hero.getMaxBlockStability(), .06f);
         }
+        if (hero.isRolling()) {
+            // Roll: squashed, low hero with fading afterimages and a dust puff; a faint white shimmer marks the i-frames.
+            float dir = hero.getRollDirection();
+            float hx = hero.getPosition().x, hy = hero.getPosition().y - hero.getSize() / 2f;
+            spriteBatch.setColor(1f, 1f, 1f, hero.isRollInvulnerable() ? .5f : .2f);
+            for (int i = 1; i <= 3; i++)
+                spriteBatch.draw(sceneryPixel, hx - dir * i * .35f - .2f, hy + .05f, .4f, .5f - i * .08f);
+            spriteBatch.setColor(.75f, .7f, .6f, .6f);
+            spriteBatch.draw(sceneryPixel, hx - dir * .55f - .15f, hy, .3f, .12f);
+            if (hero.isRollInvulnerable()) { spriteBatch.setColor(.8f, .95f, 1f, .5f); ring(hx, hy + .4f, .75f); }
+        }
+        if (hero.getPerfectFlashRemaining() > 0f) {
+            // Perfect block: bright gold ring and cross flash on the guard.
+            float t = hero.getPerfectFlashRemaining() / .35f;
+            float dir = hero.isFacingLeft() ? -1f : 1f;
+            float px = hero.getPosition().x + dir * .55f, py = hero.getPosition().y + .15f;
+            spriteBatch.setColor(1f, .9f, .35f, t);
+            ring(px, py, .25f + (1f - t) * .9f);
+            barCentered(px, py, .9f * t + .2f, .06f, 0f);
+            barCentered(px, py, .9f * t + .2f, .06f, 90f);
+        }
+        if (hero.isCounterReady()) {
+            // Counter window open: pulsing gold edge on the blade side tells the player to strike now.
+            float pulse = .5f + .4f * (float) Math.sin(effectClock * 20f);
+            float dir = hero.isFacingLeft() ? -1f : 1f;
+            spriteBatch.setColor(1f, .85f, .3f, pulse);
+            spriteBatch.draw(sceneryPixel, hero.getPosition().x + dir * .5f - .04f, hero.getPosition().y - .35f, .08f, 1f);
+        }
         if (hero.getBlockHeavyFlashRemaining() > 0f) {
             // Partial absorb of a heavy blow: orange shock ring on the guard, bigger than the light spark.
             float t = hero.getBlockHeavyFlashRemaining() / .3f;

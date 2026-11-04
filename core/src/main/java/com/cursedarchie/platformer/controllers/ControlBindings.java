@@ -9,7 +9,7 @@ public final class ControlBindings {
         LEFT("Move left", Keys.LEFT), RIGHT("Move right", Keys.RIGHT),
         UP("Move up", Keys.UP), DOWN("Move down", Keys.DOWN),
         JUMP("Jump", Keys.SPACE), ATTACK("Attack", Keys.X), BLOCK("Block", Keys.B),
-        HEAVY_ATTACK("Heavy attack", Keys.Z), DASH("Echo dash", Keys.SHIFT_LEFT),
+        HEAVY_ATTACK("Heavy attack", Keys.Z), DASH("Roll / echo dash", Keys.SHIFT_LEFT),
         INTERACT("Interact", Keys.E), BAG("Inventory", Keys.I),
         POCKET_1("Left pocket", Keys.NUM_1), POCKET_2("Right pocket", Keys.NUM_2),
         PAUSE("Pause", Keys.ESCAPE);

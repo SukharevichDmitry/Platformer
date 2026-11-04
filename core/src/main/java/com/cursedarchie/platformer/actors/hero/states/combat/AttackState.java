@@ -53,7 +53,7 @@ public class AttackState implements HeroState {
         boolean active = runtime.isActive();
         hero.setLeftAttackActive(active && runtime.facesLeft());
         hero.setRightAttackActive(active && !runtime.facesLeft());
-        if (active && !lunged) {
+        if (active && !lunged && comboStep != 4) {
             hero.getBody().setLinearVelocity(runtime.direction() *
                     (heavy ? 6f : comboStep == 2 ? 6.5f : 4f),
                 hero.getBody().getLinearVelocity().y);

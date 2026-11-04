@@ -72,13 +72,39 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         1.9f, 1.3f, 1.05f, .04f, 2f, 10f, .3f, 2f, true, .92f, .92f, .2f);
     /** Block cannot be raised while staggered or mid-swing; an already raised guard drops when staggered. */
     public void setBlockHeld(boolean value) {
-        blockHeld = value && !isStaggered() && !(combatStateMachine.getCurrentState() instanceof AttackState);
+        boolean wasHeld = blockHeld;
+        blockHeld = value && !isRolling() && !isStaggered() && !(combatStateMachine.getCurrentState() instanceof AttackState);
     }
     public boolean isBlocking() {
         return blockHeld && !isStaggered() && blockBrokenRemaining == 0f && blockStability > 0f;
     }
     public boolean canHeavyAttack() { return heavyCooldownRemaining == 0f; }
     public void beginHeavyCooldown() { heavyCooldownRemaining = HEAVY_COOLDOWN; }
+    public static final float ROLL_DURATION = .32f, ROLL_INVULNERABLE = .2f, ROLL_COOLDOWN = 1.1f, ROLL_SPEED = 11f;
+    public static final float PERFECT_BLOCK_WINDOW = .18f, COUNTER_WINDOW = .7f;
+    private float rollRemaining, rollCooldownRemaining, rollDirection, blockAge, counterWindowRemaining, perfectFlashRemaining;
+    private boolean jumpAttackUsed;
+    public boolean isRolling() { return rollRemaining > 0f; }
+    public float getRollDirection() { return rollDirection; }
+    public float getRollProgress() { return rollRemaining > 0f ? 1f - rollRemaining / ROLL_DURATION : 0f; }
+    public boolean isRollInvulnerable() { return rollRemaining > ROLL_DURATION - ROLL_INVULNERABLE; }
+    public float getRollCooldownRemaining() { return rollCooldownRemaining; }
+    public boolean isCounterReady() { return counterWindowRemaining > 0f; }
+    public float getPerfectFlashRemaining() { return perfectFlashRemaining; }
+    public void consumeCounter() { counterWindowRemaining = 0f; }
+    public boolean isAirborne() { return !isGrounded(); }
+    public boolean canJumpAttack() { return isAirborne() && !jumpAttackUsed && !isStaggered(); }
+    public void markJumpAttackUsed() { jumpAttackUsed = true; }
+    /** A roll cannot cancel any attack recovery, interrupt a stagger, or be spammed (cooldown). */
+    public boolean tryRoll(float direction) {
+        if (rollRemaining > 0f || rollCooldownRemaining > 0f || isStaggered() || isBlockBroken() || !isGrounded() ||
+            combatStateMachine.getCurrentState() instanceof AttackState) return false;
+        rollDirection = direction == 0f ? (facingLeft ? -1f : 1f) : Math.signum(direction);   // fixed at start
+        rollRemaining = ROLL_DURATION;
+        rollCooldownRemaining = ROLL_COOLDOWN;
+        blockHeld = false;
+        return true;
+    }
     private boolean whiffPending;
     public void markWhiff() { whiffPending = true; }
     public boolean consumeWhiff() { boolean w = whiffPending; whiffPending = false; return w; }
@@ -88,6 +114,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public com.cursedarchie.platformer.combat.CombatPhase getCombatPhase() {
         if (!alive) return com.cursedarchie.platformer.combat.CombatPhase.DEAD;
         if (isStaggered() || isBlockBroken()) return com.cursedarchie.platformer.combat.CombatPhase.STAGGER;
+        if (isRolling()) return com.cursedarchie.platformer.combat.CombatPhase.DODGE;
         Object cur = combatStateMachine.getCurrentState();
         if (cur instanceof AttackState && ((AttackState) cur).getRuntime() != null) {
             switch (((AttackState) cur).getRuntime().phase()) {
@@ -115,8 +142,17 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             inventory != null && inventory.count(ItemCatalog.RED_BRACER) > 0 ? 3.75f : 3f;
     }
     public boolean receiveHit(CombatHit hit) {
-        if (!alive || invulnerabilityRemaining > 0f) return false;
+        if (!alive || invulnerabilityRemaining > 0f || isRollInvulnerable()) return false;
         boolean frontal = (hit.sourceX < getPosition().x) == facingLeft;
+        if (hit.blockable && frontal && isBlocking() && blockAge < PERFECT_BLOCK_WINDOW) {
+            // Perfect block: no damage and no stability cost, the attacker is staggered and a counter opens.
+            counterWindowRemaining = COUNTER_WINDOW;
+            perfectFlashRemaining = .35f;
+            blockFlashRemaining = .18f;
+            if (hit.source instanceof com.cursedarchie.platformer.actors.enemies.Enemy)
+                ((com.cursedarchie.platformer.actors.enemies.Enemy) hit.source).applyStagger(.55f);
+            return true;
+        }
         if (hit.blockable && frontal && isBlocking()) {
             blockStability = Math.max(0f, blockStability - hit.stabilityDamage);
             blockFlashRemaining = .18f;
@@ -245,7 +281,15 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             ItemCatalog.impactCore().bonus : 0f;
     }
 
+    private static final AttackDefinition COUNTER = new AttackDefinition("hero_counter",
+        CombatHit.Type.MELEE_HEAVY, .08f, .14f, .3f,
+        1.7f, 1.2f, .9f, .02f, 1.5f, 8f, .6f, 1.5f, true, .6f, .52f, .3f);
+    private static final AttackDefinition JUMP_ATTACK = new AttackDefinition("hero_jump_attack",
+        CombatHit.Type.MELEE_LIGHT, .08f, .16f, .1f,
+        1.25f, .85f, .8f, -.3f, .9f, 4f, .12f, 1f, true, .34f, .34f, .5f);
     public AttackDefinition attackDefinition(boolean heavy, int comboStep) {
+        if (!heavy && comboStep == 3) return COUNTER;
+        if (!heavy && comboStep == 4) return JUMP_ATTACK;
         return heavy ? HEAVY : comboStep == 2 ? LIGHT_2 : LIGHT_1;
     }
 
@@ -265,6 +309,12 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         blockCounterCooldown = Math.max(0f, blockCounterCooldown - delta);
         blockFlashRemaining = Math.max(0f, blockFlashRemaining - delta);
         heavyCooldownRemaining = Math.max(0f, heavyCooldownRemaining - delta);
+        rollCooldownRemaining = Math.max(0f, rollCooldownRemaining - delta);
+        rollRemaining = Math.max(0f, rollRemaining - delta);
+        counterWindowRemaining = Math.max(0f, counterWindowRemaining - delta);
+        perfectFlashRemaining = Math.max(0f, perfectFlashRemaining - delta);
+        blockAge = blockHeld ? blockAge + delta : 0f;
+        if (isGrounded()) jumpAttackUsed = false;
         blockHeavyFlashRemaining = Math.max(0f, blockHeavyFlashRemaining - delta);
         blockBreakFlashRemaining = Math.max(0f, blockBreakFlashRemaining - delta);
         if (isStaggered()) blockHeld = false;

@@ -81,6 +81,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkHeroBlockAndHeavyRules();
         checkNewEnemyRoles();
         checkGroupAttackSlots();
+        checkRollCounterAndJumpAttack();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -876,6 +877,46 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         }
     }
 
+    private void checkRollCounterAndJumpAttack() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            for (int i = 0; i < 60; i++) fight.update(GameWorld.FIXED_STEP);   // settle on the ground
+            // Roll: brief invulnerability, then vulnerable again; cooldown blocks immediate re-roll.
+            if (!hero.tryRoll(1f)) throw new AssertionError("Grounded idle hero could not roll");
+            float hp = hero.getHealth();
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, 9f, 1f, 0f, null));
+            closeTo(hero.getHealth(), hp, "roll i-frames did not avoid the hit");
+            hero.update(Hero.ROLL_INVULNERABLE + .02f);
+            if (hero.isRollInvulnerable()) throw new AssertionError("Roll invulnerability lasted too long");
+            hero.update(Hero.ROLL_DURATION);
+            if (hero.tryRoll(1f)) throw new AssertionError("Roll could be repeated during its cooldown");
+            hero.update(Hero.ROLL_COOLDOWN);
+            // Perfect block: a hit right after raising the guard costs nothing and opens a counter window.
+            hero.setFacingLeft(false);
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            for (int i = 0; i < 30; i++) fight.update(GameWorld.FIXED_STEP);
+            hero.setBlockHeld(true);
+            hp = hero.getHealth();
+            float stability = hero.getBlockStability();
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_HEAVY, 1f, 11f, 2f, 0f, null));
+            closeTo(hero.getHealth(), hp, "perfect block must negate even a heavy hit");
+            closeTo(hero.getBlockStability(), stability, "perfect block must not cost stability");
+            if (!hero.isCounterReady()) throw new AssertionError("Perfect block did not open a counter window");
+            hero.update(Hero.COUNTER_WINDOW + .05f);
+            if (hero.isCounterReady()) throw new AssertionError("Counter window never closed");
+            hero.setBlockHeld(false);
+            // Counter and jump-attack definitions: both are punishable when they miss.
+            if (hero.attackDefinition(false, 3).missRecovery <= 0f) throw new AssertionError("Counter has no miss penalty");
+            if (hero.attackDefinition(false, 4).missRecovery < .4f) throw new AssertionError("Jump attack landing recovery too short");
+            if (hero.attackDefinition(false, 3).staggerDuration <= hero.attackDefinition(false, 1).staggerDuration)
+                throw new AssertionError("Counter must stagger more than a light strike");
+        } finally {
+            fight.dispose();
+        }
+    }
+
     private void checkGroupAttackSlots() {
         GameWorld fight = new GameWorld();
         try {
@@ -1246,6 +1287,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.getBody().setTransform(10f, 2.5f, 0f);
             hero.setFacingLeft(true);
             hero.setBlockHeld(true);
+            hero.update(Hero.PERFECT_BLOCK_WINDOW + .05f);   // a late block is an ordinary block, not a perfect one
             float health = hero.getHealth();
             hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, 9f, 1f, 0f, null));
             closeTo(hero.getHealth(), health, "front light hit passed through block");
