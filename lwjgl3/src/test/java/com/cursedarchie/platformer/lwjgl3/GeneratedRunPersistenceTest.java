@@ -66,7 +66,9 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
                     throw new AssertionError("Defeated enemy was not recorded");
                 if (first.getDefeatEffects().size != 1)
                     throw new AssertionError("Defeated enemy had no short visual feedback");
-                for (int i = 0; i < 20; i++) first.update(GameWorld.FIXED_STEP);
+                int feedbackFrames = (int) Math.ceil(
+                    GameWorld.DefeatEffect.DURATION / GameWorld.FIXED_STEP) + 1;
+                for (int i = 0; i < feedbackFrames; i++) first.update(GameWorld.FIXED_STEP);
                 if (first.getDefeatEffects().size != 0)
                     throw new AssertionError("Defeat feedback did not expire");
             } finally {
