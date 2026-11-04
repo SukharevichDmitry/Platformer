@@ -1211,7 +1211,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             com.badlogic.gdx.math.Rectangle a = new com.badlogic.gdx.math.Rectangle();
             com.badlogic.gdx.math.Rectangle b = new com.badlogic.gdx.math.Rectangle();
             com.badlogic.gdx.math.Vector2 origin = new com.badlogic.gdx.math.Vector2(10f, 2.5f);
-            normal.hitbox(origin, a);
+            clean.hitbox(origin, a);
             rushed.hitbox(origin, b);
             if (!(b.width < a.width)) throw new AssertionError("Hurried strike did not lose reach");
             closeTo(rushed.definition().damageMultiplier, normal.definition().damageMultiplier,
