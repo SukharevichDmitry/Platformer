@@ -1564,7 +1564,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (hero.canHeavyAttack() != true) throw new AssertionError("Heavy should start off cooldown");
             hero.beginHeavyCooldown();
             if (hero.canHeavyAttack()) throw new AssertionError("Heavy attack has no cooldown");
-            hero.update(Hero.HEAVY_COOLDOWN + .01f);
+            hero.update(com.cursedarchie.platformer.combat.BreakthroughConfig.get().cooldown + .01f);
             if (!hero.canHeavyAttack()) throw new AssertionError("Heavy cooldown never ends");
         } finally {
             fight.dispose();
