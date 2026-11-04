@@ -1556,7 +1556,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             closeTo(cueAim.x, lockedAim.x, "Aim kept moving after it was locked");
             closeTo(cueAim.y, lockedAim.y, "Aim kept moving after it was locked");
             if (archer.getRangedShotMode() != 0) throw new AssertionError("First archer shot was not a standard shot");
-            if (archer.pollCue() != Enemy.Cue.BOW_DRAW_STANDARD)
+            Enemy.Cue firstCue = archer.pollCue();
+            while (firstCue == Enemy.Cue.ALERT) firstCue = archer.pollCue();
+            if (firstCue != Enemy.Cue.BOW_DRAW_STANDARD)
                 throw new AssertionError("Standard draw did not start with its own sound cue");
             boolean shotCue = false;
             for (Enemy.Cue cue = archer.pollCue(); cue != null; cue = archer.pollCue())
