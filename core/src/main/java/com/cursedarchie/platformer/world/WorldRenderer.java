@@ -1516,7 +1516,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             float pose = attack.isHeavy() ?
                 // Braced stance while charging, a coiled crouch once locked, a full lunge in the dash,
                 // then a slowly straightening recovery.
-                time < attack.getStartup() - com.cursedarchie.platformer.combat.BreakthroughConfig.get().lockTime ? 0f :
+                time < attack.getStartup() * .7f ? 0f :
                     time < attack.getStartup() ? .13f :
                     time < attack.getActiveEnd() ? .26f :
                     time < attack.getActiveEnd() + .3f ? .13f : 0f :
@@ -1696,6 +1696,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 ring(cx, hero.getPosition().y - hero.getSize() / 2f + .1f, 1.3f - .6f * charge);
             }
             if (attack.isHeavy()) drawBreakthroughEffects(attack);
+            else if (attack.getRuntime().isHurried() && attack.isInRecovery(hero)) {
+                // A rushed strike leaves the hero visibly open: a flickering amber bar that drains with the recovery.
+                float p = clamp01((hero.getCombatStateTime() - attack.getActiveEnd()) /
+                    Math.max(.05f, attack.getRuntime().duration() - attack.getActiveEnd()));
+                spriteBatch.setColor(1f, .55f, .25f, .8f * (.7f + .3f * (float) Math.sin(effectClock * 30f)));
+                spriteBatch.draw(sceneryPixel, hero.getPosition().x - .4f * (1f - p),
+                    hero.getPosition().y + hero.getSize() / 2f + .12f, .8f * (1f - p), .05f);
+                spriteBatch.setColor(Color.WHITE);
+            }
             if (attack.usesRhythm() && attack.getRuntime().isInComboWindow() && attack.chainsToNext()) {
                 // Timing cue: a brief glint on the blade hand while a press would continue the combo.
                 // Strong for new players, subtle once the rhythm has been mastered.
@@ -1783,57 +1792,98 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         return best[0];
     }
 
-    /** Charge telegraph, dash streaks and the winded recovery of the breakthrough attack. */
+    /** Range arrow, dash effects and the winded recovery of the breakthrough attack. */
     private void drawBreakthroughEffects(AttackState attack) {
         com.cursedarchie.platformer.combat.BreakthroughConfig cfg = com.cursedarchie.platformer.combat.BreakthroughConfig.get();
         float dir = attack.isFacingLeft() ? -1f : 1f;
         float hx = hero.getPosition().x, hy = hero.getPosition().y;
         float footY = hy - hero.getSize() / 2f + .12f;
         float t = hero.getCombatStateTime();
-        if (attack.getPhase(hero) == AttackState.Phase.STARTUP) {
-            boolean locked = attack.isDirectionLocked();
-            float pulse = .6f + .4f * (float) Math.sin(effectClock * 24f);
-            // Direction indicator laid along the ground, ending where the dash would really stop.
-            float reach = dashReach(hx, footY + .1f, dir, cfg.dashDistance + .6f);
-            int segments = Math.max(1, (int) (reach / .32f));
-            for (int i = 0; i < segments; i++) {
-                float px = hx + dir * (.55f + i * .32f);
-                if (locked) spriteBatch.setColor(1f, .6f, .2f, .95f);
-                else spriteBatch.setColor(.55f, .85f, 1f, .3f + .25f * pulse);
-                barCentered(px, footY, .2f, locked ? .08f : .05f, 0f);
+        float planned = attack.getPlannedDistance();
+        float originX = attack.getDashOriginX();
+        AttackState.Phase phase = attack.getPhase(hero);
+        if (phase == AttackState.Phase.STARTUP) {
+            float p = clamp01(t / Math.max(.05f, attack.getStartup()));
+            float pulse = .6f + .4f * (float) Math.sin(effectClock * (14f + 20f * p));
+            // The arrow is exactly as long as the real dash: it ends where the hero will stop (shortened by walls).
+            drawDashArrow(hx, footY, dir, planned, p, pulse, 0f);
+            // Braced body glow that tightens as the charge fills.
+            spriteBatch.setColor(1f, .75f + .2f * p, .4f + .4f * p, .12f + .45f * p * pulse);
+            glow(hx, hy, .6f + .5f * p);
+            if (p > .7f) {
+                spriteBatch.setColor(1f, .95f, .7f, (p - .7f) * 2f * (.6f + .4f * pulse));
+                ring(hx, hy, .9f - .3f * p);
             }
-            float tipX = hx + dir * (.55f + segments * .32f);
-            for (int s = -1; s <= 1; s += 2) barFrom(tipX, footY, .3f, locked ? .08f : .05f, (dir < 0f ? 180f : 0f) + s * 150f * dir);
-            float sinceLock = t - (attack.getStartup() - cfg.lockTime);
-            if (sinceLock >= 0f && sinceLock < .14f) {
-                // Lock-in: a white snap ring tells the player the direction is final.
-                float k = sinceLock / .14f;
-                spriteBatch.setColor(1f, 1f, .9f, 1f - k);
-                ring(hx, hy, .5f + k * .8f);
-                barCentered(hx + dir * .9f, footY, .5f * (1f - k) + .2f, .1f, 0f);
+        } else if (phase == AttackState.Phase.ACTIVE) {
+            float sinceDash = Math.max(0f, t - attack.getStartup());
+            float walked = Math.abs(hx - originX);
+            // The arrow is erased as the hero runs over it: only the part still ahead is left.
+            if (!attack.isDashEnded()) drawDashArrow(hx + dir * .4f, footY, dir, Math.max(0f, planned - walked), 1f, 1f, walked);
+            // Acceleration burst at the start of the dash.
+            if (sinceDash < .12f) {
+                float k = sinceDash / .12f;
+                spriteBatch.setColor(1f, .95f, .75f, 1f - k);
+                for (int i = 0; i < 7; i++) barFrom(originX, hy + (i - 3) * .12f, .5f + 1.2f * k, .05f, dir < 0f ? 0f : 180f);
+                ring(originX, hy, .4f + k * .9f);
             }
-            if (attack.getStartup() - t <= .1f) {
-                // Ready: the body flares just before the dash.
-                spriteBatch.setColor(1f, .95f, .7f, .55f + .35f * pulse);
-                glow(hx, hy, 1f);
-                ring(hx, hy, .7f);
+            // Slash line along the covered path and fading afterimages behind the hero.
+            spriteBatch.setColor(1f, .92f, .7f, .75f);
+            barCentered((originX + hx) / 2f, hy, Math.max(.05f, walked), .07f, 0f);
+            spriteBatch.setColor(1f, .6f, .25f, .35f);
+            barCentered((originX + hx) / 2f, hy + .12f, Math.max(.05f, walked), .14f, 0f);
+            TextureRegion ghost = attack.isFacingLeft() ? heroAttackLeftAnimation.getKeyFrame(.26f, false) :
+                heroAttackRightAnimation.getKeyFrame(.26f, false);
+            for (int i = 1; i <= 4; i++) {
+                float gx = hx - dir * Math.min(walked, i * .45f);
+                spriteBatch.setColor(1f, .75f, .4f, .38f - i * .07f);
+                spriteBatch.draw(ghost, gx - hero.getSize() / 2f, hy - hero.getSize() / 2f, hero.getSize(), hero.getSize());
             }
-        } else if (attack.getPhase(hero) == AttackState.Phase.ACTIVE) {
-            for (int i = 0; i < 6; i++) {
-                spriteBatch.setColor(1f, .78f, .42f, .75f - i * .11f);
-                barCentered(hx - dir * (.55f + i * .34f), hy + ((i % 3) - 1) * .22f, .55f + i * .05f, .05f, 0f);
+            // First enemy struck: a stronger, longer reaction.
+            if (attack.getFirstHitTime() >= 0f) {
+                float k = clamp01((t - attack.getFirstHitTime()) / .25f);
+                if (k < 1f) {
+                    spriteBatch.setColor(1f, .9f, .6f, 1f - k);
+                    ring(attack.getFirstHitX(), attack.getFirstHitY(), .4f + k * 1.3f);
+                    for (int i = 0; i < 8; i++) barFrom(attack.getFirstHitX(), attack.getFirstHitY(), .2f + .8f * k, .06f, i * 45f);
+                }
             }
         } else {
-            float p = clamp01((t - attack.getActiveEnd()) / Math.max(.05f, cfg.recoveryTime));
-            // Deceleration skid and a shrinking amber bar: the hero is spent and open until it runs out.
-            spriteBatch.setColor(.72f, .68f, .6f, .6f * (1f - p));
-            for (int i = 0; i < 3; i++)
-                spriteBatch.draw(sceneryPixel, hx - dir * (.3f + i * .25f) - .12f, footY - .04f + i * .03f * p, .26f, .07f);
+            float since = t - attack.getActiveEnd();
+            float p = clamp01(since / Math.max(.05f, attack.getRuntime().duration() - attack.getActiveEnd()));
+            // Stop effect where the dash ended: dust, a ring and braking streaks.
+            if (since < .3f && attack.isDashEnded()) {
+                float k = since / .3f, ex = attack.getDashEndX();
+                spriteBatch.setColor(.85f, .8f, .7f, .8f * (1f - k));
+                ring(ex, footY + .1f, .3f + k * .8f);
+                for (int i = 0; i < 4; i++)
+                    spriteBatch.draw(sceneryPixel, ex - dir * (.2f + i * .22f * (1f + k)) - .1f, footY + k * .3f * (i % 2 + 1), .22f, .08f);
+            }
+            // The hero is spent and open until the amber bar runs out.
             float flicker = .7f + .3f * (float) Math.sin(effectClock * 30f);
             spriteBatch.setColor(1f, .55f, .25f, .8f * flicker);
             spriteBatch.draw(sceneryPixel, hx - .4f * (1f - p), hy + hero.getSize() / 2f + .12f, .8f * (1f - p), .05f);
         }
         spriteBatch.setColor(Color.WHITE);
+    }
+
+    /**
+     * The dash-range arrow: {@code length} long from just in front of {@code x}. {@code fill} (0..1) is how much
+     * of it is lit; its colour and thickness intensify with the charge.
+     */
+    private void drawDashArrow(float x, float y, float dir, float length, float fill, float pulse, float erased) {
+        if (length < .05f) return;
+        int segments = Math.max(1, (int) (length / .3f));
+        float seg = length / segments, thick = .05f + .05f * fill;
+        for (int i = 0; i < segments; i++) {
+            float px = x + dir * (.5f + (i + .5f) * seg);
+            boolean lit = (i + .5f) / segments <= fill;
+            if (lit) spriteBatch.setColor(1f, .55f + .4f * fill, .2f + .5f * fill, .55f + .4f * fill);
+            else spriteBatch.setColor(.6f, .8f, 1f, .18f + .12f * pulse);
+            barCentered(px, y, seg * .8f, thick, 0f);
+        }
+        float tipX = x + dir * (.5f + length);
+        if (fill >= .98f) spriteBatch.setColor(1f, 1f, .85f, .95f); else spriteBatch.setColor(1f, .7f, .35f, .35f + .5f * fill);
+        for (int s = -1; s <= 1; s += 2) barFrom(tipX, y, .3f, thick * 1.2f, (dir < 0f ? 0f : 180f) + s * 35f);
     }
 
     private void drawBreakthroughImpact() {

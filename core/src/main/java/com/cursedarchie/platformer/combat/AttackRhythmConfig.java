@@ -9,17 +9,17 @@ import com.badlogic.gdx.utils.JsonValue;
  * Loaded from {@code config/attack_rhythm.json}; any missing key or file falls back to the defaults below.
  */
 public final class AttackRhythmConfig {
-    /** A press this long (seconds) before the combo window opens counts as an early press. Earlier ones are ignored. */
-    public float earlyInputWindow = .12f;
     /** How long the combo window stays open once it has started. */
     public float comboWindowLength = .15f;
     /** Extra window length for gentler difficulty settings. */
     public float comboWindowBonus = 0f;
-    public float hurriedDamageMultiplier = .9f;
-    public float hurriedReachMultiplier = .9f;
-    public float hurriedKnockbackMultiplier = .9f;
-    public float hurriedStaggerMultiplier = .9f;
-    public float hurriedRecoveryMultiplier = 1.15f;
+    public float hurriedDamageMultiplier = .8f;
+    public float hurriedReachMultiplier = .85f;
+    public float hurriedKnockbackMultiplier = .6f;
+    public float hurriedStaggerMultiplier = .6f;
+    public float hurriedRecoveryMultiplier = 1.3f;
+    /** Flat seconds added to a hurried strike's recovery on top of the multiplier. */
+    public float hurriedRecoveryExtra = .2f;
     public float secondStrikeKnockbackMultiplier = 1.15f;
     /** Rhythm highlight: full strength for new players, fading to the minimum after this many clean combos. */
     public int highlightFadeCombos = 12;
@@ -48,7 +48,6 @@ public final class AttackRhythmConfig {
     public static AttackRhythmConfig parse(String json) {
         JsonValue root = new JsonReader().parse(json);
         AttackRhythmConfig d = new AttackRhythmConfig();
-        d.earlyInputWindow = root.getFloat("earlyInputWindow", d.earlyInputWindow);
         d.comboWindowLength = root.getFloat("comboWindowLength", d.comboWindowLength);
         d.comboWindowBonus = root.getFloat("comboWindowBonus", d.comboWindowBonus);
         d.hurriedDamageMultiplier = root.getFloat("hurriedDamageMultiplier", d.hurriedDamageMultiplier);
@@ -58,6 +57,7 @@ public final class AttackRhythmConfig {
         d.hurriedRecoveryMultiplier = root.getFloat("hurriedRecoveryMultiplier", d.hurriedRecoveryMultiplier);
         d.secondStrikeKnockbackMultiplier =
             root.getFloat("secondStrikeKnockbackMultiplier", d.secondStrikeKnockbackMultiplier);
+        d.hurriedRecoveryExtra = root.getFloat("hurriedRecoveryExtra", d.hurriedRecoveryExtra);
         d.highlightFadeCombos = root.getInt("highlightFadeCombos", d.highlightFadeCombos);
         d.highlightMinIntensity = root.getFloat("highlightMinIntensity", d.highlightMinIntensity);
         return d;

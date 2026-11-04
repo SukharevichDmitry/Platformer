@@ -72,7 +72,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         BreakthroughConfig c = BreakthroughConfig.get();
         float total = c.chargeTime + c.dashDuration + c.recoveryTime;
         return new AttackDefinition("hero_heavy", CombatHit.Type.MELEE_HEAVY, c.chargeTime, c.dashDuration,
-            c.recoveryTime, 1.9f, 1.3f, 1.05f, .04f, 2f, 10f, .3f, 2f, true, total, total, 0f);
+            c.recoveryTime, 1.9f, 1.3f, 1.05f, .04f, c.damageMultiplier, c.knockback, .3f, 2f, true, total, total, 0f);
     }
     private boolean breakthroughDashing;
     private int breakthroughImpactId;
@@ -108,7 +108,13 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         blockHeld = value && !isRolling() && !isStaggered() && !(combatStateMachine.getCurrentState() instanceof AttackState);
     }
     public boolean isBlocking() {
-        return blockHeld && !isStaggered() && blockBrokenRemaining == 0f && blockStability > 0f;
+        return blockHeld && !isStaggered() && blockBrokenRemaining == 0f && blockStability > 0f && !attackLocksBlock();
+    }
+    /** A heavy attack, or the recovery of a rushed strike, leaves the hero unable to guard. */
+    private boolean attackLocksBlock() {
+        if (!(combatStateMachine.getCurrentState() instanceof AttackState)) return false;
+        AttackState a = (AttackState) combatStateMachine.getCurrentState();
+        return a.isHeavy() || a.getRuntime() != null && a.getRuntime().isHurried() && a.isInRecovery(this);
     }
     public boolean canHeavyAttack() { return heavyCooldownRemaining == 0f; }
     public void beginHeavyCooldown() { heavyCooldownRemaining = BreakthroughConfig.get().cooldown; }
@@ -211,10 +217,14 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         if (alive) staggerRemaining = Math.max(staggerRemaining, hit.staggerDuration);
         // A hit breaks off a swing, a charge or a recovery; a dash in full flight carries on (no free cancel,
         // but also no free invulnerability: the damage above still lands).
-        if (alive && combatStateMachine.getCurrentState() instanceof AttackState &&
-            getHeavyState() != com.cursedarchie.platformer.combat.HeavyState.HEAVY_DASH)
+        com.cursedarchie.platformer.combat.HeavyState heavyState = getHeavyState();
+        boolean heavyHit = hit.type == CombatHit.Type.MELEE_HEAVY ||
+            hit.staggerDuration >= com.cursedarchie.platformer.combat.BreakthroughConfig.get().interruptStagger;
+        boolean keepsHeavy = heavyState == com.cursedarchie.platformer.combat.HeavyState.HEAVY_DASH ||
+            heavyState == com.cursedarchie.platformer.combat.HeavyState.HEAVY_CHARGE && !heavyHit;
+        if (combatStateMachine.getCurrentState() instanceof AttackState && (!alive || !keepsHeavy))
             combatStateMachine.changeState(new CombatIdleState());
-        if (hit.recoil > 0f && alive)
+        if (hit.recoil > 0f && alive && !keepsHeavy)
             body.setLinearVelocity(hit.direction == 0f ?
                     Math.copySign(hit.recoil, getPosition().x - hit.sourceX) : hit.direction * hit.recoil,
                 body.getLinearVelocity().y);

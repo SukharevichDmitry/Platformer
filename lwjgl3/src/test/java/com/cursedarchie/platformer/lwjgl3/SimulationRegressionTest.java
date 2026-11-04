@@ -1151,9 +1151,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
     private void checkAttackRhythm() {
         // Defaults load from the config file shape.
         com.cursedarchie.platformer.combat.AttackRhythmConfig parsed =
-            com.cursedarchie.platformer.combat.AttackRhythmConfig.parse("{\"earlyInputWindow\":0.2}");
-        closeTo(parsed.earlyInputWindow, .2f, "config value was not read");
-        closeTo(parsed.hurriedRecoveryMultiplier, 1.15f, "missing config keys must keep their defaults");
+            com.cursedarchie.platformer.combat.AttackRhythmConfig.parse("{\"hurriedDamageMultiplier\":0.7}");
+        closeTo(parsed.hurriedDamageMultiplier, .7f, "config value was not read");
+        closeTo(parsed.hurriedRecoveryMultiplier, 1.3f, "missing config keys must keep their defaults");
 
         // A single press is a full, normal strike and never hurried.
         float[] hurried = new float[1];
@@ -1190,15 +1190,24 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             com.cursedarchie.platformer.combat.AttackRuntime rushed =
                 new com.cursedarchie.platformer.combat.AttackRuntime(def, false);
             normal.advance(.01f);
-            rushed.advance(def.nextInputTime - cfg.earlyInputWindow + .01f);
+            rushed.advance(def.nextInputTime - .02f);
             if (rushed.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT)
                 throw new AssertionError("Press just before the window was not classified as early");
             if (rushed.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT)
                 throw new AssertionError("A second press of the same strike must be ignored");
-            if (normal.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT)
-                throw new AssertionError("A press while the swing has barely begun must be ignored, not punished");
-            if (!(rushed.duration() > normal.duration()))
+            if (normal.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT)
+                throw new AssertionError("A press while the swing has barely begun must be a hurried early press");
+            normal.advance(def.nextInputTime);   // later pressing, even in the window, never rescues the combo
+            if (normal.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT || !normal.isHurried())
+                throw new AssertionError("Mashing before the window must not reach the combo");
+            com.cursedarchie.platformer.combat.AttackRuntime clean =
+                new com.cursedarchie.platformer.combat.AttackRuntime(def, false);
+            float expectedExtra = def.recoveryDuration * (cfg.hurriedRecoveryMultiplier - 1f) + cfg.hurriedRecoveryExtra;
+            closeTo(rushed.duration() - clean.duration(), expectedExtra, "Hurried recovery must be longer by the configured amount");
+            if (!(rushed.duration() > clean.duration() + .15f))
                 throw new AssertionError("Hurried strike did not get a longer recovery");
+            if (cfg.hurriedDamageMultiplier > .85f || cfg.hurriedKnockbackMultiplier > .7f || cfg.hurriedStaggerMultiplier > .7f)
+                throw new AssertionError("Hurried strike is not weak enough");
             com.badlogic.gdx.math.Rectangle a = new com.badlogic.gdx.math.Rectangle();
             com.badlogic.gdx.math.Rectangle b = new com.badlogic.gdx.math.Rectangle();
             com.badlogic.gdx.math.Vector2 origin = new com.badlogic.gdx.math.Vector2(10f, 2.5f);
@@ -1301,23 +1310,29 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             w.update(GameWorld.FIXED_STEP);
             w.getHeroController().keyDown(Input.Keys.Z);
             w.getHeroController().keyUp(Input.Keys.Z);
-            w.getHeroController().keyDown(Input.Keys.LEFT);
             int charge = 0, dash = 0, recover = 0;
+            float plannedDistance = Float.NaN, lockedX = Float.NaN;
             float dashStartX = Float.NaN, dashEndX = Float.NaN, maxChargeSpeed = 0f;
             boolean sawRecoveryAttackIgnored = true;
             Object recoveryState = null;
             for (int i = 1; i <= 120; i++) {
+                if (i == 2) w.getHeroController().keyDown(Input.Keys.LEFT);   // retreat input must change nothing
                 if (i == 15) { w.getHeroController().keyUp(Input.Keys.LEFT); w.getHeroController().keyDown(Input.Keys.RIGHT); }
                 if (i == 40) { w.getHeroController().keyUp(Input.Keys.RIGHT); w.getHeroController().keyDown(Input.Keys.LEFT); }
                 w.update(GameWorld.FIXED_STEP);
                 com.cursedarchie.platformer.combat.HeavyState st = hero.getHeavyState();
                 if (st == CHARGE) {
                     charge++;
-                    // The very first frame still carries the walking speed from before the charge began.
-                    if (charge > 2)
-                        maxChargeSpeed = Math.max(maxChargeSpeed, Math.abs(hero.getBody().getLinearVelocity().x));
+                    maxChargeSpeed = Math.max(maxChargeSpeed, Math.abs(hero.getBody().getLinearVelocity().x));
+                    if (Float.isNaN(lockedX)) lockedX = hero.getPosition().x;
+                    if (hero.isFacingLeft()) throw new AssertionError("The hero turned while charging");
+                    plannedDistance = ((com.cursedarchie.platformer.actors.hero.states.combat.AttackState)
+                        hero.getCombatStateMachine().getCurrentState()).getPlannedDistance();
+                    if (Math.abs(hero.getPosition().x - lockedX) > .001f)
+                        throw new AssertionError("The charging hero slid: " + (hero.getPosition().x - lockedX));
                 } else if (st == DASH) {
                     dash++;
+                    if (maxChargeSpeed > 0.001f) throw new AssertionError("Charge moved the hero: " + maxChargeSpeed);
                     if (Float.isNaN(dashStartX)) dashStartX = hero.getPosition().x;
                     dashEndX = hero.getPosition().x;
                 } else if (st == RECOVER) {
@@ -1332,13 +1347,18 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 }
             }
             w.getHeroController().keyUp(Input.Keys.LEFT);
-            if (Math.abs(charge - 44) > 3 || Math.abs(dash - 20) > 3 || Math.abs(recover - 38) > 4)
+            com.cursedarchie.platformer.combat.BreakthroughConfig bc = com.cursedarchie.platformer.combat.BreakthroughConfig.get();
+            int dashLimit = Math.round(bc.dashDuration / GameWorld.FIXED_STEP) + 2;
+            if (Math.abs(charge - Math.round(bc.chargeTime / GameWorld.FIXED_STEP)) > 3 || dash > dashLimit ||
+                Math.abs(recover - Math.round(bc.recoveryTime / GameWorld.FIXED_STEP)) > 4)
                 throw new AssertionError("Breakthrough phase lengths off: " + charge + "/" + dash + "/" + recover);
-            if (maxChargeSpeed > Hero.WALK_SPEED * .25f + .2f)
-                throw new AssertionError("Charge did not restrict movement: " + maxChargeSpeed);
+            if (Math.abs(plannedDistance - bc.dashDistance) > .01f)
+                throw new AssertionError("Open floor must plan the full distance: " + plannedDistance);
             float travelled = dashEndX - dashStartX;
-            if (travelled < 2.4f || travelled > 3.6f)
-                throw new AssertionError("Dash travelled " + travelled + " instead of about 3 units to the right");
+            if (Math.abs(travelled - plannedDistance) > .6f)   // dashStartX is sampled one frame in
+                throw new AssertionError("Dash covered " + travelled + " but the arrow showed " + plannedDistance);
+            if (hero.isFacingLeft() && hero.getPosition().x < 10f)
+                throw new AssertionError("The dash did not go right (direction was locked at the start)");
             if (!sawRecoveryAttackIgnored) throw new AssertionError("Recovery was cancelled by an attack press");
             if (hero.getHeavyState() != NONE) throw new AssertionError("Breakthrough never returned to idle");
         } finally { w.dispose(); }
@@ -1386,6 +1406,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 if (hero.getHeavyState() == DASH) dashSteps++;
             }
             if (hero.getPosition().x > 11.7f) throw new AssertionError("Dash went through a wall: " + hero.getPosition().x);
+            if (hero.getPosition().x < 11.7f - hero.getSize() - .2f)
+                throw new AssertionError("Dash stopped far short of the wall: " + hero.getPosition().x);
             if (hero.getBreakthroughImpactId() == impacts) throw new AssertionError("Wall hit produced no impact");
             if (dashSteps > 16) throw new AssertionError("Dash kept going after hitting the wall: " + dashSteps);
             closeTo(behind.getHealth(), behindHealth, "Dash hit an enemy through a wall");
@@ -1487,6 +1509,84 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (brute.getSize() >= 2f && endX - startX > 2.9f)
                 throw new AssertionError("A heavy enemy did not slow the dash: " + (endX - startX));
         } finally { heavy.dispose(); }
+
+        // 8) The arrow is shortened by a wall, ignores a wall closer than the minimum, and a weak hit keeps the charge.
+        GameWorld arrow = combatFixture();
+        try {
+            parkEnemies(arrow);
+            Hero hero = arrow.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            addLevelWall(arrow, 12.6f, 2.5f, .1f, 1.5f);
+            arrow.update(GameWorld.FIXED_STEP);
+            arrow.getHeroController().keyDown(Input.Keys.Z);
+            arrow.getHeroController().keyUp(Input.Keys.Z);
+            for (int i = 0; i < 3; i++) arrow.update(GameWorld.FIXED_STEP);
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState charging =
+                (com.cursedarchie.platformer.actors.hero.states.combat.AttackState) hero.getCombatStateMachine().getCurrentState();
+            if (!(charging.getPlannedDistance() < 2.5f) || !charging.isWallLimited())
+                throw new AssertionError("A wall ahead did not shorten the arrow: " + charging.getPlannedDistance());
+            Enemy src = arrow.getEnemies().first();
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 0.1f, src, hero, 1f, 1f, 3f, .08f, true));
+            arrow.update(GameWorld.FIXED_STEP);
+            if (hero.getHeavyState() != CHARGE) throw new AssertionError("A light hit interrupted the charge");
+            if (Math.abs(hero.getBody().getLinearVelocity().x) > .001f) throw new AssertionError("A light hit pushed the charging hero");
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_HEAVY, 0.1f, src, hero, 1f, 1f, 3f, .24f, true));
+            arrow.update(GameWorld.FIXED_STEP);
+            if (hero.getHeavyState() != NONE) throw new AssertionError("A heavy hit did not interrupt the charge");
+        } finally { arrow.dispose(); }
+
+        // 9) A hero who dies mid-charge does not go on to dash.
+        GameWorld dead = combatFixture();
+        try {
+            parkEnemies(dead);
+            Hero hero = dead.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            dead.update(GameWorld.FIXED_STEP);
+            dead.getHeroController().keyDown(Input.Keys.Z);
+            dead.getHeroController().keyUp(Input.Keys.Z);
+            for (int i = 0; i < 10; i++) dead.update(GameWorld.FIXED_STEP);
+            hero.setAlive(false);
+            for (int i = 0; i < 90; i++) dead.update(GameWorld.FIXED_STEP);
+            if (hero.getHeavyState() == DASH || hero.isBreakthroughDashing())
+                throw new AssertionError("A dead hero kept charging or dashing");
+        } finally { dead.dispose(); }
+
+        // 10) A rushed strike leaves a real recovery: no block, no queued strike, mashing does not shorten it.
+        GameWorld rush = combatFixture();
+        try {
+            parkEnemies(rush);
+            Hero hero = rush.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.setFacingLeft(false);
+            rush.update(GameWorld.FIXED_STEP);
+            rush.getHeroController().keyDown(Input.Keys.X);
+            rush.getHeroController().keyUp(Input.Keys.X);
+            for (int i = 0; i < 4; i++) rush.update(GameWorld.FIXED_STEP);
+            rush.getHeroController().keyDown(Input.Keys.X);   // far too early
+            rush.getHeroController().keyUp(Input.Keys.X);
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState first = heroAttack(hero);
+            if (first == null || !first.getRuntime().isHurried()) throw new AssertionError("An early press did not hurry the strike");
+            float expected = first.getRuntime().duration();
+            rush.getHeroController().keyDown(Input.Keys.B);   // guard held through the recovery
+            boolean blockedInRecovery = false, otherStrike = false;
+            int steps = 4;
+            for (int i = 0; i < 120 && heroAttack(hero) == first; i++) {
+                rush.getHeroController().keyDown(Input.Keys.X);   // mashing during the whole strike
+                rush.getHeroController().keyUp(Input.Keys.X);
+                rush.update(GameWorld.FIXED_STEP);
+                steps++;
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState a = heroAttack(hero);
+                if (a != null && a != first) otherStrike = true;
+                if (a == first && a.isInRecovery(hero) && hero.isBlocking()) blockedInRecovery = true;
+            }
+            rush.getHeroController().keyUp(Input.Keys.B);
+            if (blockedInRecovery) throw new AssertionError("The hero could guard during a rushed recovery");
+            if (otherStrike) throw new AssertionError("Mashing during a rushed strike started another strike");
+            if (steps * GameWorld.FIXED_STEP < expected - .05f)
+                throw new AssertionError("Mashing shortened a rushed recovery: " + steps * GameWorld.FIXED_STEP + " < " + expected);
+        } finally { rush.dispose(); }
     }
 
     private void checkArrowArcPhysics() {

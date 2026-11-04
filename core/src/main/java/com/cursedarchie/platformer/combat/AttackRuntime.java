@@ -36,7 +36,8 @@ public final class AttackRuntime {
     /** Total length of this swing: a swing that struck nothing pays the definition's miss recovery. */
     public float duration() {
         float hurriedExtra = quality == AttackQuality.HURRIED ?
-            definition.recoveryDuration * (AttackRhythmConfig.get().hurriedRecoveryMultiplier - 1f) : 0f;
+            definition.recoveryDuration * (AttackRhythmConfig.get().hurriedRecoveryMultiplier - 1f) +
+                AttackRhythmConfig.get().hurriedRecoveryExtra : 0f;
         return definition.duration + hurriedExtra + (struck.size > 0 ? 0f : definition.missRecovery);
     }
 
@@ -60,13 +61,11 @@ public final class AttackRuntime {
     /**
      * Classifies one fresh attack press (the caller has already filtered out held-button repeats).
      * Only the first classified press counts: further presses are ignored and never queue, so spamming
-     * cannot extend the combo or cut recovery short. A press so early that the swing has barely begun is
-     * ignored without penalty. {@code chains} says whether a correct press continues into a second strike.
+     * cannot extend the combo or cut recovery short. Too early is hurried, in the window is a combo, too late is a new attack. {@code chains} says whether a correct press continues into a second strike.
      */
     public InputResult registerAttackPress(boolean chains) {
         if (inputResult != InputResult.NO_INPUT) return InputResult.NO_INPUT;
         float start = comboWindowStart();
-        if (elapsed + EPSILON < start - AttackRhythmConfig.get().earlyInputWindow) return InputResult.NO_INPUT;
         if (elapsed + EPSILON < start) {
             inputResult = InputResult.EARLY_INPUT;
             quality = AttackQuality.HURRIED;
