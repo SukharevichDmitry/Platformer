@@ -84,6 +84,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
         checkArcherMemoryAndMirroredTurn();
+        checkArrowCeilingAndSightLoss();
         checkMeleeReachMatchesHitbox();
         checkRapidTurnAndAwareness();
         checkEnemyLungeRecovery();
@@ -550,6 +551,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             platformEnemy.getBody().setLinearVelocity(0f, 0f);
             hero.getBody().setTransform(10.05f, 5.2f, 0f);
             hero.getBody().setLinearVelocity(0f, 0f);
+            float enemyHealthBefore = platformEnemy.getHealth();
             boolean bounced = false;
             boolean enemyStaggered = false;
             for (int i = 0; i < 60 && !bounced; i++) {
@@ -561,6 +563,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (!bounced) throw new AssertionError("Landing on an enemy head did not bounce the hero off");
             if (!enemyStaggered && !platformEnemy.isStaggered())
                 throw new AssertionError("Enemy showed no 'hit from above' reaction");
+            closeTo(platformEnemy.getHealth(), enemyHealthBefore, "A plain landing must not damage the enemy");
+            if (hero.getInvulnerabilityRemaining() > 0f)
+                throw new AssertionError("Landing on an enemy granted the hero invulnerability");
             for (int i = 0; i < 30; i++) headWorld.update(GameWorld.FIXED_STEP);
             if (hero.isGrounded() && hero.getFootContacts() == 0)
                 throw new AssertionError("Hero is still being supported by an enemy head");
@@ -1050,6 +1055,53 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             for (int i = 0; i < 30 && !flipped; i++) { m.update(GameWorld.FIXED_STEP); flipped = foe.isFacingLeft(); }
             if (!flipped) throw new AssertionError("Enemy kept facing away after a right-to-left jump-over");
         } finally { m.dispose(); }
+    }
+
+    private void checkArrowCeilingAndSightLoss() {
+        GameWorld w = new GameWorld();
+        try {
+            Hero hero = w.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy shooter = EnemyFactory.createScavenger(w.getWorld(), new Vector2(15f, 2.5f));
+            shooter.setActive(false);
+            com.badlogic.gdx.physics.box2d.BodyDef def = new com.badlogic.gdx.physics.box2d.BodyDef();
+            def.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
+            def.position.set(13f, 4.2f);
+            com.badlogic.gdx.physics.box2d.Body ceiling = w.getWorld().createBody(def);
+            ceiling.setUserData("level");
+            com.badlogic.gdx.physics.box2d.PolygonShape box = new com.badlogic.gdx.physics.box2d.PolygonShape();
+            box.setAsBox(3f, .05f);
+            ceiling.createFixture(box, 0f);
+            box.dispose();
+            w.fireArrows(shooter, new Vector2(-.4f, .9f), RangedAttackConfig.NORMAL);
+            float maxY = 0f;
+            for (int i = 0; i < 90; i++) {
+                for (GameWorld.Arrow a : w.getArrows()) maxY = Math.max(maxY, a.position.y);
+                w.update(GameWorld.FIXED_STEP);
+            }
+            if (maxY > 4.4f) throw new AssertionError("Arrow passed through the ceiling: " + maxY);
+            if (w.getArrows().size != 0) throw new AssertionError("Arrow was not removed after hitting the ceiling");
+        } finally { w.dispose(); }
+        // An archer already drawing its bow finishes the shot even if the hero briefly leaves view.
+        GameWorld v = new GameWorld();
+        try {
+            Hero hero = v.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy archer = EnemyFactory.createScavenger(v.getWorld(), new Vector2(15f, 2.5f));
+            archer.setFacingLeft(true);
+            v.addEnemy(archer);
+            archer.setCanSeeHero(true);
+            if (!archer.beginRangedAttack(RangedAttackConfig.NORMAL, hero))
+                throw new AssertionError("Archer refused to begin a clear shot");
+            archer.setCanSeeHero(false);
+            boolean fired = false;
+            for (int i = 0; i < 120 && !fired; i++) {
+                v.update(GameWorld.FIXED_STEP);
+                archer.setCanSeeHero(false);
+                fired = v.getArrows().size > 0 || hero.getHealth() < hero.getMaxHealth();
+            }
+            if (!fired) throw new AssertionError("Archer dropped its shot as soon as sight was lost");
+        } finally { v.dispose(); }
     }
 
     private void checkArrowArcPhysics() {
