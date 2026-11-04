@@ -49,6 +49,13 @@ def build_combat():
                                       (g.sweep(300, 700, .2) * g.decay(.2, 12), 0, .25)), .6)
     s["raider_guard"] = g.finish(g.mix((g.sweep(500, 900, .08) * g.decay(.08, 30), 0, .6),
                                        (g.highpass(g.noise(.06), 2500) * g.decay(.06, 80), 0, .8)), .55)
+    # Head stomp: soft low thump with a short squeak of leather.
+    s["head_stomp"] = g.finish(g.mix((g.sweep(150, 70, .14) * g.decay(.14, 24), 0, 1.0),
+                                     (g.sweep(900, 600, .06) * g.decay(.06, 50), .02, .25)), .65)
+    # Alert: short rising two-note ping, clearly "noticed you".
+    ping = g.np.sin(2 * g.np.pi * 700 * g.time(.07)) * g.decay(.07, 40)
+    ping2 = g.np.sin(2 * g.np.pi * 1000 * g.time(.09)) * g.decay(.09, 35)
+    s["enemy_alert"] = g.finish(g.mix((ping, 0, .8), (ping2, .06, 1.0)), .5)
     # Overseer: rising shimmer while casting, bell chime when the buff lands.
     t = g.time(1.0)
     shimmer = g.sweep(300, 900, 1.0, (1.0, .4)) * g.swell(1.0, .85) * (.6 + .4 * g.np.sin(2 * g.np.pi * 9 * t))

@@ -59,7 +59,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         MELEE_WINDUP, MELEE_STRIKE,
         RETREAT_DASH, DODGE,
         RAIDER_DASH, RAIDER_GUARD,
-        OVERSEER_CAST, OVERSEER_BUFF, BREAKER_WINDUP, BREAKER_SLAM
+        OVERSEER_CAST, OVERSEER_BUFF, BREAKER_WINDUP, BREAKER_SLAM,
+        ALERT
     }
 
     /** Fraction of the draw after which the aim direction is frozen. */
@@ -407,6 +408,44 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isBlocking() { return blockRemaining > 0f; }
     /** Test hook: raise the raider guard immediately. */
     public void forceBlockForTest() { blockRemaining = RAIDER_BLOCK_DURATION; }
+    /** What the enemy currently knows about the hero; drives the alert/lost/search presentation. */
+    public enum Awareness { UNAWARE, ALERT, TRACKING, LOST, SEARCHING }
+    public static final float TURN_FLASH = .18f, TURN_ATTACK_GRACE = .2f;
+    private Awareness awareness = Awareness.UNAWARE;
+    private float awarenessTime, turnFlashRemaining, turnGraceRemaining, searchLookRemaining;
+    public Awareness getAwareness() { return awareness; }
+    public float getAwarenessTime() { return awarenessTime; }
+    public float getTurnFlashRemaining() { return turnFlashRemaining; }
+    public void setAwareness(Awareness value) {
+        if (value == awareness) return;
+        if (value == Awareness.ALERT) emitCue(Cue.ALERT);
+        awareness = value;
+        awarenessTime = 0f;
+        searchLookRemaining = .65f;
+    }
+    /**
+     * Snap to face a world x without any patrol-style turn animation. A short grace period follows so a
+     * freshly turned enemy always goes through its attack startup instead of striking on the same frame.
+     */
+    public void turnToward(float x) {
+        if (Math.abs(x - getPosition().x) < .15f) return;   // hero straight above/below: keep facing
+        boolean wantLeft = x < getPosition().x;
+        if (wantLeft == facingLeft) return;
+        facingLeft = wantLeft;
+        turnFlashRemaining = TURN_FLASH;
+        turnGraceRemaining = TURN_ATTACK_GRACE;
+        attackRequested = false;
+    }
+    private float stompCooldownRemaining, stompFlashRemaining;
+    public float getStompFlashRemaining() { return stompFlashRemaining; }
+    /** Hero landed on this enemy's head: brief stagger, no damage; returns false while the cooldown runs. */
+    public boolean takeHeadStomp() {
+        if (!alive || stompCooldownRemaining > 0f) return false;
+        stompCooldownRemaining = .8f;
+        stompFlashRemaining = .3f;
+        applyStagger(.28f);
+        return true;
+    }
     public void applyStagger(float seconds) {
         if (!alive) return;
         staggerRemaining = Math.max(staggerRemaining, seconds);
@@ -485,6 +524,20 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         blockBreakFlashRemaining = Math.max(0f, blockBreakFlashRemaining - delta);
         dashCooldownRemaining = Math.max(0f, dashCooldownRemaining - delta);
         flankRemaining = Math.max(0f, flankRemaining - delta);
+        stompCooldownRemaining = Math.max(0f, stompCooldownRemaining - delta);
+        turnFlashRemaining = Math.max(0f, turnFlashRemaining - delta);
+        turnGraceRemaining = Math.max(0f, turnGraceRemaining - delta);
+        awarenessTime += delta;
+        // Searching: after reaching the last known position the enemy looks around instead of freezing.
+        if (awareness == Awareness.SEARCHING && !isAttacking() && !isStaggered() && !isRangedBusy()) {
+            searchLookRemaining -= delta;
+            if (searchLookRemaining <= 0f) {
+                facingLeft = !facingLeft;
+                turnFlashRemaining = TURN_FLASH;
+                searchLookRemaining = .65f;
+            }
+        }
+        stompFlashRemaining = Math.max(0f, stompFlashRemaining - delta);
         buffRemaining = Math.max(0f, buffRemaining - delta);
         if (dashWindupRemaining > 0f) {
             dashWindupRemaining = Math.max(0f, dashWindupRemaining - delta);
@@ -944,7 +997,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             isStaggered() || isDodging() || isRetreating() || isActionRecovering() ||
             isRangedWindingUp() || combatStateMachine.getCurrentState() instanceof AttackState) return;
 
-        if (isCasting() || !attackPermit) return;
+        if (isCasting() || !attackPermit || turnGraceRemaining > 0f) return;
         lungeRequested = "default".equals(archetypeId) && nextAttackLunge ||
             "infiltrator".equals(archetypeId) && flankRemaining > 0f;
         slamRequested = "heavy_hunter".equals(archetypeId) && nextSlam;

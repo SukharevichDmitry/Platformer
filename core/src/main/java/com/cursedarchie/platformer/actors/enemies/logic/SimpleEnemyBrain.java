@@ -32,6 +32,20 @@ public class SimpleEnemyBrain implements EnemyBrain {
 
         boolean scavenger = "scavenger".equals(enemy.getArchetypeId());
         float distance = Math.abs(enemy.getHeroLastKnownPos().x - enemy.getPosition().x);
+        // Awareness: unaware -> alert (brief) -> tracking; losing sight heads for the last known spot, then searches.
+        if (enemy.isCanSeeHero()) {
+            if (enemy.getAwareness() == Enemy.Awareness.UNAWARE || enemy.getAwareness() == Enemy.Awareness.LOST ||
+                enemy.getAwareness() == Enemy.Awareness.SEARCHING) {
+                enemy.setAwareness(Enemy.Awareness.ALERT);
+                enemy.turnToward(enemy.getHeroLastKnownPos().x);
+            } else if (enemy.getAwareness() == Enemy.Awareness.ALERT && noticeRemaining == 0f) {
+                enemy.setAwareness(Enemy.Awareness.TRACKING);
+            }
+        } else if (searchRemaining > 0f) {
+            enemy.setAwareness(distance > 1f ? Enemy.Awareness.LOST : Enemy.Awareness.SEARCHING);
+        } else {
+            enemy.setAwareness(Enemy.Awareness.UNAWARE);
+        }
         float retreatDirection = enemy.getHeroLastKnownPos().x < enemy.getPosition().x ? 1f : -1f;
 
         if (enemy.isStaggered() || enemy.isDodging() || enemy.isActionRecovering()) {
@@ -42,6 +56,10 @@ public class SimpleEnemyBrain implements EnemyBrain {
             enemy.setIntent(RETREAT);
             return;
         }
+        // Hero jumped over or slipped past: swing to face the last known position at once.
+        if ((enemy.isCanSeeHero() || searchRemaining > 0f) && !enemy.isAttacking() && !enemy.isRangedBusy() &&
+            !enemy.isBlocking() && !enemy.isCasting() && !enemy.isDashPhase())
+            enemy.turnToward(enemy.getHeroLastKnownPos().x);
         String id = enemy.getArchetypeId();
         boolean overseer = "overseer".equals(id);
         // Support stays in the rear: back away when the hero closes in, hang back otherwise.

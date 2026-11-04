@@ -156,6 +156,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         updateArrows(delta);
         // Contacts from this step affect input on the next step (including buffered jumps).
         refreshHeroGrounding();
+        resolveHeadLandings();
         detectFeedbackEvents();
 
         updateCurrentRoom();
@@ -202,7 +203,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     public static final class CombatEvent {
         public enum Kind { HIT_LIGHT, HIT_HEAVY, BLOCK_METAL, BLOCK_BREAK, BLOCK_HERO, BLOCK_HERO_HEAVY,
-            WHIFF, WALL_BUMP }
+            WHIFF, WALL_BUMP, HEAD_STOMP }
         public static final float DURATION = .22f;
         public final CombatHit hit;
         public final Kind kind;
@@ -275,7 +276,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         boolean supported = hero.getFootContacts() > 0;
         if (!supported) {
             for (Contact contact : world.getContactList()) {
-                if (isEnemyHeadSupport(contact) || isOneWaySupport(contact)) {
+                if (isOneWaySupport(contact)) {
                     supported = true;
                     break;
                 }
@@ -343,6 +344,26 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             breakHitThisSwing = true;
             roomManager.saveGeneratedRun(location);
             persistenceRevision++;
+        }
+    }
+
+    /**
+     * An enemy's head is never a platform: landing on it bounces the hero off to the side with a small hop,
+     * and the enemy takes a short "hit from above" stagger. A per-enemy cooldown stops it chaining forever.
+     */
+    private void resolveHeadLandings() {
+        for (Contact contact : world.getContactList()) {
+            if (!isEnemyHeadSupport(contact)) continue;
+            Object ownerA = contact.getFixtureA().getBody().getUserData();
+            Object ownerB = contact.getFixtureB().getBody().getUserData();
+            Enemy enemy = ownerA instanceof Enemy ? (Enemy) ownerA : ownerB instanceof Enemy ? (Enemy) ownerB : null;
+            if (enemy == null || hero.getBody().getLinearVelocity().y > 1.5f) continue;
+            float side = Math.signum(hero.getPosition().x - enemy.getPosition().x);
+            if (side == 0f) side = hero.isFacingLeft() ? 1f : -1f;
+            hero.getBody().setLinearVelocity(side * 4f, 6.5f);
+            if (enemy.takeHeadStomp())
+                combatEvents.add(new CombatEvent(CombatEvent.Kind.HEAD_STOMP, enemy.getPosition().x,
+                    enemy.getPosition().y + enemy.getSize() / 2f, side));
         }
     }
 

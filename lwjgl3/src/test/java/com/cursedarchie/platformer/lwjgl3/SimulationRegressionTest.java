@@ -69,7 +69,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkHeroMovementAndContacts();
         checkDropThroughPlatform();
         checkJumpBuffer();
-        checkEnemyHeadJump();
+        checkEnemyHeadBounce();
         checkRenderRateConsistency();
         checkUnifiedAttackModel();
         checkHeroAttackTimingAndDirection();
@@ -84,6 +84,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
         checkMeleeReachMatchesHitbox();
+        checkRapidTurnAndAwareness();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -518,7 +519,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         }
     }
 
-    private void checkEnemyHeadJump() {
+    private void checkEnemyHeadBounce() {
         GameWorld headWorld = combatFixture();
         try {
             Enemy platformEnemy = null;
@@ -542,12 +543,26 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                     break;
                 }
             }
-            if (!landedOnEnemy) throw new AssertionError("Enemy head did not support the hero");
-            headWorld.getHeroController().keyDown(Input.Keys.SPACE);
-            headWorld.update(GameWorld.FIXED_STEP);
-            if (hero.getBody().getLinearVelocity().y <= 0f)
-                throw new AssertionError("Hero could not jump from the enemy head");
-            headWorld.getHeroController().keyUp(Input.Keys.SPACE);
+            if (landedOnEnemy) throw new AssertionError("Enemy head must not act as a stable platform");
+            // Landing on a head bounces the hero off sideways with a hop and staggers the enemy briefly.
+            platformEnemy.getBody().setTransform(10f, 2.5f, 0f);
+            platformEnemy.getBody().setLinearVelocity(0f, 0f);
+            hero.getBody().setTransform(10.05f, 5.2f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            boolean bounced = false;
+            boolean enemyStaggered = false;
+            for (int i = 0; i < 60 && !bounced; i++) {
+                headWorld.update(GameWorld.FIXED_STEP);
+                if (platformEnemy.isStaggered()) enemyStaggered = true;
+                if (Math.abs(hero.getBody().getLinearVelocity().x) > 2f && hero.getBody().getLinearVelocity().y > 1f)
+                    bounced = true;
+            }
+            if (!bounced) throw new AssertionError("Landing on an enemy head did not bounce the hero off");
+            if (!enemyStaggered && !platformEnemy.isStaggered())
+                throw new AssertionError("Enemy showed no 'hit from above' reaction");
+            for (int i = 0; i < 30; i++) headWorld.update(GameWorld.FIXED_STEP);
+            if (hero.isGrounded() && hero.getFootContacts() == 0)
+                throw new AssertionError("Hero is still being supported by an enemy head");
             platformEnemy.getBody().setTransform(14f, 6f, 0f);
             platformEnemy.getBody().setLinearVelocity(0f, 0f);
             hero.getBody().setTransform(13f, 6f, 0f);
@@ -958,6 +973,39 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 if (e.isTargetInStandardReach(hero))
                     throw new AssertionError(type + ": enemy reaches the hero behind it");
             }
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkRapidTurnAndAwareness() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(18.5f, 2.5f, 0f);
+            Enemy foe = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(20f, 2.5f));
+            foe.setBrain(new SimpleEnemyBrain(fight));
+            foe.setFacingLeft(false);   // looking away from the hero standing on its left
+            fight.addEnemy(foe);
+            boolean turned = false;
+            boolean attackedWithoutStartup = false;
+            for (int i = 0; i < 30 && !turned; i++) {
+                fight.update(GameWorld.FIXED_STEP);
+                if (foe.isFacingLeft()) turned = true;
+            }
+            if (!turned) throw new AssertionError("Enemy did not turn to the hero at once");
+            if (foe.isAttacking() && foe.getCombatStateTime() <= 0f) attackedWithoutStartup = true;
+            if (attackedWithoutStartup) throw new AssertionError("Enemy attacked on the frame it turned");
+            if (foe.getAwareness() == Enemy.Awareness.UNAWARE)
+                throw new AssertionError("Enemy never registered the hero");
+            // Hero jumps over: the enemy swings round to the last known position without a patrol-style turn.
+            hero.getBody().setTransform(21.5f, 2.5f, 0f);
+            boolean flipped = false;
+            for (int i = 0; i < 30 && !flipped; i++) {
+                fight.update(GameWorld.FIXED_STEP);
+                if (!foe.isFacingLeft()) flipped = true;
+            }
+            if (!flipped) throw new AssertionError("Enemy kept facing away after the hero crossed over it");
         } finally {
             fight.dispose();
         }

@@ -229,6 +229,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_HERO, Gdx.audio.newSound(Gdx.files.internal("sfx/block_hero.wav")));
         eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_HERO_HEAVY, eventSounds.get(GameWorld.CombatEvent.Kind.BLOCK_HERO));
         eventSounds.put(GameWorld.CombatEvent.Kind.WHIFF, Gdx.audio.newSound(Gdx.files.internal("sfx/whiff.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.HEAD_STOMP, Gdx.audio.newSound(Gdx.files.internal("sfx/head_stomp.wav")));
         eventSounds.put(GameWorld.CombatEvent.Kind.WALL_BUMP, Gdx.audio.newSound(Gdx.files.internal("sfx/wall_bump.wav")));
         staggerPopSound = Gdx.audio.newSound(Gdx.files.internal("sfx/stagger_pop.wav"));
         deathSound = Gdx.audio.newSound(Gdx.files.internal("sfx/death.wav"));
@@ -639,6 +640,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             case OVERSEER_BUFF: return "overseer_buff";
             case BREAKER_WINDUP: return "breaker_windup";
             case BREAKER_SLAM: return "breaker_slam";
+            case ALERT: return "enemy_alert";
             default: return "archer_dodge";
         }
     }
@@ -655,6 +657,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             case OVERSEER_CAST: case OVERSEER_BUFF: return .4f;
             case BREAKER_WINDUP: return .5f;
             case BREAKER_SLAM: return .85f;
+            case ALERT: return .4f;
             default: return .35f;
         }
     }
@@ -1787,6 +1790,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
         for (Enemy enemy : enemies) {
             if (enemy.isAlive()) {
+                drawAwarenessMark(enemy);
                 if ("scavenger".equals(enemy.getArchetypeId())) {
                     drawArcher(enemy);
                     continue;
@@ -1825,6 +1829,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
                 if (enemy.getDodgeFlashRemaining() > 0f) {
                     spriteBatch.setColor(.4f, 1f, 1f, .8f);
+                } else if (enemy.getStompFlashRemaining() > 0f) {
+                    spriteBatch.setColor(.8f, .75f, .6f, 1f);
                 } else if (enemy.isDashWindingUp()) {
                     spriteBatch.setColor(1f, .85f, .3f, 1f);   // crouched, amber: dash is coming
                 } else if (enemy.isDashing()) {
@@ -1917,6 +1923,36 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 spriteBatch.setColor(Color.WHITE);
             }
         }
+    }
+
+    /** Alert "!" on first sight, "?" while heading for the last known spot or searching, and a quick turn whip. */
+    private void drawAwarenessMark(Enemy enemy) {
+        Vector2 pos = enemy.getPosition();
+        float top = pos.y + enemy.getSize() / 2f + .35f;
+        float t = enemy.getAwarenessTime();
+        Enemy.Awareness a = enemy.getAwareness();
+        if (a == Enemy.Awareness.ALERT && t < .7f) {
+            float hop = (float) Math.abs(Math.sin(t * 14f)) * Math.max(0f, 1f - t / .5f) * .2f;
+            spriteBatch.setColor(1f, .35f, .2f, 1f - t / .9f);
+            barCentered(pos.x, top + hop + .14f, .09f, .26f, 0f);
+            barCentered(pos.x, top + hop - .08f, .09f, .09f, 0f);
+        } else if (a == Enemy.Awareness.LOST || a == Enemy.Awareness.SEARCHING) {
+            float sway = a == Enemy.Awareness.SEARCHING ? (float) Math.sin(effectClock * 6f) * .06f : 0f;
+            spriteBatch.setColor(1f, .85f, .3f, .85f);
+            barCentered(pos.x + sway, top + .18f, .2f, .06f, 0f);
+            barCentered(pos.x + sway + .08f, top + .09f, .06f, .18f, 0f);
+            barCentered(pos.x + sway, top - .02f, .12f, .06f, 0f);
+            barCentered(pos.x + sway, top - .18f, .07f, .07f, 0f);
+        }
+        if (enemy.getTurnFlashRemaining() > 0f) {
+            // Quick turn: two short whip lines trailing from the new facing side.
+            float f = enemy.getTurnFlashRemaining() / Enemy.TURN_FLASH;
+            float dir = enemy.isFacingLeft() ? -1f : 1f;
+            spriteBatch.setColor(1f, 1f, 1f, .6f * f);
+            barCentered(pos.x - dir * .4f, pos.y + .35f, .5f * f + .1f, .04f, dir * 18f);
+            barCentered(pos.x - dir * .4f, pos.y + .15f, .4f * f + .1f, .04f, dir * -18f);
+        }
+        spriteBatch.setColor(Color.WHITE);
     }
 
     /** Role identity visible before any attack: shape, colour accents and ambient effects per archetype. */
@@ -2104,6 +2140,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     // Pale thin arc where the swing found nothing.
                     spriteBatch.setColor(.85f, .9f, 1f, inv * .6f);
                     barCentered(x, y, .9f, .025f, d < 0f ? 200f : -20f);
+                    break;
+                }
+                case HEAD_STOMP: {
+                    // Dust ring spreading across the top of the head and two downward chevrons: "hit from above".
+                    spriteBatch.setColor(.85f, .8f, .7f, inv);
+                    barCentered(x, y, .4f + 1.0f * p, .05f, 0f);
+                    ring(x, y, .2f + .5f * p);
+                    spriteBatch.setColor(1f, .9f, .5f, inv);
+                    barCentered(x - .15f, y + .45f - .15f * p, .3f, .05f, -35f);
+                    barCentered(x + .15f, y + .45f - .15f * p, .3f, .05f, 35f);
                     break;
                 }
                 case WALL_BUMP: {
