@@ -1763,16 +1763,19 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 hero.getCombatStateMachine().changeState(
                     new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(
                         variant == 1, variant == 2 ? 2 : 1));
-                fight.getHeroController().keyDown(Input.Keys.LEFT);
-                int beforeActive = variant == 1 ? 30 : variant == 2 ? 4 : 7;
+                // Light strikes lock their direction at once. The breakthrough charge may still be steered
+                // until its final lock-in, so its retreat input arrives only after the direction is final.
+                if (variant != 1) fight.getHeroController().keyDown(Input.Keys.LEFT);
+                int beforeActive = variant == 1 ? 40 : variant == 2 ? 4 : 7;
                 for (int i = 0; i < beforeActive; i++) fight.update(GameWorld.FIXED_STEP);
+                if (variant == 1) fight.getHeroController().keyDown(Input.Keys.LEFT);
                 target.getBody().setTransform(hero.getPosition().x + 1.2f,
                     hero.getPosition().y, 0f);
-                for (int i = beforeActive; i < (variant == 1 ? 40 : 20); i++)
+                for (int i = beforeActive; i < (variant == 1 ? 70 : 20); i++)
                     fight.update(GameWorld.FIXED_STEP);
                 if (target.getHealth() >= 20f || hero.isFacingLeft())
                     throw new AssertionError("Attack turned with retreat input, variant=" + variant);
-                for (int i = 0; i < 22; i++) fight.update(GameWorld.FIXED_STEP);
+                for (int i = 0; i < (variant == 1 ? 50 : 22); i++) fight.update(GameWorld.FIXED_STEP);
                 if (!hero.isFacingLeft())
                     throw new AssertionError("Hero did not face retreat direction after attack");
                 hero.getBody().setTransform(20f, 2.5f, 0f);
@@ -1782,7 +1785,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 hero.getCombatStateMachine().changeState(
                     new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(
                         variant == 1, variant == 2 ? 2 : 1));
-                for (int i = 0; i < (variant == 1 ? 44 : 20); i++)
+                for (int i = 0; i < (variant == 1 ? 70 : 20); i++)
                     fight.update(GameWorld.FIXED_STEP);
                 if (target.getHealth() != 20f)
                     throw new AssertionError("Distant target was hit, variant=" + variant);
