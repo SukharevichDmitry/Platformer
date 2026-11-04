@@ -72,8 +72,8 @@ public class EnemyFactory {
         EnemyConfig cfg = new EnemyConfig();
         cfg.size = SCAVENGER.bodySize;
         cfg.maxHealth = 2f;
-        cfg.viewDistance = 6f;
-        cfg.viewAngle = 125f;
+        cfg.viewDistance = 7.5f;
+        cfg.viewAngle = 140f;
         cfg.damage = 1f;
         cfg.attackDuration = .55f;
         cfg.attackStartup = .20f;

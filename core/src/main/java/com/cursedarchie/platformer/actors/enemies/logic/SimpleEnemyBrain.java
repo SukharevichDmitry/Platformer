@@ -22,15 +22,16 @@ public class SimpleEnemyBrain implements EnemyBrain {
         perception.lookForHero(enemy);
         perception.prepareToAttack(enemy);
 
+        boolean scavenger = "scavenger".equals(enemy.getArchetypeId());
         if (enemy.isCanSeeHero()) {
-            searchRemaining = 1.4f;
+            // Archers keep the hero in mind much longer (3-5 s) than melee enemies.
+            searchRemaining = scavenger ? 3.5f : 1.4f;
             noticeRemaining = Math.max(0f, noticeRemaining - delta);
         } else {
             searchRemaining = Math.max(0f, searchRemaining - delta);
             noticeRemaining = searchRemaining == 0f ? .45f : 0f;
         }
 
-        boolean scavenger = "scavenger".equals(enemy.getArchetypeId());
         float distance = Math.abs(enemy.getHeroLastKnownPos().x - enemy.getPosition().x);
         // Awareness: unaware -> alert (brief) -> tracking; losing sight heads for the last known spot, then searches.
         if (enemy.isCanSeeHero()) {

@@ -83,6 +83,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkGroupAttackSlots();
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
+        checkArcherMemoryAndMirroredTurn();
         checkMeleeReachMatchesHitbox();
         checkRapidTurnAndAwareness();
         checkEnemyLungeRecovery();
@@ -1009,6 +1010,46 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         } finally {
             fight.dispose();
         }
+    }
+
+    private void checkArcherMemoryAndMirroredTurn() {
+        GameWorld w = new GameWorld();
+        try {
+            Hero hero = w.getHero();
+            hero.getBody().setTransform(14f, 2.5f, 0f);
+            Enemy archer = EnemyFactory.createScavenger(w.getWorld(), new Vector2(18f, 2.5f));
+            archer.setBrain(new SimpleEnemyBrain(w));
+            archer.setFacingLeft(true);
+            w.addEnemy(archer);
+            for (int i = 0; i < 20; i++) w.update(GameWorld.FIXED_STEP);
+            if (archer.getAwareness() == Enemy.Awareness.UNAWARE) throw new AssertionError("Archer never noticed the hero");
+            // Hero vanishes far behind the archer: it must still remember for a good while.
+            hero.getBody().setTransform(40f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            for (int i = 0; i < 150; i++) w.update(GameWorld.FIXED_STEP);
+            if (archer.getAwareness() == Enemy.Awareness.UNAWARE)
+                throw new AssertionError("Archer forgot the hero within 2.5 s of losing sight");
+            for (int i = 0; i < 360; i++) w.update(GameWorld.FIXED_STEP);
+            if (archer.getAwareness() != Enemy.Awareness.UNAWARE)
+                throw new AssertionError("Archer never returned to patrol after the search timer");
+        } finally { w.dispose(); }
+        // Mirrored jump-over: hero starts on the enemy's right, ends on its left.
+        GameWorld m = new GameWorld();
+        try {
+            Hero hero = m.getHero();
+            hero.getBody().setTransform(21.5f, 2.5f, 0f);
+            Enemy foe = EnemyFactory.createDefaultEnemy(m.getWorld(), new Vector2(20f, 2.5f));
+            foe.setBrain(new SimpleEnemyBrain(m));
+            foe.setFacingLeft(true);
+            m.addEnemy(foe);
+            boolean turned = false;
+            for (int i = 0; i < 30 && !turned; i++) { m.update(GameWorld.FIXED_STEP); turned = !foe.isFacingLeft(); }
+            if (!turned) throw new AssertionError("Enemy did not turn right toward the hero");
+            hero.getBody().setTransform(18.5f, 2.5f, 0f);
+            boolean flipped = false;
+            for (int i = 0; i < 30 && !flipped; i++) { m.update(GameWorld.FIXED_STEP); flipped = foe.isFacingLeft(); }
+            if (!flipped) throw new AssertionError("Enemy kept facing away after a right-to-left jump-over");
+        } finally { m.dispose(); }
     }
 
     private void checkArrowArcPhysics() {
