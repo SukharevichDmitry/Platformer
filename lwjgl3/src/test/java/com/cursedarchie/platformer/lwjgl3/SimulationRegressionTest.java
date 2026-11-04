@@ -1357,8 +1357,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             float travelled = dashEndX - dashStartX;
             if (Math.abs(travelled - plannedDistance) > .6f)   // dashStartX is sampled one frame in
                 throw new AssertionError("Dash covered " + travelled + " but the arrow showed " + plannedDistance);
-            if (hero.isFacingLeft() && hero.getPosition().x < 10f)
-                throw new AssertionError("The dash did not go right (direction was locked at the start)");
+            if (!(dashEndX > dashStartX))
+                throw new AssertionError("The dash did not go right despite the locked direction: " + dashStartX + " -> " + dashEndX);
             if (!sawRecoveryAttackIgnored) throw new AssertionError("Recovery was cancelled by an attack press");
             if (hero.getHeavyState() != NONE) throw new AssertionError("Breakthrough never returned to idle");
         } finally { w.dispose(); }
