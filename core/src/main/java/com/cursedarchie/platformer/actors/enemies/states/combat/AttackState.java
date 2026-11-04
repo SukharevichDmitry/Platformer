@@ -16,6 +16,7 @@ import java.util.Set;
 public class AttackState implements EnemyState {
     private final boolean lunge;
     private final boolean area;
+    private final boolean slam;
     private final Rectangle attackBounds = new Rectangle();
     private final Rectangle hurtBounds = new Rectangle();
     private AttackRuntime runtime;
@@ -24,7 +25,11 @@ public class AttackState implements EnemyState {
 
     public AttackState() { this(false, false); }
     public AttackState(boolean lunge) { this(lunge, false); }
-    public AttackState(boolean lunge, boolean area) { this.lunge = lunge; this.area = area; }
+    public AttackState(boolean lunge, boolean area) { this(lunge, area, false); }
+    public AttackState(boolean lunge, boolean area, boolean slam) {
+        this.lunge = lunge; this.area = area || slam; this.slam = slam;
+    }
+    public boolean isSlam() { return slam; }
     public boolean isLunge() { return lunge; }
     public boolean isArea() { return area; }
     public boolean isFacingLeft() { return runtime != null && runtime.facesLeft(); }
@@ -35,7 +40,8 @@ public class AttackState implements EnemyState {
 
     @Override public void enter(Enemy enemy) {
         enemy.clearAttackRequest();
-        runtime = new AttackRuntime(enemy.attackDefinition(lunge, area), enemy.isFacingLeft());
+        runtime = new AttackRuntime(enemy.attackDefinition(lunge, area, slam), enemy.isFacingLeft());
+        if ("heavy_hunter".equals(enemy.getArchetypeId())) enemy.emitCue(Enemy.Cue.BREAKER_WINDUP);
         lunged = false;
         strikeCueSent = false;
         // Presentation only: the archer's blade rasp telegraphs the melee break from its ranged stance.
@@ -52,6 +58,7 @@ public class AttackState implements EnemyState {
         if (active && !strikeCueSent) {
             strikeCueSent = true;
             if ("scavenger".equals(enemy.getArchetypeId())) enemy.emitCue(Enemy.Cue.MELEE_STRIKE);
+            if (slam) enemy.emitCue(Enemy.Cue.BREAKER_SLAM);
         }
         enemy.setLeftAttackActive(active && runtime.facesLeft());
         enemy.setRightAttackActive(active && !runtime.facesLeft());
@@ -66,9 +73,12 @@ public class AttackState implements EnemyState {
                 if (!(target instanceof Hero) ||
                     !runtime.canHit(enemy, target, attackBounds, hurtBounds)) continue;
                 AttackDefinition attack = runtime.definition();
+                // The ground slam radiates outward from the Breaker regardless of which way it faces.
+                float hitDirection = slam ? Math.signum(target.getPosition().x - enemy.getPosition().x) :
+                    runtime.direction();
                 CombatHit hit = new CombatHit(attack.type,
                     enemy.getDamage() * attack.damageMultiplier, enemy, target,
-                    runtime.direction(), attack.stabilityDamage, attack.knockback,
+                    hitDirection == 0f ? runtime.direction() : hitDirection, attack.stabilityDamage, attack.knockback,
                     attack.staggerDuration, attack.blockable);
                 if (!((Hero) target).receiveHit(hit)) continue;
                 enemy.emitCombatHit(hit);

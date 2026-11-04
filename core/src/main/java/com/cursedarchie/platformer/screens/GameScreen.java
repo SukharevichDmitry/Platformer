@@ -74,6 +74,10 @@
                         gameWorld.spawnCombatTestPair();
                         return true;
                     }
+                    if (keycode == Input.Keys.F7) {
+                        gameWorld.spawnRoleShowcase();
+                        return true;
+                    }
                     if (enteringPortal != null) return true;
                     if (dialogue.isOpen()) {
                         if (game.getControls().matches(Action.INTERACT, keycode)) {

@@ -58,7 +58,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         SHOT_STANDARD, SHOT_CHARGED, SHOT_VOLLEY,
         MELEE_WINDUP, MELEE_STRIKE,
         RETREAT_DASH, DODGE,
-        RAIDER_DASH, RAIDER_GUARD
+        RAIDER_DASH, RAIDER_GUARD,
+        OVERSEER_CAST, OVERSEER_BUFF, BREAKER_WINDUP, BREAKER_SLAM
     }
 
     /** Fraction of the draw after which the aim direction is frozen. */
@@ -124,6 +125,17 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public static final float RAIDER_BLOCK_DURATION = .8f, RAIDER_BLOCK_COOLDOWN = 3f, BLOCK_HEAVY_DAMAGE = .35f;
     private float dashWindupRemaining, dashRemaining, dashCooldownRemaining = 1f, dashDirection;
     private float blockHitFlashRemaining, blockBreakFlashRemaining;
+    // Infiltrator: sidestep a telegraphed strike, then flank with a lunge.
+    public static final float SIDESTEP_COOLDOWN = 4.5f, SIDESTEP_RECOVERY = .55f, FLANK_WINDOW = 2.2f;
+    private float flankRemaining;
+    private boolean sidestepToggle;
+    // Breaker alternates sweep and ground slam.
+    private boolean nextSlam, slamRequested;
+    // Overseer: telegraphed, interruptible buff on an ally.
+    public static final float CAST_TIME = 1f, CAST_COOLDOWN = 9f, CAST_INTERRUPTED_COOLDOWN = 3f,
+        BUFF_DURATION = 7f, CAST_RANGE = 6f;
+    private float castRemaining, buffRemaining;
+    private Enemy castTarget;
     private float blockCooldownRemaining = .8f;
     private float dodgeCooldownRemaining;
     private float dodgeFlashRemaining;
@@ -390,6 +402,13 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isBlocking() { return blockRemaining > 0f; }
     /** Test hook: raise the raider guard immediately. */
     public void forceBlockForTest() { blockRemaining = RAIDER_BLOCK_DURATION; }
+    public boolean isCasting() { return castRemaining > 0f; }
+    public float getCastProgress() { return castRemaining > 0f ? 1f - castRemaining / CAST_TIME : 0f; }
+    public Enemy getCastTarget() { return castTarget; }
+    public boolean isBuffed() { return buffRemaining > 0f; }
+    public void receiveBuff(float seconds) { buffRemaining = Math.max(buffRemaining, seconds); }
+    public boolean isFlanking() { return flankRemaining > 0f; }
+    public boolean isNextSlam() { return nextSlam; }
     public boolean isDashWindingUp() { return dashWindupRemaining > 0f; }
     public boolean isDashing() { return dashRemaining > 0f; }
     public boolean isDashPhase() { return dashWindupRemaining > 0f || dashRemaining > 0f; }
@@ -401,7 +420,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         if (isStaggered()) return com.cursedarchie.platformer.combat.CombatPhase.STAGGER;
         if (isDodging() || isDashing()) return com.cursedarchie.platformer.combat.CombatPhase.DODGE;
         if (isBlocking()) return com.cursedarchie.platformer.combat.CombatPhase.BLOCK;
-        if (isDashWindingUp() || isRangedWindingUp()) return com.cursedarchie.platformer.combat.CombatPhase.WINDUP;
+        if (isDashWindingUp() || isRangedWindingUp() || isCasting()) return com.cursedarchie.platformer.combat.CombatPhase.WINDUP;
         if (isActionRecovering()) return com.cursedarchie.platformer.combat.CombatPhase.RECOVERY;
         return com.cursedarchie.platformer.combat.CombatPhase.IDLE;
     }
@@ -446,6 +465,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         blockHitFlashRemaining = Math.max(0f, blockHitFlashRemaining - delta);
         blockBreakFlashRemaining = Math.max(0f, blockBreakFlashRemaining - delta);
         dashCooldownRemaining = Math.max(0f, dashCooldownRemaining - delta);
+        flankRemaining = Math.max(0f, flankRemaining - delta);
+        buffRemaining = Math.max(0f, buffRemaining - delta);
         if (dashWindupRemaining > 0f) {
             dashWindupRemaining = Math.max(0f, dashWindupRemaining - delta);
             if (dashWindupRemaining == 0f) {
@@ -478,6 +499,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         supportCooldownRemaining = Math.max(0f, supportCooldownRemaining - delta);
         supportFlashRemaining = Math.max(0f, supportFlashRemaining - delta);
         if ("default".equals(archetypeId)) updateRaider(hero);
+        if ("infiltrator".equals(archetypeId)) updateInfiltrator(hero);
+        if ("overseer".equals(archetypeId)) updateOverseer(allies, delta);
         if ("scavenger".equals(archetypeId)) {
             float dx = hero.getPosition().x - getPosition().x;
             float dy = Math.abs(hero.getPosition().y - getPosition().y);
@@ -527,6 +550,86 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         int sequence = rangedShotSequence + 1;
         return sequence % 5 == 0 ? RangedAttackConfig.VOLLEY :
             sequence % 3 == 0 ? RangedAttackConfig.CHARGED : RangedAttackConfig.NORMAL;
+    }
+
+    private void updateInfiltrator(Hero hero) {
+        if (isStaggered() || isAttacking() || isDodging() || isActionRecovering()) return;
+        float dx = hero.getPosition().x - getPosition().x;
+        float dy = Math.abs(hero.getPosition().y - getPosition().y);
+        float dist = Math.abs(dx);
+        // Flank: right after a sidestep it lunges in without waiting for the normal attack cooldown.
+        if (flankRemaining > 0f && canSeeHero && dy < 1.1f && dist < 3.4f) {
+            facingLeft = dx < 0f;
+            attackCooldownRemaining = 0f;
+            requestAttack();
+            return;
+        }
+        // Sidestep a telegraphed hero swing, but only every other time and then with a long cooldown.
+        if (dodgeCooldownRemaining == 0f && canSeeHero && dist < 2.2f && dy < 1.2f && hero.isAttackTelegraphing()) {
+            sidestepToggle = !sidestepToggle;
+            if (!sidestepToggle) return;
+            float away = dx > 0f ? -1f : 1f;
+            if (!hasClearRetreatPath(away)) return;   // never sidestep into a wall or off a ledge
+            dodgeOriginX = getPosition().x;
+            dodgeOriginY = getPosition().y;
+            dodgeDirection = away;
+            body.setLinearVelocity(away * 9f, body.getLinearVelocity().y);
+            dodgeCooldownRemaining = SIDESTEP_COOLDOWN;
+            dodgeFlashRemaining = DODGE_EFFECT_DURATION;
+            dodgeRemaining = .16f;
+            actionRecoveryRemaining = SIDESTEP_RECOVERY;   // wide open for a punish
+            attackRequested = false;
+            currentIntent = Intent.IDLE;
+            beginTrail(away, true);
+            facingLeft = away > 0f;
+            flankRemaining = FLANK_WINDOW;
+            emitCue(Cue.DODGE);
+        }
+    }
+
+    private void updateOverseer(Array<Enemy> allies, float delta) {
+        if (isStaggered()) { cancelCast(CAST_INTERRUPTED_COOLDOWN); return; }
+        if (castRemaining > 0f) {
+            if (castTarget == null || !castTarget.isAlive() ||
+                castTarget.getPosition().dst2(getPosition()) > CAST_RANGE * CAST_RANGE * 1.4f) {
+                cancelCast(CAST_INTERRUPTED_COOLDOWN);
+                return;
+            }
+            moveStop();
+            castRemaining = Math.max(0f, castRemaining - delta);
+            if (castRemaining == 0f) {
+                castTarget.receiveBuff(BUFF_DURATION);
+                castTarget.emitCue(Cue.OVERSEER_BUFF);
+                castTarget = null;
+                supportCooldownRemaining = CAST_COOLDOWN;
+                actionRecoveryRemaining = Math.max(actionRecoveryRemaining, .5f);
+            }
+            return;
+        }
+        if (supportCooldownRemaining > 0f || isAttacking() || isActionRecovering() || allies == null) return;
+        Enemy best = null;
+        for (int i = 0; i < allies.size; i++) {
+            Enemy ally = allies.get(i);
+            if (ally == this || !ally.isAlive() || !ally.isActive() || ally.isBuffed() ||
+                "overseer".equals(ally.getArchetypeId()) ||
+                ally.getPosition().dst2(getPosition()) > CAST_RANGE * CAST_RANGE) continue;
+            if (best == null || ally.getPosition().dst2(getPosition()) < best.getPosition().dst2(getPosition()))
+                best = ally;
+        }
+        if (best != null) {
+            castTarget = best;
+            castRemaining = CAST_TIME;
+            attackRequested = false;
+            moveStop();
+            emitCue(Cue.OVERSEER_CAST);
+        }
+    }
+
+    private void cancelCast(float cooldown) {
+        if (castRemaining <= 0f) return;
+        castRemaining = 0f;
+        castTarget = null;
+        supportCooldownRemaining = Math.max(supportCooldownRemaining, cooldown);
     }
 
     private boolean raiderBusy() {
@@ -646,6 +749,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     }
     public boolean takeMeleeHit(CombatHit hit) {
         if (!alive) return false;
+        // Sidestep i-frame: only light strikes whiff; heavy and area hits still catch the infiltrator mid-step.
+        if ("infiltrator".equals(archetypeId) && isDodging() && hit.type == CombatHit.Type.MELEE_LIGHT) return false;
         if ("scavenger".equals(archetypeId) && hit.type == CombatHit.Type.MELEE_LIGHT &&
             dodgeCooldownRemaining == 0f && !isStaggered() && !isAttacking() &&
             !isRangedWindingUp() && !isRetreating() && !isActionRecovering()) {
@@ -701,13 +806,17 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         takeDamage(amount);
         lastHitSourceX = sourceX;
         if (!alive) return true;
+        if (castRemaining > 0f) cancelCast(CAST_INTERRUPTED_COOLDOWN);
         float resistance = "boss".equals(archetypeId) ? .1f :
+            "heavy_hunter".equals(archetypeId) ? heavy ? .6f : .3f :
             "red_collector".equals(archetypeId) ? heavy ? .75f : .4f : 1f;
         body.setLinearVelocity((hit.direction == 0f ?
                 Math.copySign(recoil, getPosition().x - sourceX) : hit.direction * recoil) * resistance,
             Math.max(body.getLinearVelocity().y, 1.5f * resistance));
-        staggerRemaining = "boss".equals(archetypeId) ?
-            Math.min(.05f, hit.staggerDuration) : hit.staggerDuration;
+        float stagger = "boss".equals(archetypeId) ? Math.min(.05f, hit.staggerDuration) :
+            "heavy_hunter".equals(archetypeId) ? hit.staggerDuration * (heavy ? .6f : .12f) : hit.staggerDuration;
+        if (buffRemaining > 0f) stagger *= .5f;
+        staggerRemaining = stagger;
         return true;
     }
 
@@ -717,6 +826,16 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
     public float getAttackStartup() { return attackStartup; }
     public float getAttackActiveEnd() { return attackActiveEnd; }
+    public AttackDefinition attackDefinition(boolean lunge, boolean area, boolean slam) {
+        if (slam) return new AttackDefinition("breaker_slam", CombatHit.Type.MELEE_HEAVY,
+            1.15f, .16f, .6f, 1.7f, 3.4f, .5f, -.55f,
+            1.5f, 9f, .35f, 3f, true, 1.9f, 1.9f, .4f);
+        if (area) return new AttackDefinition("breaker_sweep", CombatHit.Type.MELEE_HEAVY,
+            .8f, .2f, .5f, 2.7f, 2.2f, 1.2f, 0f,
+            1.25f, 7f, .3f, 2.5f, true, 1.5f, 1.5f, .3f);
+        return attackDefinition(lunge, area);
+    }
+
     public AttackDefinition attackDefinition(boolean lunge, boolean area) {
         if (area) return new AttackDefinition("enemy_area", CombatHit.Type.MELEE_HEAVY,
             .65f, .19f, .24f, 2.4f, 2.4f, 1.2f, 0f,
@@ -751,7 +870,10 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             isStaggered() || isDodging() || isRetreating() || isActionRecovering() ||
             isRangedWindingUp() || combatStateMachine.getCurrentState() instanceof AttackState) return;
 
-        lungeRequested = "default".equals(archetypeId) && nextAttackLunge;
+        if (isCasting()) return;
+        lungeRequested = "default".equals(archetypeId) && nextAttackLunge ||
+            "infiltrator".equals(archetypeId) && flankRemaining > 0f;
+        slamRequested = "heavy_hunter".equals(archetypeId) && nextSlam;
         areaRequested = "heavy_hunter".equals(archetypeId) ||
             "boss".equals(archetypeId) && nextAreaAttack;
         attackRequested = true;
@@ -779,7 +901,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             rangedLockFlashRemaining = 0f;
             rangedShotFlashRemaining = 0f;
         }
-        combatStateMachine.changeState(new AttackState(lungeRequested, areaRequested));
+        combatStateMachine.changeState(new AttackState(lungeRequested, areaRequested, slamRequested));
+        if ("infiltrator".equals(archetypeId)) flankRemaining = 0f;
+        if ("heavy_hunter".equals(archetypeId)) nextSlam = !nextSlam;
         if ("default".equals(archetypeId)) nextAttackLunge = !nextAttackLunge;
         if ("boss".equals(archetypeId)) nextAreaAttack = !nextAreaAttack;
     }
@@ -820,7 +944,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             return;
         }
 
-        attackCooldownRemaining = Math.max(0f, attackCooldownRemaining - delta);
+        attackCooldownRemaining = Math.max(0f, attackCooldownRemaining - delta * (buffRemaining > 0f ? 1.6f : 1f));
         staggerRemaining = Math.max(0f, staggerRemaining - delta);
         jumpCooldownRemaining = Math.max(0f, jumpCooldownRemaining - delta);
         patrolPauseRemaining = Math.max(0f, patrolPauseRemaining - delta);
@@ -834,14 +958,14 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
         // Reactions and evasive movement own the actor until they finish. This keeps
         // the priority chain deterministic and prevents attacks from running together.
-        if (isStaggered() || isDodging() || isActionRecovering() || isDashPhase()) {
+        if (isStaggered() || isDodging() || isActionRecovering() || isDashPhase() || isCasting()) {
             cancelRangedAttack();
             attackRequested = false;
             currentIntent = Intent.IDLE;
             if (combatStateMachine.getCurrentState() instanceof AttackState)
                 combatStateMachine.changeState(new CombatIdleState());
             if (!isDodging() && !isDashing()) moveStop();
-            if (isStaggered()) { dashWindupRemaining = 0f; dashRemaining = 0f; }
+            if (isStaggered()) { dashWindupRemaining = 0f; dashRemaining = 0f; cancelCast(CAST_INTERRUPTED_COOLDOWN); }
             return;
         }
 

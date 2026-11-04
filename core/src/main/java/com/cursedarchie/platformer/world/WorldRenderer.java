@@ -635,6 +635,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             case RETREAT_DASH: return "archer_retreat_dash";
             case RAIDER_DASH: return "raider_dash";
             case RAIDER_GUARD: return "raider_guard";
+            case OVERSEER_CAST: return "overseer_cast";
+            case OVERSEER_BUFF: return "overseer_buff";
+            case BREAKER_WINDUP: return "breaker_windup";
+            case BREAKER_SLAM: return "breaker_slam";
             default: return "archer_dodge";
         }
     }
@@ -648,6 +652,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             case RETREAT_DASH: return .3f;
             case RAIDER_DASH: return .45f;
             case RAIDER_GUARD: return .4f;
+            case OVERSEER_CAST: case OVERSEER_BUFF: return .4f;
+            case BREAKER_WINDUP: return .5f;
+            case BREAKER_SLAM: return .85f;
             default: return .35f;
         }
     }
@@ -1796,7 +1803,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                         bottom, flip ? -visualWidth : visualWidth, visualHeight);
                 } else {
                     if ("heavy_hunter".equals(enemy.getArchetypeId()))
-                        spriteBatch.setColor(.8f, .62f, .42f, 1f);
+                        spriteBatch.setColor(.62f, .45f, .36f, 1f);
+                    else if ("infiltrator".equals(enemy.getArchetypeId()))
+                        spriteBatch.setColor(.45f, .95f, .9f, enemy.isActionRecovering() ? .6f : 1f);
+                    else if ("overseer".equals(enemy.getArchetypeId()))
+                        spriteBatch.setColor(.78f, .55f, 1f, 1f);
                     else if ("boss".equals(enemy.getArchetypeId()))
                         spriteBatch.setColor(.85f, .32f, .3f, 1f);
                     spriteBatch.draw(enemyFrame, enemy.getPosition().x - enemy.getSize()/2f,
@@ -1814,16 +1825,28 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                             enemy.getPosition().y - .3f, 1.25f, .09f);
                     }
                     if (attack.isArea() && enemy.getCombatStateTime() < attack.startup(enemy)) {
-                        float left = enemy.getPosition().x - 2.4f;
+                        float charge = enemy.getCombatStateTime() / attack.startup(enemy);
                         float ground = enemy.getPosition().y - enemy.getSize() / 2f + .03f;
-                        spriteBatch.setColor(1f, .25f, .16f,
-                            .45f + .4f * enemy.getCombatStateTime() / attack.startup(enemy));
-                        spriteBatch.draw(sceneryPixel, left, ground, 4.8f, .13f);
-                        spriteBatch.setColor(.3f, 1f, .52f, .7f);
-                        spriteBatch.draw(sceneryPixel, left - .28f, ground, .12f, .25f);
-                        spriteBatch.draw(sceneryPixel, left + 4.96f, ground, .12f, .25f);
+                        float dirA = attack.isFacingLeft() ? -1f : 1f;
+                        if (attack.isSlam()) {
+                            // Ground slam: a low red band on BOTH sides that fills outward; jump over it.
+                            float r = attack.getDefinition().hitboxWidth / 2f;
+                            spriteBatch.setColor(1f, .2f, .12f, .35f + .45f * charge);
+                            spriteBatch.draw(sceneryPixel, enemy.getPosition().x - r, ground, r * 2f, .16f);
+                            spriteBatch.setColor(1f, .85f, .3f, .9f);
+                            spriteBatch.draw(sceneryPixel, enemy.getPosition().x - r * charge, ground + .16f,
+                                r * 2f * charge, .06f);
+                        } else {
+                            // Wide sweep: the whole frontal arc lights up, shoulder-high.
+                            float reach = attack.getDefinition().range;
+                            spriteBatch.setColor(1f, .55f, .15f, .3f + .45f * charge);
+                            spriteBatch.draw(sceneryPixel, dirA > 0f ? enemy.getPosition().x : enemy.getPosition().x - reach,
+                                enemy.getPosition().y - .55f, reach, 1.2f);
+                        }
                     }
                 }
+                playEnemyCues(enemy);
+                drawRoleProfile(enemy);
                 if ("default".equals(enemy.getArchetypeId())) drawRaiderEffects(enemy);
                 if (enemy.isBlocking() && !"default".equals(enemy.getArchetypeId())) {
                     float direction = enemy.isFacingLeft() ? -1f : 1f;
@@ -1836,9 +1859,58 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         }
     }
 
+    /** Role identity visible before any attack: shape, colour accents and ambient effects per archetype. */
+    private void drawRoleProfile(Enemy enemy) {
+        String id = enemy.getArchetypeId();
+        float x = enemy.getPosition().x, y = enemy.getPosition().y, top = y + enemy.getSize() / 2f;
+        float dir = enemy.isFacingLeft() ? -1f : 1f;
+        if ("heavy_hunter".equals(id)) {
+            // Breaker: broad armoured shoulders and a dark brow band; reads as slow and heavy.
+            spriteBatch.setColor(.35f, .3f, .28f, 1f);
+            spriteBatch.draw(sceneryPixel, x - .85f, top - .5f, 1.7f, .22f);
+            spriteBatch.setColor(.9f, .5f, .2f, 1f);
+            spriteBatch.draw(sceneryPixel, x - .85f, top - .52f, .18f, .26f);
+            spriteBatch.draw(sceneryPixel, x + .67f, top - .52f, .18f, .26f);
+        } else if ("infiltrator".equals(id)) {
+            // Infiltrator: slim teal streaks behind it while moving; afterimage on sidestep.
+            float speed = Math.abs(enemy.getBody().getLinearVelocity().x);
+            if (speed > 2f) {
+                spriteBatch.setColor(.4f, 1f, .9f, .4f);
+                for (int i = 1; i <= 2; i++)
+                    spriteBatch.draw(sceneryPixel, x - Math.signum(enemy.getBody().getLinearVelocity().x) * (.3f + i * .22f),
+                        y - .15f + i * .08f, .32f, .05f);
+            }
+            if (enemy.isFlanking()) {
+                spriteBatch.setColor(1f, .3f, .3f, .85f);   // red mark: a lunge is coming
+                spriteBatch.draw(sceneryPixel, x - .08f, top + .12f, .16f, .3f);
+                spriteBatch.draw(sceneryPixel, x - .08f, top + .02f, .16f, .06f);
+            }
+        } else if ("overseer".equals(id)) {
+            // Overseer: floating violet diamond halo; a beam to the ally it is empowering.
+            float bob = (float) Math.sin(effectClock * 3f) * .05f;
+            spriteBatch.setColor(.8f, .5f, 1f, .9f);
+            barCentered(x, top + .3f + bob, .26f, .26f, 45f);
+            if (enemy.isCasting() && enemy.getCastTarget() != null) {
+                Enemy t = enemy.getCastTarget();
+                float p = enemy.getCastProgress();
+                spriteBatch.setColor(.8f, .5f, 1f, .25f + .6f * p);
+                segment(x, y + .2f, t.getPosition().x, t.getPosition().y + .2f, .03f + .05f * p);
+                ring(x, y, .3f + .6f * p);
+            }
+        }
+        if (enemy.isBuffed()) {
+            // Buffed ally: gold ring and spark over the head so the player knows it is empowered.
+            spriteBatch.setColor(1f, .85f, .3f, .5f + .2f * (float) Math.sin(effectClock * 8f));
+            ring(x, y, enemy.getSize() * .75f);
+            spriteBatch.setColor(1f, .9f, .4f, .9f);
+            barCentered(x, top + .35f, .22f, .06f, 0f);
+            barCentered(x, top + .35f, .22f, .06f, 90f);
+        }
+        spriteBatch.setColor(Color.WHITE);
+    }
+
     /** Raider presentation: dash telegraph/trail, raised-weapon guard stance, block sparks and guard break. */
     private void drawRaiderEffects(Enemy enemy) {
-        playEnemyCues(enemy);
         float dir = enemy.isFacingLeft() ? -1f : 1f;
         float x = enemy.getPosition().x, y = enemy.getPosition().y;
         float ground = y - enemy.getSize() / 2f;

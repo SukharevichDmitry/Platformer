@@ -47,6 +47,14 @@ public class EnemyController {
                 enemy = EnemyFactory.createRedCollector(world, worldPos);
                 enemy.setBrain(new SimpleEnemyBrain(gameWorld));
                 break;
+            case "infiltrator":
+                enemy = EnemyFactory.createInfiltrator(world, worldPos);
+                enemy.setBrain(new SimpleEnemyBrain(gameWorld));
+                break;
+            case "overseer":
+                enemy = EnemyFactory.createOverseer(world, worldPos);
+                enemy.setBrain(new SimpleEnemyBrain(gameWorld));
+                break;
             case "heavy_hunter":
                 enemy = EnemyFactory.createHeavyHunter(world, worldPos);
                 enemy.setBrain(new SimpleEnemyBrain(gameWorld));

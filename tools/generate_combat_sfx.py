@@ -49,6 +49,19 @@ def build_combat():
                                       (g.sweep(300, 700, .2) * g.decay(.2, 12), 0, .25)), .6)
     s["raider_guard"] = g.finish(g.mix((g.sweep(500, 900, .08) * g.decay(.08, 30), 0, .6),
                                        (g.highpass(g.noise(.06), 2500) * g.decay(.06, 80), 0, .8)), .55)
+    # Overseer: rising shimmer while casting, bell chime when the buff lands.
+    t = g.time(1.0)
+    shimmer = g.sweep(300, 900, 1.0, (1.0, .4)) * g.swell(1.0, .85) * (.6 + .4 * g.np.sin(2 * g.np.pi * 9 * t))
+    s["overseer_cast"] = g.finish(g.mix((shimmer, 0, .8), (g.highpass(g.noise(1.0), 3500) * g.swell(1.0, .9), 0, .15)), .5)
+    t = g.time(.5)
+    bell = sum(a * g.np.sin(2 * g.np.pi * f * t) for f, a in ((880, 1.0), (1320, .5), (1760, .3))) * g.decay(.5, 7)
+    s["overseer_buff"] = g.finish(bell, .55)
+    # Breaker: low groan to telegraph, heavy ground thump for the slam.
+    s["breaker_windup"] = g.finish(g.mix((g.sweep(70, 140, .7, (1.0, .5)) * g.swell(.7, .85), 0, .9),
+                                         (g.lowpass(g.noise(.7), 500) * g.swell(.7, .8), 0, .5)), .6)
+    s["breaker_slam"] = g.finish(g.mix((g.sweep(90, 28, .55, (1.0, .5)) * g.decay(.55, 6), 0, 1.0),
+                                       (g.lowpass(g.noise(.4), 900) * g.decay(.4, 11), 0, .8),
+                                       (g.bandpass(g.noise(.08), 1500, 5000) * g.decay(.08, 60), 0, .5)), .95)
     return s
 
 

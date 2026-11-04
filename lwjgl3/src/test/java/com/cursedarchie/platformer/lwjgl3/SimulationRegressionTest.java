@@ -79,6 +79,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkScavengerActionPriority();
         checkRaiderBlockAndDash();
         checkHeroBlockAndHeavyRules();
+        checkNewEnemyRoles();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -869,6 +870,49 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             flank.takeMeleeHit(2f, flank.getPosition().x + 1f, 0f, false);
             closeTo(flank.getHealth(), flank.getMaxHealth() - 2f,
                 "Rear light strike did not bypass guard");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkNewEnemyRoles() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            // Breaker: tough, barely staggers from light hits, strong frontal sweep vs. slam definitions.
+            Enemy breaker = EnemyFactory.createHeavyHunter(fight.getWorld(), new Vector2(12f, 2.5f));
+            if (breaker.getMaxHealth() < 8f) throw new AssertionError("Breaker must have high health");
+            breaker.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, hero, breaker, -1f, 1f, 5f, .14f, true));
+            if (breaker.isStaggered() && breaker.getBody().getLinearVelocity().x < -2f)
+                throw new AssertionError("Breaker was knocked back by a light hit");
+            var sweep = breaker.attackDefinition(false, true, false);
+            var slam = breaker.attackDefinition(false, true, true);
+            if (slam.startupDuration <= sweep.startupDuration)
+                throw new AssertionError("Ground slam must have a longer startup than the sweep");
+            if (slam.knockback <= sweep.knockback) throw new AssertionError("Slam knockback must be stronger");
+            if (slam.hitboxHeight > .8f) throw new AssertionError("Slam must be low enough to jump over");
+
+            // Infiltrator: fragile, fast; light strike evaded during sidestep, heavy strike lands.
+            Enemy fox = EnemyFactory.createInfiltrator(fight.getWorld(), new Vector2(12f, 2.5f));
+            if (fox.getMaxHealth() > 2f) throw new AssertionError("Infiltrator must be fragile");
+            if (fox.getVelocity() <= EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(30f, 2.5f)).getVelocity())
+                throw new AssertionError("Infiltrator must be faster than the raider");
+
+            // Overseer: casts a buff on a nearby ally, an interrupting hit cancels it and starts a cooldown.
+            Enemy overseer = EnemyFactory.createOverseer(fight.getWorld(), new Vector2(14f, 2.5f));
+            Enemy ally = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(12f, 2.5f));
+            fight.addEnemy(overseer);
+            fight.addEnemy(ally);
+            overseer.updateSpecialActions(hero, fight.getAliveEnemies(), .01f);
+            if (!overseer.isCasting()) throw new AssertionError("Overseer did not start a buff cast");
+            overseer.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, hero, overseer, 1f, 1f, 1f, .14f, true));
+            if (overseer.isCasting()) throw new AssertionError("Hit did not interrupt the overseer cast");
+            overseer.updateSpecialActions(hero, fight.getAliveEnemies(), .01f);
+            if (overseer.isCasting()) throw new AssertionError("Overseer re-cast during its interrupted cooldown");
+            if (ally.isBuffed()) throw new AssertionError("Interrupted cast must not buff");
+            ally.receiveBuff(Enemy.BUFF_DURATION);
+            if (!ally.isBuffed()) throw new AssertionError("Buff was not applied");
         } finally {
             fight.dispose();
         }

@@ -648,6 +648,19 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         enemyController.spawnEnemy(archer, new Vector2(base.x + dir * 9f, base.y + .3f), world);
     }
 
+    /** Debug (F7): one of every new combat role, spaced in front of the hero. */
+    public void spawnRoleShowcase() {
+        float dir = hero.isFacingLeft() ? -1f : 1f;
+        Vector2 base = hero.getPosition();
+        String[] types = {"default", "infiltrator", "heavy_hunter", "overseer", "scavenger"};
+        for (int i = 0; i < types.length; i++) {
+            EnemySpawnData spawn = new EnemySpawnData();
+            spawn.type = types[i];
+            spawn.position = new Vector2();
+            enemyController.spawnEnemy(spawn, new Vector2(base.x + dir * (4f + 2.5f * i), base.y + .3f), world);
+        }
+    }
+
     public Array<Enemy> getEnemies() {
         return enemies;
     }
