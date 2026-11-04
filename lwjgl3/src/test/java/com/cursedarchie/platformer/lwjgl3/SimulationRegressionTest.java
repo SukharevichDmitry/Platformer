@@ -1253,7 +1253,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         body.setUserData("level");
         com.badlogic.gdx.physics.box2d.PolygonShape shape = new com.badlogic.gdx.physics.box2d.PolygonShape();
         shape.setAsBox(halfWidth, halfHeight);
-        body.createFixture(shape, 0f);
+        com.badlogic.gdx.physics.box2d.FixtureDef fixtureDef = new com.badlogic.gdx.physics.box2d.FixtureDef();
+        fixtureDef.shape = shape;
+        // Same collision filter as real level walls, so the hero and enemies are stopped by it.
+        fixtureDef.filter.categoryBits = com.cursedarchie.platformer.physics.PhysicsCategories.WALL;
+        fixtureDef.filter.maskBits = (short) (com.cursedarchie.platformer.physics.PhysicsCategories.HERO |
+            com.cursedarchie.platformer.physics.PhysicsCategories.ENEMY);
+        body.createFixture(fixtureDef);
         shape.dispose();
     }
 
