@@ -135,6 +135,11 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public static final float CAST_TIME = 1f, CAST_COOLDOWN = 9f, CAST_INTERRUPTED_COOLDOWN = 3f,
         BUFF_DURATION = 7f, CAST_RANGE = 6f;
     private float castRemaining, buffRemaining;
+    // Group coordination (set by EnemyController): attack slots, spawn anchor and nearby allies.
+    private boolean attackPermit = true;
+    private float anchorX = Float.NaN;
+    private Array<Enemy> groupAllies;
+    private float lineBlockedRemaining;
     private Enemy castTarget;
     private float blockCooldownRemaining = .8f;
     private float dodgeCooldownRemaining;
@@ -402,6 +407,11 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public boolean isBlocking() { return blockRemaining > 0f; }
     /** Test hook: raise the raider guard immediately. */
     public void forceBlockForTest() { blockRemaining = RAIDER_BLOCK_DURATION; }
+    public void setAttackPermit(boolean permit) { attackPermit = permit; }
+    public boolean hasAttackPermit() { return attackPermit; }
+    public boolean isLineBlocked() { return lineBlockedRemaining > 0f; }
+    /** Breaker holds its ground: it will not chase far past where it first stood. */
+    public boolean isBeyondLeash(float limit) { return !Float.isNaN(anchorX) && Math.abs(getPosition().x - anchorX) > limit; }
     public boolean isCasting() { return castRemaining > 0f; }
     public float getCastProgress() { return castRemaining > 0f ? 1f - castRemaining / CAST_TIME : 0f; }
     public Enemy getCastTarget() { return castTarget; }
@@ -458,6 +468,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     }
     public void updateSpecialActions(GameWorld gameWorld, Hero hero, Array<Enemy> allies, float delta) {
         if (!active || !alive) return;
+        if (Float.isNaN(anchorX)) anchorX = getPosition().x;
+        groupAllies = allies;
+        lineBlockedRemaining = Math.max(0f, lineBlockedRemaining - delta);
         rangedCooldownRemaining = Math.max(0f, rangedCooldownRemaining - delta);
         rangedShotFlashRemaining = Math.max(0f, rangedShotFlashRemaining - delta);
         blockRemaining = Math.max(0f, blockRemaining - delta);
@@ -672,6 +685,10 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         float dy = Math.abs(hero.getPosition().y - getPosition().y);
         if (Math.abs(dx) <= 2.4f || Math.abs(dx) >= config.maxRange || dy >= 1.25f ||
             !hasLineOfFire(hero.getPosition())) return false;
+        if (isLineBlockedByAlly(hero.getPosition())) {
+            lineBlockedRemaining = .8f;   // brain reacts by repositioning instead of shooting through a friend
+            return false;
+        }
         rangedShotSequence++;
         rangedAttackConfig = config;
         rangedWindupDuration = config.startup;
@@ -690,6 +707,22 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public void cancelRangedAttack() {
         rangedWindupRemaining = 0f;
         rangedWindupDuration = 0f;
+    }
+
+    /** True when another enemy stands on the straight shot between this archer and the target. */
+    public boolean isLineBlockedByAlly(Vector2 target) {
+        if (groupAllies == null) return false;
+        Vector2 a = getPosition();
+        float minX = Math.min(a.x, target.x), maxX = Math.max(a.x, target.x);
+        for (int i = 0; i < groupAllies.size; i++) {
+            Enemy ally = groupAllies.get(i);
+            if (ally == this || !ally.isAlive() || ally.getPosition().x < minX + .3f || ally.getPosition().x > maxX - .3f)
+                continue;
+            float t = (ally.getPosition().x - a.x) / (target.x - a.x == 0f ? 1f : target.x - a.x);
+            float lineY = a.y + t * (target.y - a.y);
+            if (Math.abs(ally.getPosition().y - lineY) < ally.getSize() * .5f + .1f) return true;
+        }
+        return false;
     }
 
     private boolean hasLineOfFire(Vector2 target) {
@@ -870,7 +903,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             isStaggered() || isDodging() || isRetreating() || isActionRecovering() ||
             isRangedWindingUp() || combatStateMachine.getCurrentState() instanceof AttackState) return;
 
-        if (isCasting()) return;
+        if (isCasting() || !attackPermit) return;
         lungeRequested = "default".equals(archetypeId) && nextAttackLunge ||
             "infiltrator".equals(archetypeId) && flankRemaining > 0f;
         slamRequested = "heavy_hunter".equals(archetypeId) && nextSlam;

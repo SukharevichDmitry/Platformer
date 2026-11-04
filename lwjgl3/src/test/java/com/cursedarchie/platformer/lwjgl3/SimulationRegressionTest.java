@@ -80,6 +80,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkRaiderBlockAndDash();
         checkHeroBlockAndHeavyRules();
         checkNewEnemyRoles();
+        checkGroupAttackSlots();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -870,6 +871,35 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             flank.takeMeleeHit(2f, flank.getPosition().x + 1f, 0f, false);
             closeTo(flank.getHealth(), flank.getMaxHealth() - 2f,
                 "Rear light strike did not bypass guard");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkGroupAttackSlots() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            for (int i = 0; i < 4; i++) {
+                Enemy e = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(12f + i * 1.5f, 2.5f));
+                e.setBrain(null);
+                e.setIntent(Enemy.Intent.IDLE);
+                fight.addEnemy(e);
+            }
+            fight.update(GameWorld.FIXED_STEP);
+            int permitted = 0;
+            for (Enemy e : fight.getAliveEnemies()) if (e.hasAttackPermit()) permitted++;
+            if (permitted > 2) throw new AssertionError("More than two melee enemies hold attack slots: " + permitted);
+            if (permitted < 1) throw new AssertionError("No melee enemy received an attack slot");
+            // An archer standing behind an ally may not shoot through it.
+            Enemy archer = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(20f, 2.5f));
+            archer.setBrain(null);
+            archer.setIntent(Enemy.Intent.IDLE);
+            fight.addEnemy(archer);
+            archer.updateSpecialActions(fight, hero, fight.getAliveEnemies(), .01f);
+            if (!archer.isLineBlockedByAlly(hero.getPosition()))
+                throw new AssertionError("Archer did not notice an ally blocking its line of fire");
         } finally {
             fight.dispose();
         }

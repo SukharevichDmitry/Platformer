@@ -42,6 +42,28 @@ public class SimpleEnemyBrain implements EnemyBrain {
             enemy.setIntent(RETREAT);
             return;
         }
+        String id = enemy.getArchetypeId();
+        boolean overseer = "overseer".equals(id);
+        // Support stays in the rear: back away when the hero closes in, hang back otherwise.
+        if (overseer && enemy.isCanSeeHero() && !enemy.isAttacking()) {
+            if (distance < 3.2f && enemy.canBeginRetreat(retreatDirection)) { enemy.setIntent(RETREAT); return; }
+            if (distance < 5.2f && !enemy.isCanAttackHero()) { enemy.setIntent(IDLE); return; }
+        }
+        // Archer whose shot is blocked by an ally repositions instead of shooting through it.
+        if (scavenger && enemy.isLineBlocked() && enemy.canBeginRetreat(retreatDirection)) {
+            enemy.setIntent(RETREAT);
+            return;
+        }
+        // Breaker plugs its passage: it will not follow the hero far from where it stood.
+        if ("heavy_hunter".equals(id) && enemy.isBeyondLeash(5f) && !enemy.isAttacking() && !enemy.isCanAttackHero()) {
+            enemy.setIntent(IDLE);
+            return;
+        }
+        // No free attack slot: keep a little distance and wait instead of crowding the hero.
+        if (!scavenger && !enemy.hasAttackPermit() && enemy.isCanSeeHero() && !enemy.isAttacking() && distance < 2.6f) {
+            enemy.setIntent(IDLE);
+            return;
+        }
         if (noticeRemaining == 0f && enemy.isCanAttackHero() && !enemy.isRangedWindingUp() &&
             !enemy.isBlocking() && (!scavenger || distance < 1.6f)) {
             enemy.requestAttack();
