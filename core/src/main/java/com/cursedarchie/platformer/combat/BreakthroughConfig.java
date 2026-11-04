@@ -12,9 +12,8 @@ public final class BreakthroughConfig {
     public float referenceRunSpeed = 5f;
     public float minChargeTime = .15f;
     public float maxChargeTime = .8f;
-    /** Maximum dash distance; the real one is min(this, free space ahead). Below minDistance the dash has no travel. */
+    /** Dash distance: fixed by the attack, never reduced by walls (they only stop the body mid-dash). */
     public float dashDistance = 3f;
-    public float minDistance = .5f;
     public float dashDuration = .18f;
     /** Short, stationary recovery after the body has already stopped at the endpoint. */
     public float recoveryTime = .1f;
@@ -37,7 +36,7 @@ public final class BreakthroughConfig {
 
     public static synchronized void set(BreakthroughConfig config) { current = config; }
 
-    /** Charge is based only on the already wall-limited route, never on the hero's current velocity. */
+    /** Charge time depends only on the configured dash distance, never on walls or the hero's current velocity. */
     public float chargeTimeForDistance(float distance) {
         float raw = Math.max(0f, distance) / Math.max(.01f, referenceRunSpeed);
         return Math.max(minChargeTime, Math.min(maxChargeTime, raw));
@@ -63,7 +62,6 @@ public final class BreakthroughConfig {
         d.minChargeTime = Math.max(0f, timing.getFloat("minChargeTime", d.minChargeTime));
         d.maxChargeTime = Math.max(d.minChargeTime,
             timing.getFloat("maxChargeTime", d.maxChargeTime));
-        d.minDistance = root.getFloat("minDistance", d.minDistance);
         d.damageMultiplier = root.getFloat("damageMultiplier", d.damageMultiplier);
         d.knockback = root.getFloat("knockback", d.knockback);
         d.interruptStagger = root.getFloat("interruptStagger", d.interruptStagger);

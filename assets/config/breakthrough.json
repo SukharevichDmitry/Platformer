@@ -5,7 +5,6 @@
     "maxChargeTime": 0.8
   },
   "dashDistance": 3.0,
-  "minDistance": 0.5,
   "dashDuration": 0.18,
   "recoveryTime": 0.1,
   "cooldown": 1.6,

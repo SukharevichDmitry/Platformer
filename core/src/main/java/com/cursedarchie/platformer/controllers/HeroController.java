@@ -94,7 +94,8 @@ public class HeroController implements InputProcessor {
                 (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
             // A heavy or rushed strike takes no queued input; mashing during it is simply lost.
             boolean locked = now != null && (now.isHeavy() || now.getRuntime().isHurried());
-            if (!heavyAttackHeld && !locked) heavyAttackBufferRemaining =
+            // Heavy attacks are ground-only: an airborne press is discarded, never buffered for the landing.
+            if (!heavyAttackHeld && !locked && heavyAllowedHere()) heavyAttackBufferRemaining =
                 now != null ? 1.12f + ATTACK_BUFFER_SECONDS : ATTACK_BUFFER_SECONDS;
             heavyAttackHeld = true;
         } else if (bindings.matches(Action.BLOCK, keycode)) {
@@ -351,12 +352,27 @@ public class HeroController implements InputProcessor {
         }
     }
 
+    /** A heavy attack may only be started from the ground. */
+    private boolean heavyAllowedHere() {
+        return hero.isGrounded() && hero.getBody().getLinearVelocity().y < .5f;
+    }
+
     private static float approach(float current, float target, float step) {
         if (current < target) return Math.min(current + step, target);
         return Math.max(current - step, target);
     }
     private void handleCombatInput(float delta) {
         if (hero.isRolling()) {
+            attackBufferRemaining = 0f;
+            heavyAttackBufferRemaining = 0f;
+            comboQueued = false;
+            freshQueued = false;
+            return;
+        }
+        if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
+            ((AttackState) hero.getCombatStateMachine().getCurrentState()).isHeavy()) {
+            // Charge, dash and recovery take no attack input at all: anything pressed or buffered is discarded,
+            // so no standard strike can follow the heavy attack. A held button is not a new press.
             attackBufferRemaining = 0f;
             heavyAttackBufferRemaining = 0f;
             comboQueued = false;
@@ -389,7 +405,8 @@ public class HeroController implements InputProcessor {
             return;
         }
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
-            if (heavyAttackBufferRemaining > 0f && !hero.canHeavyAttack()) heavyAttackBufferRemaining = 0f;
+            if (heavyAttackBufferRemaining > 0f && (!hero.canHeavyAttack() || !heavyAllowedHere()))
+                heavyAttackBufferRemaining = 0f;
             if (heavyAttackBufferRemaining > 0f) {
                 hero.beginHeavyCooldown();
                 hero.getCombatStateMachine().changeState(new AttackState(true, 0));

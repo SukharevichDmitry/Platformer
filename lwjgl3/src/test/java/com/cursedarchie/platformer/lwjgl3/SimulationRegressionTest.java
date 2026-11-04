@@ -1305,7 +1305,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         closeTo(parsed.chargeTimeForDistance(.1f), .1f, "minimum charge clamp");
         closeTo(parsed.chargeTimeForDistance(9f), .9f, "maximum charge clamp");
 
-        // Charge timing depends on the wall-limited route, never current or modified hero movement speed.
+        // Charge timing depends only on the configured distance: not on walls, current or modified movement speed.
         float normalCharge;
         GameWorld normalChargeWorld = combatFixture();
         try {
@@ -1341,11 +1341,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.getCombatStateMachine().changeState(
                 new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(true, 0));
             com.cursedarchie.platformer.actors.hero.states.combat.AttackState shortAttack = heroAttack(hero);
-            float expected = com.cursedarchie.platformer.combat.BreakthroughConfig.get()
-                .chargeTimeForDistance(shortAttack.getPlannedDistance());
-            closeTo(shortAttack.getStartup(), expected, "wall-limited charge time");
-            if (!(shortAttack.getStartup() < normalCharge))
-                throw new AssertionError("Shorter dash route did not charge faster");
+            closeTo(shortAttack.getPlannedDistance(), com.cursedarchie.platformer.combat.BreakthroughConfig.get().dashDistance,
+                "A nearby wall shortened the planned dash distance");
+            closeTo(shortAttack.getStartup(), normalCharge, "A nearby wall changed the charge time");
         } finally { shortRoute.dispose(); }
 
         // 1) States, timings, distance, restricted charge, direction lock, cooldown.
@@ -1356,7 +1354,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.getBody().setTransform(10f, 2.5f, 0f);
             hero.getBody().setLinearVelocity(0f, 0f);
             hero.setFacingLeft(false);
-            w.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) w.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             w.getHeroController().keyDown(Input.Keys.Z);
             w.getHeroController().keyUp(Input.Keys.Z);
             int charge = 0, dash = 0, recover = 0;
@@ -1438,7 +1436,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.setFacingLeft(false);
             Enemy e1 = staticFoe(g, 11.0f), e2 = staticFoe(g, 11.8f), e3 = staticFoe(g, 12.5f);
             float h1 = e1.getHealth(), h2 = e2.getHealth(), h3 = e3.getHealth();
-            g.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) g.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             g.getHeroController().keyDown(Input.Keys.Z);
             g.getHeroController().keyUp(Input.Keys.Z);
             for (int i = 0; i < 110; i++) g.update(GameWorld.FIXED_STEP);
@@ -1462,7 +1460,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             Enemy behind = staticFoe(wall, 12.7f);
             float behindHealth = behind.getHealth();
             int impacts = hero.getBreakthroughImpactId();
-            wall.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) wall.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             wall.getHeroController().keyDown(Input.Keys.Z);
             wall.getHeroController().keyUp(Input.Keys.Z);
             int dashSteps = 0;
@@ -1498,7 +1496,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 Hero hero = hurt.getHero();
                 hero.getBody().setTransform(10f, 2.5f, 0f);
                 hero.getBody().setLinearVelocity(0f, 0f);
-                hurt.update(GameWorld.FIXED_STEP);
+                for (int settle = 0; settle < 20; settle++) hurt.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
                 hurt.getHeroController().keyDown(Input.Keys.Z);
                 hurt.getHeroController().keyUp(Input.Keys.Z);
                 if (!stepUntil(hurt, hero, phase == 0 ? CHARGE : DASH, 120))
@@ -1522,7 +1520,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             parkEnemies(cd);
             Hero hero = cd.getHero();
             hero.getBody().setTransform(10f, 2.5f, 0f);
-            cd.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) cd.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             cd.getHeroController().keyDown(Input.Keys.Z);
             cd.getHeroController().keyUp(Input.Keys.Z);
             if (!stepUntil(cd, hero, DASH, 120)) throw new AssertionError("no dash");
@@ -1549,7 +1547,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             raider.forceBlockForTest();
             float full = hero.getDamage() * 2f;
             float before = raider.getHealth();
-            guard.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) guard.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             guard.getHeroController().keyDown(Input.Keys.Z);
             guard.getHeroController().keyUp(Input.Keys.Z);
             for (int i = 0; i < 110; i++) guard.update(GameWorld.FIXED_STEP);
@@ -1572,7 +1570,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             heavy.addEnemy(brute);
             brute.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
             float bruteHealth = brute.getHealth();
-            heavy.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) heavy.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             heavy.getHeroController().keyDown(Input.Keys.Z);
             heavy.getHeroController().keyUp(Input.Keys.Z);
             boolean startedDash = false, returnedToIdle = false;
@@ -1597,7 +1595,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 throw new AssertionError("A heavy enemy changed the fixed dash endpoint: " + dashStopX);
         } finally { heavy.dispose(); }
 
-        // 8) The arrow is shortened by a wall, ignores a wall closer than the minimum, and a weak hit keeps the charge.
+        // 8) A wall ahead never shortens the arrow or the charge; a weak hit keeps the charge.
         GameWorld arrow = combatFixture();
         try {
             parkEnemies(arrow);
@@ -1606,14 +1604,16 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.getBody().setLinearVelocity(0f, 0f);
             hero.setFacingLeft(false);
             addLevelWall(arrow, 12.6f, 2.5f, .1f, 1.5f);
-            arrow.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) arrow.update(GameWorld.FIXED_STEP);
             arrow.getHeroController().keyDown(Input.Keys.Z);
             arrow.getHeroController().keyUp(Input.Keys.Z);
             for (int i = 0; i < 3; i++) arrow.update(GameWorld.FIXED_STEP);
             com.cursedarchie.platformer.actors.hero.states.combat.AttackState charging =
                 (com.cursedarchie.platformer.actors.hero.states.combat.AttackState) hero.getCombatStateMachine().getCurrentState();
-            if (!(charging.getPlannedDistance() < 2.5f) || !charging.isWallLimited())
-                throw new AssertionError("A wall ahead did not shorten the arrow: " + charging.getPlannedDistance());
+            closeTo(charging.getPlannedDistance(), com.cursedarchie.platformer.combat.BreakthroughConfig.get().dashDistance,
+                "A wall ahead shortened the arrow");
+            closeTo(charging.getStartup(), normalCharge, "A wall ahead changed the charge time");
+            if (charging.isWallLimited()) throw new AssertionError("The wall was treated as part of the plan");
             Enemy src = arrow.getEnemies().first();
             hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 0.1f, src, hero, 1f, 1f, 3f, .08f, true));
             arrow.update(GameWorld.FIXED_STEP);
@@ -1628,7 +1628,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             Hero hero = brk.getHero();
             hero.getBody().setTransform(10f, 2.5f, 0f);
             hero.getBody().setLinearVelocity(0f, 0f);
-            brk.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) brk.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             brk.getHeroController().keyDown(Input.Keys.Z);
             brk.getHeroController().keyUp(Input.Keys.Z);
             for (int i = 0; i < 6; i++) brk.update(GameWorld.FIXED_STEP);
@@ -1644,7 +1644,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             parkEnemies(dead);
             Hero hero = dead.getHero();
             hero.getBody().setTransform(10f, 2.5f, 0f);
-            dead.update(GameWorld.FIXED_STEP);
+            for (int settle = 0; settle < 20; settle++) dead.update(GameWorld.FIXED_STEP);   // land first: heavy attacks are ground-only
             dead.getHeroController().keyDown(Input.Keys.Z);
             dead.getHeroController().keyUp(Input.Keys.Z);
             for (int i = 0; i < 10; i++) dead.update(GameWorld.FIXED_STEP);
@@ -1688,6 +1688,96 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (steps * GameWorld.FIXED_STEP < expected - .05f)
                 throw new AssertionError("Mashing shortened a rushed recovery: " + steps * GameWorld.FIXED_STEP + " < " + expected);
         } finally { rush.dispose(); }
+
+        // 11) No standard strike follows a heavy attack: pre-buffered, mashed and held attack input is discarded,
+        //     and only a brand-new press after the hero is neutral starts a normal strike.
+        GameWorld seal = combatFixture();
+        try {
+            parkEnemies(seal);
+            Hero hero = seal.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.setFacingLeft(false);
+            for (int settle = 0; settle < 20; settle++) seal.update(GameWorld.FIXED_STEP);
+            seal.getHeroController().keyDown(Input.Keys.Z);   // heavy and a standard press in the same instant
+            seal.getHeroController().keyUp(Input.Keys.Z);
+            seal.getHeroController().keyDown(Input.Keys.X);   // ...which is then simply held down
+            boolean sawHeavy = false, lightDuringOrAfter = false, wasNeutral = false;
+            for (int i = 0; i < 200; i++) {
+                seal.update(GameWorld.FIXED_STEP);
+                com.cursedarchie.platformer.combat.HeavyState st = hero.getHeavyState();
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState cur = heroAttack(hero);
+                if (st != NONE) sawHeavy = true;
+                if (cur != null && !cur.isHeavy()) lightDuringOrAfter = true;
+                if (st == CHARGE || st == DASH || st == RECOVER) {
+                    seal.getHeroController().keyUp(Input.Keys.X);    // fresh presses during every heavy phase
+                    seal.getHeroController().keyDown(Input.Keys.X);
+                }
+                if (sawHeavy && st == NONE) wasNeutral = true;
+            }
+            if (!sawHeavy) throw new AssertionError("The heavy attack never started");
+            if (!wasNeutral) throw new AssertionError("The hero never returned to neutral after the heavy attack");
+            if (lightDuringOrAfter) throw new AssertionError("A standard attack followed the heavy attack");
+            // The button is still held from before: it must not count as a new press.
+            // Releasing and pressing again is a new press and now works.
+            seal.getHeroController().keyUp(Input.Keys.X);
+            seal.getHeroController().keyDown(Input.Keys.X);
+            seal.update(GameWorld.FIXED_STEP);
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState fresh = heroAttack(hero);
+            if (fresh == null || fresh.isHeavy())
+                throw new AssertionError("A new press after returning to neutral did not start a standard strike");
+        } finally { seal.dispose(); }
+
+        // 12) Heavy attacks are ground-only: in the air nothing charges, shows an arrow or changes movement.
+        GameWorld air = combatFixture();
+        try {
+            parkEnemies(air);
+            Hero hero = air.getHero();
+            hero.getBody().setTransform(10f, 7f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            air.update(GameWorld.FIXED_STEP);
+            air.getHeroController().keyDown(Input.Keys.RIGHT);
+            air.getHeroController().keyDown(Input.Keys.Z);
+            air.getHeroController().keyUp(Input.Keys.Z);
+            float maxVx = 0f;
+            for (int i = 0; i < 12; i++) {
+                air.update(GameWorld.FIXED_STEP);
+                if (hero.isGrounded()) break;
+                if (hero.getHeavyState() != NONE || heroAttack(hero) != null)
+                    throw new AssertionError("An airborne heavy press started " + hero.getHeavyState());
+                maxVx = Math.max(maxVx, hero.getBody().getLinearVelocity().x);
+            }
+            air.getHeroController().keyUp(Input.Keys.RIGHT);
+            if (maxVx < Hero.WALK_SPEED * .5f) throw new AssertionError("An airborne heavy press stopped the hero's movement");
+        } finally { air.dispose(); }
+
+        // 13) A ground dash keeps its level and never ends up inside a wall, even right next to one.
+        for (float gap : new float[] {1.1f, .62f}) {
+            GameWorld clip = combatFixture();
+            try {
+                parkEnemies(clip);
+                Hero hero = clip.getHero();
+                hero.getBody().setTransform(10f, 2.5f, 0f);
+                hero.setFacingLeft(false);
+                float half = hero.getSize() / 2f;
+                float faceX = 10f + half + gap;
+                addLevelWall(clip, faceX + .1f, 2.5f, .1f, 1.5f);
+                for (int settle = 0; settle < 20; settle++) clip.update(GameWorld.FIXED_STEP);
+                float startY = hero.getPosition().y, maxDy = 0f, maxX = 0f;
+                clip.getHeroController().keyDown(Input.Keys.Z);
+                clip.getHeroController().keyUp(Input.Keys.Z);
+                for (int i = 0; i < 120; i++) {
+                    clip.update(GameWorld.FIXED_STEP);
+                    if (hero.getHeavyState() == DASH || hero.getHeavyState() == RECOVER) {
+                        maxDy = Math.max(maxDy, Math.abs(hero.getPosition().y - startY));
+                        maxX = Math.max(maxX, hero.getPosition().x);
+                    }
+                }
+                if (maxDy > .05f) throw new AssertionError("The ground dash changed level by " + maxDy + " (gap " + gap + ")");
+                if (maxX + half > faceX + .01f)
+                    throw new AssertionError("The dash clipped into the wall: edge " + (maxX + half) + " > " + faceX + " (gap " + gap + ")");
+            } finally { clip.dispose(); }
+        }
     }
 
     private void checkArrowArcPhysics() {

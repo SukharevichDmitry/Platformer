@@ -29,7 +29,9 @@ public class AttackState implements HeroState {
     private boolean lunged;
     // Breakthrough dash bookkeeping (heavy strike only).
     private boolean dashing, dashEnded;
-    private float dashOriginX, dashElapsed;
+    private float dashOriginX, dashStartY, dashElapsed;
+    private boolean blockedPending;
+    private int airborneFrames;
     private float plannedDistance, dashEndX, firstHitX, firstHitY = Float.NaN, firstHitTime = -1f;
     private boolean wallLimited;
     private int dashHits;
@@ -81,6 +83,8 @@ public class AttackState implements HeroState {
         wallLimited = false;
         dashEnded = false;
         dashElapsed = 0f;
+        blockedPending = false;
+        airborneFrames = 0;
         dashHits = 0;
         hero.setLeftAttackActive(false);
         hero.setRightAttackActive(false);
@@ -151,6 +155,9 @@ public class AttackState implements HeroState {
         hero.setRightAttackActive(false);
         if (phase == AttackRuntime.Phase.STARTUP) {
             hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);   // fully stationary charge
+            // Heavy attacks are ground-only: a charge that loses the floor (knocked off a ledge) is dropped.
+            airborneFrames = hero.isGrounded() ? 0 : airborneFrames + 1;
+            if (airborneFrames > 6) hero.getCombatStateMachine().changeState(new CombatIdleState());
             return;
         }
         if (phase == AttackRuntime.Phase.ACTIVE && !dashEnded) {
@@ -158,31 +165,45 @@ public class AttackState implements HeroState {
             if (!dashing) {
                 dashing = true;
                 dashOriginX = hero.getPosition().x;
-                dashElapsed = 0f;
+                dashStartY = hero.getPosition().y;
+                blockedPending = false;
                 hero.setBreakthroughDashing(true);
+                hero.getBody().setGravityScale(0f);   // a ground dash stays on its own level
+            }
+            if (blockedPending) {   // the previous step ran into geometry: stop right here
+                runtime.jumpTo(runtime.definition().activeEnd());
+                endDash(hero, dir, true);
+                return;
             }
             float curX = hero.getPosition().x;
-            float duration = Math.max(cfg.dashDuration, delta);
-            dashElapsed = Math.min(duration, dashElapsed + delta);
-            float progress = dashElapsed / duration;
-            float targetX = dashOriginX + dir * plannedDistance * progress;
-            sweep(hero, curX, targetX);
-            if (progress >= 1f || plannedDistance <= .01f) {
-                hero.getBody().setTransform(dashOriginX + dir * plannedDistance,
-                    hero.getPosition().y, hero.getBody().getAngle());
+            float remaining = Math.max(0f, plannedDistance - Math.abs(curX - dashOriginX));
+            // Even steps over the frames the dash has left: constant speed that lands exactly on the end point,
+            // independent of walking speed or any easing.
+            int framesLeft = 1 + Math.max(0,
+                (int) Math.ceil((runtime.definition().activeEnd() - runtime.elapsed()) / delta - 1f - 1e-3f));
+            float want = remaining / framesLeft;
+            if (want <= .001f) {   // reached the end point
                 runtime.jumpTo(runtime.definition().activeEnd());
-                endDash(hero, dir, wallLimited);
-            } else {
-                // Constant route speed. Box2D advances to targetX this step; no damping/easing participates.
-                hero.getBody().setLinearVelocity((targetX - curX) / delta, 0f);
+                endDash(hero, dir, false);
+                return;
             }
+            // Swept wall test along this step: never move farther than the last safe point.
+            float allowed = freeAhead(hero, dir, want);
+            if (allowed < want - 1e-4f) {
+                if (allowed <= .002f) {
+                    runtime.jumpTo(runtime.definition().activeEnd());
+                    endDash(hero, dir, true);
+                    return;
+                }
+                want = allowed;
+                blockedPending = true;
+            }
+            sweep(hero, curX, curX + dir * want);
+            float vy = Math.max(-2f, Math.min(2f, (dashStartY - hero.getPosition().y) / delta * .5f));
+            hero.getBody().setLinearVelocity(dir * want / delta, vy);
         } else if (phase == AttackRuntime.Phase.RECOVERY) {
-            if (dashing && !dashEnded) {
-                float endX = dashOriginX + runtime.direction() * plannedDistance;
-                sweep(hero, hero.getPosition().x, endX);
-                hero.getBody().setTransform(endX, hero.getPosition().y, hero.getBody().getAngle());
-                endDash(hero, runtime.direction(), wallLimited);
-            }
+            // The dash hitbox is gone the moment recovery starts; the body is simply stopped where it is.
+            if (dashing && !dashEnded) endDash(hero, runtime.direction(), blockedPending);
             hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);
         }
     }
@@ -190,36 +211,40 @@ public class AttackState implements HeroState {
     private void endDash(Hero hero, float dir, boolean blocked) {
         dashEnded = true;
         dashEndX = hero.getPosition().x;
+        wallLimited = blocked;
         hero.setBreakthroughDashing(false);
-        hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);
+        hero.getBody().setGravityScale(1f);
+        hero.getBody().setLinearVelocity(0f, 0f);   // immediate stop, nothing left to slide
         if (blocked)
             hero.noteBreakthroughImpact(dashEndX + dir * hero.getSize() / 2f, hero.getPosition().y, dir);
     }
 
-    /** Fixes the dash length before it starts: horizontal probes ahead, minus the body's half width. */
+    /**
+     * The dash route is fixed by the attack parameters alone: walls never shorten it (or the charge that
+     * depends on it). They only stop the body during the dash itself.
+     */
     private void planDash(Hero hero, final float dir) {
-        BreakthroughConfig cfg = BreakthroughConfig.get();
+        plannedDistance = BreakthroughConfig.get().dashDistance;
+        wallLimited = false;
+    }
+
+    /** How far the body can move along {@code dir} (up to {@code length}) before level geometry stops it. */
+    private float freeAhead(final Hero hero, final float dir, float length) {
         final float half = hero.getSize() / 2f;
-        final float max = Math.max(cfg.dashDistance, cfg.minDistance);
-        final float[] free = {max};
+        final float[] free = {length};
         float x = hero.getPosition().x, y = hero.getPosition().y;
-        for (float dy : new float[] {0f, .35f, -.3f}) {
-            final float[] best = {max + half};
+        for (float dy : new float[] {0f, half * .8f, -half * .8f}) {
             hero.getBody().getWorld().rayCast(new RayCastCallback() {
                 @Override public float reportRayFixture(Fixture fixture, com.badlogic.gdx.math.Vector2 point,
                                                         com.badlogic.gdx.math.Vector2 normal, float fraction) {
                     if (fixture.isSensor() || !"level".equals(fixture.getBody().getUserData())) return -1f;
-                    best[0] = Math.min(best[0], Math.abs(point.x - hero.getPosition().x));
+                    free[0] = Math.min(free[0], Math.abs(point.x - hero.getPosition().x) - half - DASH_WALL_SKIN);
                     return fraction;
                 }
-            }, new com.badlogic.gdx.math.Vector2(x, y + dy), new com.badlogic.gdx.math.Vector2(x + dir * (max + half), y + dy));
-            // Preserve the configured distance on an unobstructed route. The skin is only
-            // needed when a ray actually found level geometry in front of the body.
-            if (best[0] < max + half - .001f)
-                free[0] = Math.min(free[0], best[0] - half - DASH_WALL_SKIN);
+            }, new com.badlogic.gdx.math.Vector2(x, y + dy),
+               new com.badlogic.gdx.math.Vector2(x + dir * (length + half + DASH_WALL_SKIN), y + dy));
         }
-        wallLimited = free[0] < cfg.dashDistance - .01f;
-        plannedDistance = free[0] < cfg.minDistance ? 0f : Math.min(cfg.dashDistance, free[0]);
+        return Math.max(0f, free[0]);
     }
 
     private boolean blockedByLevel(Hero hero, float tx, float ty) {
@@ -289,6 +314,7 @@ public class AttackState implements HeroState {
     @Override public void exit(Hero hero) {
         if (heavy) {
             hero.setBreakthroughDashing(false);
+            hero.getBody().setGravityScale(1f);
             hero.beginHeavyCooldown();   // the cooldown counts from the end of stationary recovery
         }
         hero.setAttackHandled(false);

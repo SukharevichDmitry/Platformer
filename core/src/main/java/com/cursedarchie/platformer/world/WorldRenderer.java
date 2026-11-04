@@ -1525,6 +1525,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             heroFrame = attack.isFacingLeft() ?
                 heroAttackLeftAnimation.getKeyFrame(pose, false) :
                 heroAttackRightAnimation.getKeyFrame(pose, false);
+            // After the dash only the plain stopped stance is shown: no swing frame, so it cannot read as a
+            // standard attack and there is no deceleration pose.
+            if (attack.isHeavy() && time >= attack.getActiveEnd())
+                heroFrame = attack.isFacingLeft() ? heroIdleLeft : heroIdleRight;
             if (displayedHeroAttack != attack) {
                 displayedHeroAttack = attack;
                 displayedHeroSwing = false;
