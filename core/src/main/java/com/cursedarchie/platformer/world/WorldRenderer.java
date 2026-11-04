@@ -97,6 +97,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final Sound secondSlash;
     private final Sound heavySlash;
     private final Sound hurriedSlash;
+    private final Sound chargeSound;
+    private final Sound readySound;
+    private boolean readyPlayed;
+    private int impactSeen;
     private final Sound comboChime;
     private AttackState rhythmAttack;
     private com.cursedarchie.platformer.combat.InputResult rhythmResult =
@@ -226,6 +230,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         secondSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_light_2.wav"));
         heavySlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_heavy.wav"));
         hurriedSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_hurried.wav"));
+        chargeSound = Gdx.audio.newSound(Gdx.files.internal("sfx/breakthrough_charge.wav"));
+        readySound = Gdx.audio.newSound(Gdx.files.internal("sfx/breakthrough_ready.wav"));
         comboChime = Gdx.audio.newSound(Gdx.files.internal("sfx/combo_chain.wav"));
         loadArcherCueSounds();
         arrowHitHeroSound = Gdx.audio.newSound(Gdx.files.internal("sfx/arrow_hit_hero.wav"));
@@ -1508,8 +1514,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             // A hurried strike snaps through its pose faster: a sharp, jerky motion with a cut-short wind-up.
             if (attack.getRuntime().isHurried() && !attack.isHeavy()) time *= 1.35f;
             float pose = attack.isHeavy() ?
-                time < .35f ? 0f : time < attack.getStartup() ? .13f :
-                    time < attack.getActiveEnd() ? .26f : .13f :
+                // Braced stance while charging, a coiled crouch once locked, a full lunge in the dash,
+                // then a slowly straightening recovery.
+                time < attack.getStartup() - com.cursedarchie.platformer.combat.BreakthroughConfig.get().lockTime ? 0f :
+                    time < attack.getStartup() ? .13f :
+                    time < attack.getActiveEnd() ? .26f :
+                    time < attack.getActiveEnd() + .3f ? .13f : 0f :
                 attack.getComboStep() == 2 ?
                     time < attack.getStartup() ? .26f :
                         time < attack.getActiveEnd() ? .13f : 0f : time;
@@ -1519,8 +1529,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             if (displayedHeroAttack != attack) {
                 displayedHeroAttack = attack;
                 displayedHeroSwing = false;
+                if (attack.isHeavy()) chargeSound.play(.5f);
             }
+            if (attack.isHeavy()) {
+                if (!readyPlayed && attack.getStartup() - time <= .1f && attack.getPhase(hero) == AttackState.Phase.STARTUP) {
+                    readyPlayed = true;
+                    readySound.play(.45f);
+                }
+            } else readyPlayed = false;
             if (rhythmAttack != attack) {
+                if (attack.isHeavy()) readyPlayed = false;
                 rhythmAttack = attack;
                 rhythmResult = com.cursedarchie.platformer.combat.InputResult.NO_INPUT;
             }
@@ -1553,6 +1571,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             spriteBatch.setColor(1f, 0.35f, 0.35f, 1f);
         } else if (hero.getInvulnerabilityRemaining() > 0f) {
             spriteBatch.setColor(1f, 0.65f, 0.65f, 1f);
+        } else if (hero.getHeavyState() == com.cursedarchie.platformer.combat.HeavyState.HEAVY_RECOVERY) {
+            spriteBatch.setColor(1f, .82f, .78f, 1f);   // winded and exposed after the dash
         }
         float drawX = hero.getPosition().x - hero.getSize()/2f;
         float drawY = hero.getPosition().y - hero.getSize()/2f;
@@ -1581,6 +1601,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawSize *= 1f - .62f * portalProgress;
             drawX = hero.getPosition().x + (targetX - hero.getPosition().x) * portalProgress - drawSize / 2f;
             drawY = hero.getPosition().y + (targetY - hero.getPosition().y + .8f) * portalProgress - drawSize / 2f;
+        }
+        if (hero.getHeavyState() == com.cursedarchie.platformer.combat.HeavyState.HEAVY_DASH) {
+            // Afterimages trail behind the dash: the hero sweeps forward rather than teleporting.
+            float back = ((AttackState) hero.getCombatStateMachine().getCurrentState()).isFacingLeft() ? 1f : -1f;
+            for (int k = 4; k >= 1; k--) {
+                spriteBatch.setColor(1f, .72f, .4f, .42f - k * .08f);
+                spriteBatch.draw(heroFrame, drawX + back * k * .42f, drawY, drawSize, drawSize);
+            }
+            spriteBatch.setColor(Color.WHITE);
         }
         spriteBatch.draw(
             heroFrame,
@@ -1648,6 +1677,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             for (int i = 0; i < 8; i++) barFrom(bx, by, .15f + .6f * (1f - t), .05f, i * 45f);
             ring(bx, by, .3f + (1f - t));
         }
+        drawBreakthroughImpact();
         if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
             AttackState attack = (AttackState) hero.getCombatStateMachine().getCurrentState();
             if (attack.isHeavy() && attack.getPhase(hero) == AttackState.Phase.STARTUP) {
@@ -1665,6 +1695,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 }
                 ring(cx, hero.getPosition().y - hero.getSize() / 2f + .1f, 1.3f - .6f * charge);
             }
+            if (attack.isHeavy()) drawBreakthroughEffects(attack);
             if (attack.usesRhythm() && attack.getRuntime().isInComboWindow() && attack.chainsToNext()) {
                 // Timing cue: a brief glint on the blade hand while a press would continue the combo.
                 // Strong for new players, subtle once the rhythm has been mastered.
@@ -1734,6 +1765,91 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                         .3f + .25f * (1f - burst), .05f, (direction < 0f ? 180f : 0f) + direction * (i * 28f));
             }
         }
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    /** How far a dash from (x0,y0) would travel before solid geometry stops it. */
+    private float dashReach(float x0, float y0, final float dir, final float length) {
+        final float[] best = {length};
+        gameWorld.getWorld().rayCast(new com.badlogic.gdx.physics.box2d.RayCastCallback() {
+            @Override public float reportRayFixture(Fixture f, Vector2 p, Vector2 n, float fraction) {
+                if (!f.isSensor() && "level".equals(f.getBody().getUserData())) {
+                    best[0] = Math.min(best[0], fraction * length);
+                    return fraction;
+                }
+                return -1f;
+            }
+        }, new Vector2(x0, y0), new Vector2(x0 + dir * length, y0));
+        return best[0];
+    }
+
+    /** Charge telegraph, dash streaks and the winded recovery of the breakthrough attack. */
+    private void drawBreakthroughEffects(AttackState attack) {
+        com.cursedarchie.platformer.combat.BreakthroughConfig cfg = com.cursedarchie.platformer.combat.BreakthroughConfig.get();
+        float dir = attack.isFacingLeft() ? -1f : 1f;
+        float hx = hero.getPosition().x, hy = hero.getPosition().y;
+        float footY = hy - hero.getSize() / 2f + .12f;
+        float t = hero.getCombatStateTime();
+        if (attack.getPhase(hero) == AttackState.Phase.STARTUP) {
+            boolean locked = attack.isDirectionLocked();
+            float pulse = .6f + .4f * (float) Math.sin(effectClock * 24f);
+            // Direction indicator laid along the ground, ending where the dash would really stop.
+            float reach = dashReach(hx, footY + .1f, dir, cfg.dashDistance + .6f);
+            int segments = Math.max(1, (int) (reach / .32f));
+            for (int i = 0; i < segments; i++) {
+                float px = hx + dir * (.55f + i * .32f);
+                if (locked) spriteBatch.setColor(1f, .6f, .2f, .95f);
+                else spriteBatch.setColor(.55f, .85f, 1f, .3f + .25f * pulse);
+                barCentered(px, footY, .2f, locked ? .08f : .05f, 0f);
+            }
+            float tipX = hx + dir * (.55f + segments * .32f);
+            for (int s = -1; s <= 1; s += 2) barFrom(tipX, footY, .3f, locked ? .08f : .05f, (dir < 0f ? 180f : 0f) + s * 150f * dir);
+            float sinceLock = t - (attack.getStartup() - cfg.lockTime);
+            if (sinceLock >= 0f && sinceLock < .14f) {
+                // Lock-in: a white snap ring tells the player the direction is final.
+                float k = sinceLock / .14f;
+                spriteBatch.setColor(1f, 1f, .9f, 1f - k);
+                ring(hx, hy, .5f + k * .8f);
+                barCentered(hx + dir * .9f, footY, .5f * (1f - k) + .2f, .1f, 0f);
+            }
+            if (attack.getStartup() - t <= .1f) {
+                // Ready: the body flares just before the dash.
+                spriteBatch.setColor(1f, .95f, .7f, .55f + .35f * pulse);
+                glow(hx, hy, 1f);
+                ring(hx, hy, .7f);
+            }
+        } else if (attack.getPhase(hero) == AttackState.Phase.ACTIVE) {
+            for (int i = 0; i < 6; i++) {
+                spriteBatch.setColor(1f, .78f, .42f, .75f - i * .11f);
+                barCentered(hx - dir * (.55f + i * .34f), hy + ((i % 3) - 1) * .22f, .55f + i * .05f, .05f, 0f);
+            }
+        } else {
+            float p = clamp01((t - attack.getActiveEnd()) / Math.max(.05f, cfg.recoveryTime));
+            // Deceleration skid and a shrinking amber bar: the hero is spent and open until it runs out.
+            spriteBatch.setColor(.72f, .68f, .6f, .6f * (1f - p));
+            for (int i = 0; i < 3; i++)
+                spriteBatch.draw(sceneryPixel, hx - dir * (.3f + i * .25f) - .12f, footY - .04f + i * .03f * p, .26f, .07f);
+            float flicker = .7f + .3f * (float) Math.sin(effectClock * 30f);
+            spriteBatch.setColor(1f, .55f, .25f, .8f * flicker);
+            spriteBatch.draw(sceneryPixel, hx - .4f * (1f - p), hy + hero.getSize() / 2f + .12f, .8f * (1f - p), .05f);
+        }
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    private void drawBreakthroughImpact() {
+        if (hero.getBreakthroughImpactId() != impactSeen) {
+            impactSeen = hero.getBreakthroughImpactId();
+            Sound bump = eventSounds.get(GameWorld.CombatEvent.Kind.WALL_BUMP);
+            if (bump != null) bump.play(.8f);
+        }
+        float rem = hero.getBreakthroughImpactRemaining();
+        if (rem <= 0f) return;
+        float k = rem / .45f, x = hero.getBreakthroughImpactX(), y = hero.getBreakthroughImpactY();
+        spriteBatch.setColor(1f, .9f, .6f, k);
+        ring(x, y, .3f + (1f - k) * 1.1f);
+        for (int i = 0; i < 8; i++) barFrom(x, y, .15f + .5f * (1f - k), .05f, i * 45f);
+        spriteBatch.setColor(.75f, .7f, .62f, .7f * k);
+        spriteBatch.draw(sceneryPixel, x - hero.getBreakthroughImpactDirection() * .3f - .15f, y - .5f, .3f, .1f + .2f * (1f - k));
         spriteBatch.setColor(Color.WHITE);
     }
 
@@ -2426,6 +2542,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         secondSlash.dispose();
         heavySlash.dispose();
         hurriedSlash.dispose();
+        chargeSound.dispose();
+        readySound.dispose();
         comboChime.dispose();
         for (Sound cue : archerCueSounds) if (cue != null) cue.dispose();
         arrowHitHeroSound.dispose();

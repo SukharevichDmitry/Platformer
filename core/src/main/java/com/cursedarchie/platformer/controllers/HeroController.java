@@ -217,6 +217,12 @@ public class HeroController implements InputProcessor {
     }
 
     private void handleMovementInput(float delta) {
+        if (hero.isBreakthroughDashing()) {
+            // The dash owns the hero's velocity; walking physics, steering and jumping are suspended.
+            climbing = false;
+            dashQueued = false;
+            return;
+        }
         if (hero.isStaggered()) {
             climbing = false;
             hero.getBody().setLinearVelocity(approach(hero.getBody().getLinearVelocity().x,
@@ -253,7 +259,9 @@ public class HeroController implements InputProcessor {
         float direction = 0f;
         boolean isJumpState = hero.getMotionStateMachine().getCurrentState() instanceof JumpState;
 
-        boolean facingLocked = hero.getCombatStateMachine().getCurrentState() instanceof AttackState;
+        boolean facingLocked = hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
+            !(((AttackState) hero.getCombatStateMachine().getCurrentState()).isHeavy() &&
+              !((AttackState) hero.getCombatStateMachine().getCurrentState()).isDirectionLocked());
         if (leftHeld && !rightHeld) {
             direction = -1f;
             if (!facingLocked) hero.setFacingLeft(true);
@@ -298,9 +306,11 @@ public class HeroController implements InputProcessor {
         }
         AttackState attack = hero.getCombatStateMachine().getCurrentState() instanceof AttackState ?
             (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
+        com.cursedarchie.platformer.combat.BreakthroughConfig breakthrough =
+            com.cursedarchie.platformer.combat.BreakthroughConfig.get();
         float attackSpeed = attack != null && attack.isHeavy() ?
-            hero.getCombatStateTime() < attack.getStartup() ? .35f :
-                attack.isInRecovery(hero) ? .50f : 1f : 1f;
+            hero.getCombatStateTime() < attack.getStartup() ? breakthrough.chargeMoveFactor :
+                attack.isInRecovery(hero) ? breakthrough.recoveryMoveFactor : 1f : 1f;
         float targetX = direction * hero.getVelocity() * attackSpeed * (blockHeld ? .55f : 1f);
         // Ground input is direct: reversing or releasing a key takes effect in this step.
         float acceleration = direction == 0f ? Hero.AIR_BRAKING : Hero.AIR_ACCELERATION;
@@ -308,7 +318,8 @@ public class HeroController implements InputProcessor {
         float moveY = Math.max(currentY, -Hero.MAX_FALL_SPEED);
         hero.getBody().setLinearVelocity(moveX, moveY);
 
-        if (jumpBufferRemaining > 0f && hero.isGrounded() && moveY <= 0.1f) {
+        if (jumpBufferRemaining > 0f && hero.isGrounded() && moveY <= 0.1f &&
+            !(attack != null && attack.isHeavy() && !attack.isInRecovery(hero))) {
             // Grounding was refreshed after the previous physics step, but JumpState may
             // still be active until hero.update below. Leave it so re-entering JumpState
             // starts a new jump animation instead of being ignored as the same state.

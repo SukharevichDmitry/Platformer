@@ -84,6 +84,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
         checkAttackRhythm();
+        checkBreakthroughDash();
         checkArcherMemoryAndMirroredTurn();
         checkArrowCeilingAndSightLoss();
         checkMeleeReachMatchesHitbox();
@@ -813,17 +814,17 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             fight.getHeroController().keyUp(Input.Keys.RIGHT);
             for (int i = 2; i < 28; i++) fight.update(GameWorld.FIXED_STEP);
             closeTo(target.getHealth(), before, "heavy attack hit before windup");
-            for (int i = 0; i < 10; i++) fight.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 45; i++) fight.update(GameWorld.FIXED_STEP);
             if (target.getHealth() >= before - 2f)
                 throw new AssertionError("Heavy strike missed or ignored the relic synergy");
             target.getBody().setTransform(30f, 2.5f, 0f);
             hero.getCombatStateMachine().changeState(
                 new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(true, 0));
-            for (int i = 0; i < 57; i++) fight.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 100; i++) fight.update(GameWorld.FIXED_STEP);
             if (!(hero.getCombatStateMachine().getCurrentState() instanceof
                 com.cursedarchie.platformer.actors.hero.states.combat.AttackState))
                 throw new AssertionError("Missed heavy strike recovered too early");
-            for (int i = 0; i < 14; i++) fight.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 12; i++) fight.update(GameWorld.FIXED_STEP);
             if (hero.getCombatStateMachine().getCurrentState() instanceof
                 com.cursedarchie.platformer.actors.hero.states.combat.AttackState)
                 throw new AssertionError("Missed heavy strike recovery never ended");
@@ -1238,6 +1239,191 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             held.getHeroController().keyUp(Input.Keys.X);
             if (strikes != 1) throw new AssertionError("Holding attack started " + strikes + " strikes");
         } finally { held.dispose(); }
+    }
+
+    private static void parkEnemies(GameWorld w) {
+        for (Enemy e : w.getEnemies()) { e.setActive(false); e.getBody().setTransform(40f, 2.5f, 0f); }
+    }
+
+    private static void addLevelWall(GameWorld w, float x, float y, float halfWidth, float halfHeight) {
+        com.badlogic.gdx.physics.box2d.BodyDef def = new com.badlogic.gdx.physics.box2d.BodyDef();
+        def.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
+        def.position.set(x, y);
+        com.badlogic.gdx.physics.box2d.Body body = w.getWorld().createBody(def);
+        body.setUserData("level");
+        com.badlogic.gdx.physics.box2d.PolygonShape shape = new com.badlogic.gdx.physics.box2d.PolygonShape();
+        shape.setAsBox(halfWidth, halfHeight);
+        body.createFixture(shape, 0f);
+        shape.dispose();
+    }
+
+    private static Enemy staticFoe(GameWorld w, float x) {
+        Enemy e = EnemyFactory.createDefaultEnemy(w.getWorld(), new Vector2(x, 2.5f));
+        e.setActive(false);
+        e.setFacingLeft(true);
+        w.addEnemy(e);
+        e.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+        return e;
+    }
+
+    private static boolean stepUntil(GameWorld w, Hero hero, com.cursedarchie.platformer.combat.HeavyState state, int max) {
+        for (int i = 0; i < max; i++) {
+            if (hero.getHeavyState() == state) return true;
+            w.update(GameWorld.FIXED_STEP);
+        }
+        return hero.getHeavyState() == state;
+    }
+
+    private void checkBreakthroughDash() {
+        com.cursedarchie.platformer.combat.HeavyState NONE = com.cursedarchie.platformer.combat.HeavyState.NONE;
+        com.cursedarchie.platformer.combat.HeavyState CHARGE = com.cursedarchie.platformer.combat.HeavyState.HEAVY_CHARGE;
+        com.cursedarchie.platformer.combat.HeavyState DASH = com.cursedarchie.platformer.combat.HeavyState.HEAVY_DASH;
+        com.cursedarchie.platformer.combat.HeavyState RECOVER = com.cursedarchie.platformer.combat.HeavyState.HEAVY_RECOVERY;
+        closeTo(com.cursedarchie.platformer.combat.BreakthroughConfig.parse("{\"dashDistance\":2.0}").dashDistance, 2f,
+            "breakthrough config value was not read");
+        closeTo(com.cursedarchie.platformer.combat.BreakthroughConfig.parse("{}").chargeTime, .75f,
+            "breakthrough defaults missing");
+
+        // 1) States, timings, distance, restricted charge, direction lock, cooldown.
+        GameWorld w = combatFixture();
+        try {
+            parkEnemies(w);
+            Hero hero = w.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            w.update(GameWorld.FIXED_STEP);
+            w.getHeroController().keyDown(Input.Keys.Z);
+            w.getHeroController().keyUp(Input.Keys.Z);
+            w.getHeroController().keyDown(Input.Keys.LEFT);
+            int charge = 0, dash = 0, recover = 0;
+            float dashStartX = Float.NaN, dashEndX = Float.NaN, maxChargeSpeed = 0f;
+            boolean sawRecoveryAttackIgnored = true;
+            Object recoveryState = null;
+            for (int i = 1; i <= 120; i++) {
+                if (i == 15) { w.getHeroController().keyUp(Input.Keys.LEFT); w.getHeroController().keyDown(Input.Keys.RIGHT); }
+                if (i == 40) { w.getHeroController().keyUp(Input.Keys.RIGHT); w.getHeroController().keyDown(Input.Keys.LEFT); }
+                w.update(GameWorld.FIXED_STEP);
+                com.cursedarchie.platformer.combat.HeavyState st = hero.getHeavyState();
+                if (st == CHARGE) {
+                    charge++;
+                    maxChargeSpeed = Math.max(maxChargeSpeed, Math.abs(hero.getBody().getLinearVelocity().x));
+                } else if (st == DASH) {
+                    dash++;
+                    if (Float.isNaN(dashStartX)) dashStartX = hero.getPosition().x;
+                    dashEndX = hero.getPosition().x;
+                } else if (st == RECOVER) {
+                    recover++;
+                    if (recoveryState == null) {
+                        recoveryState = hero.getCombatStateMachine().getCurrentState();
+                        w.getHeroController().keyDown(Input.Keys.X);
+                        w.getHeroController().keyUp(Input.Keys.X);
+                        w.getHeroController().keyDown(Input.Keys.Z);
+                        w.getHeroController().keyUp(Input.Keys.Z);
+                    } else if (hero.getCombatStateMachine().getCurrentState() != recoveryState) sawRecoveryAttackIgnored = false;
+                }
+            }
+            w.getHeroController().keyUp(Input.Keys.LEFT);
+            if (Math.abs(charge - 44) > 3 || Math.abs(dash - 20) > 3 || Math.abs(recover - 38) > 4)
+                throw new AssertionError("Breakthrough phase lengths off: " + charge + "/" + dash + "/" + recover);
+            if (maxChargeSpeed > Hero.WALK_SPEED * .25f + .2f)
+                throw new AssertionError("Charge did not restrict movement: " + maxChargeSpeed);
+            float travelled = dashEndX - dashStartX;
+            if (travelled < 2.4f || travelled > 3.6f)
+                throw new AssertionError("Dash travelled " + travelled + " instead of about 3 units to the right");
+            if (!sawRecoveryAttackIgnored) throw new AssertionError("Recovery was cancelled by an attack press");
+            if (hero.getHeavyState() != NONE) throw new AssertionError("Breakthrough never returned to idle");
+        } finally { w.dispose(); }
+
+        // 2) Three enemies in a row: 100% / 50% / 50%, each only once, and the dash passes through them.
+        GameWorld g = combatFixture();
+        try {
+            parkEnemies(g);
+            Hero hero = g.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            Enemy e1 = staticFoe(g, 11.0f), e2 = staticFoe(g, 11.8f), e3 = staticFoe(g, 12.5f);
+            float h1 = e1.getHealth(), h2 = e2.getHealth(), h3 = e3.getHealth();
+            g.update(GameWorld.FIXED_STEP);
+            g.getHeroController().keyDown(Input.Keys.Z);
+            g.getHeroController().keyUp(Input.Keys.Z);
+            for (int i = 0; i < 110; i++) g.update(GameWorld.FIXED_STEP);
+            float l1 = h1 - e1.getHealth(), l2 = h2 - e2.getHealth(), l3 = h3 - e3.getHealth();
+            if (l1 <= 0f) throw new AssertionError("The first enemy on the path took no damage");
+            closeTo(l2, l1 * .5f, "second enemy must take half damage, once");
+            closeTo(l3, l1 * .5f, "third enemy must take half damage, once");
+            if (hero.getPosition().x < 12.3f)
+                throw new AssertionError("Enemies blocked the dash: hero ended at " + hero.getPosition().x);
+        } finally { g.dispose(); }
+
+        // 3) A wall stops the dash, shows an impact, starts recovery early and shields enemies behind it.
+        GameWorld wall = combatFixture();
+        try {
+            parkEnemies(wall);
+            Hero hero = wall.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            addLevelWall(wall, 11.8f, 2.5f, .1f, 1.5f);
+            Enemy behind = staticFoe(wall, 12.7f);
+            float behindHealth = behind.getHealth();
+            int impacts = hero.getBreakthroughImpactId();
+            wall.update(GameWorld.FIXED_STEP);
+            wall.getHeroController().keyDown(Input.Keys.Z);
+            wall.getHeroController().keyUp(Input.Keys.Z);
+            int dashSteps = 0;
+            for (int i = 0; i < 110; i++) {
+                wall.update(GameWorld.FIXED_STEP);
+                if (hero.getHeavyState() == DASH) dashSteps++;
+            }
+            if (hero.getPosition().x > 11.7f) throw new AssertionError("Dash went through a wall: " + hero.getPosition().x);
+            if (hero.getBreakthroughImpactId() == impacts) throw new AssertionError("Wall hit produced no impact");
+            if (dashSteps > 16) throw new AssertionError("Dash kept going after hitting the wall: " + dashSteps);
+            closeTo(behind.getHealth(), behindHealth, "Dash hit an enemy through a wall");
+        } finally { wall.dispose(); }
+
+        // 4) Interruptions: a hit breaks the charge and the recovery, but a dash in full flight carries on.
+        for (int phase = 0; phase < 3; phase++) {
+            GameWorld hurt = combatFixture();
+            try {
+                parkEnemies(hurt);
+                Hero hero = hurt.getHero();
+                hero.getBody().setTransform(10f, 2.5f, 0f);
+                hero.getBody().setLinearVelocity(0f, 0f);
+                hurt.update(GameWorld.FIXED_STEP);
+                hurt.getHeroController().keyDown(Input.Keys.Z);
+                hurt.getHeroController().keyUp(Input.Keys.Z);
+                if (!stepUntil(hurt, hero, phase == 0 ? CHARGE : phase == 1 ? DASH : RECOVER, 120))
+                    throw new AssertionError("Could not reach breakthrough phase " + phase);
+                for (int i = 0; i < 3; i++) hurt.update(GameWorld.FIXED_STEP);
+                Enemy src = hurt.getEnemies().first();
+                float hp = hero.getHealth();
+                hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, src, hero, 1f, 1f, 3f, .3f, true));
+                hurt.update(GameWorld.FIXED_STEP);
+                if (hero.getHealth() >= hp) throw new AssertionError("Hero took no damage in breakthrough phase " + phase);
+                boolean still = hero.getHeavyState() != NONE;
+                if (phase == 1 && !still) throw new AssertionError("A hit cancelled a dash in full flight");
+                if (phase != 1 && still) throw new AssertionError("A hit did not interrupt breakthrough phase " + phase);
+                if (!hero.isStaggered()) throw new AssertionError("Hit during breakthrough phase " + phase + " gave no stagger");
+            } finally { hurt.dispose(); }
+        }
+
+        // 5) Cooldown counts from the end of the recovery.
+        GameWorld cd = combatFixture();
+        try {
+            parkEnemies(cd);
+            Hero hero = cd.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            cd.update(GameWorld.FIXED_STEP);
+            cd.getHeroController().keyDown(Input.Keys.Z);
+            cd.getHeroController().keyUp(Input.Keys.Z);
+            if (!stepUntil(cd, hero, RECOVER, 120)) throw new AssertionError("no recovery");
+            for (int i = 0; i < 60 && hero.getHeavyState() != NONE; i++) cd.update(GameWorld.FIXED_STEP);
+            if (hero.canHeavyAttack()) throw new AssertionError("Cooldown did not start after the recovery");
+            for (int i = 0; i < 110; i++) cd.update(GameWorld.FIXED_STEP);
+            if (!hero.canHeavyAttack()) throw new AssertionError("Cooldown never ended");
+        } finally { cd.dispose(); }
     }
 
     private void checkArrowArcPhysics() {

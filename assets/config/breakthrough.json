@@ -1,0 +1,15 @@
+{
+  "chargeTime": 0.75,
+  "lockTime": 0.17,
+  "dashDuration": 0.32,
+  "dashDistance": 3.0,
+  "recoveryTime": 0.65,
+  "cooldown": 1.6,
+  "firstHitMultiplier": 1.0,
+  "followHitMultiplier": 0.5,
+  "followKnockbackMultiplier": 0.5,
+  "followStaggerMultiplier": 0.5,
+  "heavyEnemySlow": 0.55,
+  "chargeMoveFactor": 0.25,
+  "recoveryMoveFactor": 0.5
+}

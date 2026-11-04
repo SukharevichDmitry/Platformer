@@ -81,6 +81,14 @@ def build_combat():
     t2 = g.time(.2)
     chime = (g.np.sin(2 * g.np.pi * 1570 * t2) + .4 * g.np.sin(2 * g.np.pi * 2355 * t2)) * g.decay(.2, 18)
     s["combo_chain"] = g.finish(g.mix((tick, 0, .7), (chime, .07, .8)), .5)
+    # Breakthrough: a rising, tightening hum for the charge and a short bright blip when it is ready.
+    t = g.time(.75)
+    hum = g.sweep(90, 430, .75, (1.0, .5)) * g.swell(.75, .9)
+    shimmer = g.highpass(g.noise(.75), 2500) * g.swell(.75, .95) * .35
+    s["breakthrough_charge"] = g.finish(g.mix((hum, 0, .9), (shimmer, 0, .5)), .6)
+    t = g.time(.14)
+    blip = (g.np.sin(2 * g.np.pi * 1480 * t) + .5 * g.np.sin(2 * g.np.pi * 2220 * t)) * g.decay(.14, 22)
+    s["breakthrough_ready"] = g.finish(blip, .55)
     return s
 
 
