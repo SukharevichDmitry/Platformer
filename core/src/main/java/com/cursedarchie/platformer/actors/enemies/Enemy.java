@@ -536,6 +536,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
                     return;
                 }
                 boolean wasOpen = getRangedWindupProgress() < RANGED_AIM_LOCK_AT;
+                // Main preparation phase: the aim point follows the hero; once locked it no longer moves.
+                if (wasOpen) aimAt(hero.getPosition());
                 rangedWindupRemaining -= delta;
                 if (rangedWindupRemaining <= 0f) {
                     releaseRangedShot(gameWorld);
@@ -699,15 +701,20 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         rangedAttackConfig = config;
         rangedWindupDuration = config.startup;
         rangedWindupRemaining = config.startup;
-        rangedTargetPosition.set(hero.getPosition());
-        rangedAim.set(rangedTargetPosition).sub(getPosition()).nor();
-        rangedShotFacingLeft = rangedAim.x < 0f;
-        facingLeft = rangedShotFacingLeft;
+        aimAt(hero.getPosition());
         rangedFizzleRemaining = 0f;
         moveStop();
         emitCue(config.type == RangedAttackConfig.Type.VOLLEY ? Cue.BOW_DRAW_VOLLEY :
             config.type == RangedAttackConfig.Type.CHARGED ? Cue.BOW_DRAW_CHARGED : Cue.BOW_DRAW_STANDARD);
         return true;
+    }
+
+    /** Points the draw at a target with the arc needed to land on it; the shooter turns to face it. */
+    private void aimAt(Vector2 target) {
+        rangedTargetPosition.set(target);
+        rangedAim.set(rangedAttackConfig.launchDirection(getPosition().x, getPosition().y + .1f, target.x, target.y));
+        rangedShotFacingLeft = rangedAim.x < 0f;
+        facingLeft = rangedShotFacingLeft;
     }
 
     public void cancelRangedAttack() {

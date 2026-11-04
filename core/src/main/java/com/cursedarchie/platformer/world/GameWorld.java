@@ -692,6 +692,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         public final float damage;
         public final float knockback;
         public final float stagger;
+        public final float gravity;
         public float age;
         /** 0 = standard, 1 = charged, 2 = volley; used by presentation for colours and sounds. */
         public int mode() { return type.ordinal(); }
@@ -705,13 +706,16 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             damage = config.damage;
             knockback = config.knockback;
             stagger = config.stagger;
+            gravity = config.gravity;
         }
     }
 
     /** Short-lived burst where an arrow struck the hero or level geometry. */
     public static final class ArrowImpact {
         public static final float HERO_DURATION = .38f;
-        public static final float WALL_DURATION = .26f;
+        public static final float WALL_BURST = .26f;
+        /** A wall hit leaves the arrow embedded in the surface for a moment before it fades. */
+        public static final float WALL_DURATION = 1.4f;
         public final boolean hero;
         public final float x;
         public final float y;
@@ -767,6 +771,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         Rectangle heroBounds = new Rectangle();
         for (int i = arrows.size - 1; i >= 0; i--) {
             Arrow arrow = arrows.get(i);
+            // Ballistic step: gravity first, then move; collisions are swept along the whole segment.
+            arrow.velocity.y -= arrow.gravity * delta;
             float toX = arrow.position.x + arrow.velocity.x * delta;
             float toY = arrow.position.y + arrow.velocity.y * delta;
             final float[] closest = {1f};
@@ -816,6 +822,55 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 arrows.removeIndex(i);
             } else arrow.position.set(toX, toY);
         }
+    }
+
+    /**
+     * Previews the flight of an arrow launched from the given muzzle with the given direction, using the same
+     * ballistic step and collision rules as the live arrows. Fills xs/ys with sample points; the last point
+     * is where it would hit a wall, the hero or run out of lifetime. Returns the number of points.
+     */
+    public int predictArrowPath(float ox, float oy, float dirX, float dirY, RangedAttackConfig config,
+                                float[] xs, float[] ys) {
+        Rectangle heroBounds = new Rectangle();
+        hero.getHurtboxBounds(heroBounds);
+        heroBounds.x -= Arrow.WIDTH / 2f;
+        heroBounds.y -= Arrow.HEIGHT / 2f;
+        heroBounds.width += Arrow.WIDTH;
+        heroBounds.height += Arrow.HEIGHT;
+        float x = ox, y = oy;
+        float len = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+        float vx = dirX / len * config.speed, vy = dirY / len * config.speed;
+        int count = 0;
+        xs[count] = x;
+        ys[count++] = y;
+        final float[] closest = {1f};
+        for (float t = 0f; t < Arrow.LIFETIME && count < xs.length; t += FIXED_STEP) {
+            vy -= config.gravity * FIXED_STEP;
+            float toX = x + vx * FIXED_STEP, toY = y + vy * FIXED_STEP;
+            closest[0] = 1f;
+            world.rayCast((fixture, point, normal, fraction) -> {
+                if (fixture.isSensor() || !"level".equals(fixture.getBody().getUserData())) return -1f;
+                if (fraction < closest[0]) closest[0] = fraction;
+                return fraction;
+            }, x, y, toX, toY);
+            float heroFraction = segmentAabbFraction(x, y, toX, toY, heroBounds);
+            boolean hitHero = heroFraction >= 0f && heroFraction <= closest[0];
+            if (hitHero || closest[0] < 1f) {
+                float f = hitHero ? heroFraction : closest[0];
+                xs[count] = x + (toX - x) * f;
+                ys[count++] = y + (toY - y) * f;
+                return count;
+            }
+            x = toX;
+            y = toY;
+            if ((int) (t / FIXED_STEP) % 3 == 0 && count < xs.length - 1) {
+                xs[count] = x;
+                ys[count++] = y;
+            }
+        }
+        xs[Math.min(count, xs.length - 1)] = x;
+        ys[Math.min(count, xs.length - 1)] = y;
+        return Math.min(count + 1, xs.length);
     }
 
     private static float segmentAabbFraction(float x0, float y0, float x1, float y1, Rectangle box) {

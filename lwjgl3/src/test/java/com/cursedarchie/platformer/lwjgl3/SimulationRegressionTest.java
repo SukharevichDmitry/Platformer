@@ -82,6 +82,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkNewEnemyRoles();
         checkGroupAttackSlots();
         checkRollCounterAndJumpAttack();
+        checkArrowArcPhysics();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -917,6 +918,55 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         }
     }
 
+    private void checkArrowArcPhysics() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy shooter = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(15f, 2.5f));
+            shooter.setActive(false);
+            // Gravity bends the flight: a horizontal shot loses height and its angle turns downward.
+            fight.fireArrows(shooter, new Vector2(-1f, 0f), RangedAttackConfig.NORMAL);
+            GameWorld.Arrow arrow = fight.getArrows().first();
+            float startY = arrow.position.y;
+            for (int i = 0; i < 12; i++) fight.update(GameWorld.FIXED_STEP);
+            if (fight.getArrows().size == 0) throw new AssertionError("Arrow vanished before reaching the hero");
+            if (!(arrow.velocity.y < 0f) || !(arrow.position.y < startY))
+                throw new AssertionError("Arrow did not fall under gravity");
+            // The empowered shot is flatter than the standard one over the same distance.
+            if (!(RangedAttackConfig.CHARGED.gravity < RangedAttackConfig.NORMAL.gravity))
+                throw new AssertionError("Empowered shot must arc less than the standard shot");
+            // Aim compensation: the previewed flight ends on the hero, and a live arrow follows the same path.
+            fight.getArrows().clear();
+            Vector2 aim = RangedAttackConfig.NORMAL.launchDirection(15f, 2.6f, 10f, 2.5f);
+            float[] xs = new float[96], ys = new float[96];
+            int n = fight.predictArrowPath(15f + aim.x * .65f, 2.6f + aim.y * .65f, aim.x, aim.y,
+                RangedAttackConfig.NORMAL, xs, ys);
+            if (Math.abs(xs[n - 1] - 10f) > .8f || Math.abs(ys[n - 1] - 2.5f) > .8f)
+                throw new AssertionError("Aim preview does not end on the target: " + xs[n - 1] + "," + ys[n - 1]);
+            float health = hero.getHealth();
+            fight.fireArrows(shooter, aim, RangedAttackConfig.NORMAL);
+            for (int i = 0; i < 90 && fight.getArrows().size > 0; i++) fight.update(GameWorld.FIXED_STEP);
+            if (hero.getHealth() >= health) throw new AssertionError("Arc-compensated arrow missed the hero");
+            // Fast arrows cannot tunnel through a thin wall.
+            com.badlogic.gdx.physics.box2d.BodyDef wallDef = new com.badlogic.gdx.physics.box2d.BodyDef();
+            wallDef.type = com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody;
+            wallDef.position.set(12.5f, 2.5f);
+            com.badlogic.gdx.physics.box2d.Body wall = fight.getWorld().createBody(wallDef);
+            wall.setUserData("level");
+            com.badlogic.gdx.physics.box2d.PolygonShape shape = new com.badlogic.gdx.physics.box2d.PolygonShape();
+            shape.setAsBox(.02f, 1.2f);
+            wall.createFixture(shape, 0f);
+            shape.dispose();
+            health = hero.getHealth();
+            fight.fireArrows(shooter, new Vector2(-1f, 0f), RangedAttackConfig.CHARGED);
+            for (int i = 0; i < 40; i++) fight.update(GameWorld.FIXED_STEP);
+            closeTo(hero.getHealth(), health, "A fast arrow tunnelled through a thin wall");
+        } finally {
+            fight.dispose();
+        }
+    }
+
     private void checkGroupAttackSlots() {
         GameWorld fight = new GameWorld();
         try {
@@ -1061,18 +1111,25 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             shooter.setCanSeeHero(true);
             if (!shooter.beginRangedAttack(RangedAttackConfig.NORMAL, hero))
                 throw new AssertionError("Scavenger could not begin a valid normal shot");
+            Vector2 firstAim = new Vector2(shooter.getRangedAim());
+            hero.getBody().setTransform(20f, 2.5f, 0f);
+            shooter.updateSpecialActions(fight, hero, fight.getAliveEnemies(), .05f);
+            if (shooter.getRangedAim().x <= 0f || shooter.getRangedAim().epsilonEquals(firstAim, .0001f))
+                throw new AssertionError("Aim did not follow the hero during the main preparation phase");
+            for (int i = 0; i < 60 && shooter.getRangedWindupProgress() < Enemy.RANGED_AIM_LOCK_AT; i++)
+                shooter.updateSpecialActions(fight, hero, fight.getAliveEnemies(), .02f);
             Vector2 lockedAim = new Vector2(shooter.getRangedAim());
             Vector2 lockedTarget = new Vector2(shooter.getRangedTargetPosition());
-            hero.getBody().setTransform(20f, 2.5f, 0f);
+            hero.getBody().setTransform(5f, 2.5f, 0f);
             shooter.updateSpecialActions(fight, hero, fight.getAliveEnemies(),
                 RangedAttackConfig.NORMAL.startup + .01f);
             if (fight.getArrows().size != 1)
                 throw new AssertionError("Normal shot did not create exactly one arrow");
             GameWorld.Arrow lockedArrow = fight.getArrows().first();
-            if (!lockedArrow.direction.epsilonEquals(lockedAim, .0001f) || lockedArrow.direction.x >= 0f)
-                throw new AssertionError("Moving during startup redirected the committed shot");
+            if (!lockedArrow.direction.epsilonEquals(lockedAim, .0001f) || lockedArrow.direction.x <= 0f)
+                throw new AssertionError("Moving after the lock redirected the committed shot");
             if (!shooter.getRangedTargetPosition().epsilonEquals(lockedTarget, .0001f))
-                throw new AssertionError("Moving during startup changed the committed target position");
+                throw new AssertionError("Moving after the lock changed the committed target position");
             closeTo(lockedArrow.damage, .5f, "normal arrow damage");
             closeTo(lockedArrow.speed, 15f, "normal arrow speed");
 

@@ -1028,41 +1028,51 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         }
     }
 
-    /** Aim indication: dashed while tracking, solid once locked, wide and white at the release cue. */
+    private final float[] arcX = new float[96], arcY = new float[96];
+
+    /**
+     * Aim as world-space arcs: the exact flight the arrow will take (same ballistics and collisions as a live
+     * arrow). Dashed and faint while the aim follows the hero, solid once locked, white-hot at the release cue.
+     * A volley shows three arcs and three impact points; the empowered shot is brighter, thicker and flatter.
+     */
     private void drawAimLines(Enemy enemy, Enemy.RangedPhase phase, int mode, Color c, float aimAngle,
                               float progress, float cue) {
         Vector2 pos = enemy.getPosition();
-        int lines = mode == 2 ? 3 : 1;
-        float spreadDegrees = (float) Math.toDegrees(RangedAttackConfig.VOLLEY.spreadRadians);
+        RangedAttackConfig config = enemy.getRangedAttackConfig();
+        int lines = config.projectileCount;
+        float spreadDegrees = (float) Math.toDegrees(config.spreadRadians);
+        boolean cueing = phase == Enemy.RangedPhase.CUE;
+        boolean locked = phase != Enemy.RangedPhase.DRAW;
         float lockProgress = clamp01(progress / Enemy.RANGED_AIM_LOCK_AT);
+        float thickness = mode == 1 ? .09f : mode == 2 ? .04f : .055f;
         for (int i = 0; i < lines; i++) {
-            float angle = aimAngle + (mode == 2 ? (i - 1) * spreadDegrees : 0f);
+            float angle = aimAngle + (i - (lines - 1) / 2f) * spreadDegrees;
             float rad = (float) Math.toRadians(angle);
-            float cos = (float) Math.cos(rad);
-            float sin = (float) Math.sin(rad);
-            float ox = pos.x + cos * .65f;
-            float oy = pos.y + .1f + sin * .65f;
-            float thickness = mode == 1 ? .1f : mode == 2 ? .045f : .06f;
-            if (phase == Enemy.RangedPhase.DRAW) {
-                float length = AIM_LINE_LENGTH * (.3f + .7f * lockProgress);
-                tint(c, .2f + .2f * lockProgress);
-                for (float d = 0f; d < length; d += .42f)
-                    barFrom(ox + cos * d, oy + sin * d, Math.min(.22f, length - d), thickness * .7f, angle);
-            } else {
-                boolean cueing = phase == Enemy.RangedPhase.CUE;
-                float flicker = cueing ? .8f + .2f * (float) Math.sin(effectClock * 100f) : 1f;
-                float width = cueing ? thickness * 1.9f : thickness;
+            float cos = (float) Math.cos(rad), sin = (float) Math.sin(rad);
+            int n = gameWorld.predictArrowPath(pos.x + cos * .65f, pos.y + .1f + sin * .65f, cos, sin,
+                config, arcX, arcY);
+            // Only the leading part of the arc is shown while tracking: it grows as the draw is pulled.
+            int shown = locked ? n : Math.max(2, (int) (n * (.35f + .65f * lockProgress)));
+            float flicker = cueing ? .8f + .2f * (float) Math.sin(effectClock * 100f) : 1f;
+            for (int k = 1; k < shown; k++) {
+                if (!locked && (k & 1) == 1) continue;   // dashed while the aim is still following the hero
+                float fade = 1f - .55f * k / (float) n;     // fades toward the far end so it never blocks the view
                 if (mode == 1) {
-                    tint(c, .22f * flicker);
-                    barFrom(ox, oy, AIM_LINE_LENGTH, width * 2.6f, angle);
+                    tint(c, (locked ? .2f : .1f) * flicker * fade);
+                    segment(arcX[k - 1], arcY[k - 1], arcX[k], arcY[k], thickness * 2.6f);
                 }
-                tintMixed(c, cueing ? .6f : 0f, (cueing ? .95f : .6f) * flicker);
-                barFrom(ox, oy, AIM_LINE_LENGTH, width, angle);
-                if (mode != 0) {
-                    tint(c, .9f);
-                    barCentered(ox + cos * AIM_LINE_LENGTH, oy + sin * AIM_LINE_LENGTH,
-                        mode == 1 ? .2f : .13f, mode == 1 ? .2f : .13f, angle + 45f);
-                }
+                if (locked) tintMixed(c, cueing ? .6f : 0f, (cueing ? .95f : .6f) * flicker * fade);
+                else tint(c, (.2f + .2f * lockProgress) * fade);
+                segment(arcX[k - 1], arcY[k - 1], arcX[k], arcY[k], cueing ? thickness * 1.8f : thickness);
+            }
+            // Intended point of impact, drawn where the arc actually ends (wall, floor or hero).
+            if (n > 1 && (locked || lockProgress > .6f)) {
+                float ix = arcX[n - 1], iy = arcY[n - 1];
+                float size = (mode == 1 ? .26f : mode == 2 ? .16f : .2f) * (cueing ? 1.25f - .25f * cue : 1f);
+                tintMixed(c, cueing ? .5f : 0f, locked ? .95f : .4f);
+                ring(ix, iy, size);
+                barCentered(ix, iy, size * 1.3f, .035f, 45f);
+                barCentered(ix, iy, size * 1.3f, .035f, -45f);
             }
         }
     }
@@ -1219,6 +1229,19 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                         .2f * fade * scale + .04f, .045f, angle);
                 }
             } else {
+                // Wall/floor hit: a short burst, then the arrow stays embedded in the surface and fades out.
+                float t = p * impact.getDuration();
+                float embedFade = clamp01((impact.getDuration() - t) / .35f);
+                float stuckAngle = impact.angle;
+                float sr = (float) Math.toRadians(stuckAngle);
+                tint(shotColor(impact.mode), embedFade);
+                barFrom(impact.x - (float) Math.cos(sr) * .42f, impact.y - (float) Math.sin(sr) * .42f, .42f,
+                    impact.mode == 1 ? .07f : .05f, stuckAngle);
+                tint(COLOR_STEEL, embedFade);
+                barCentered(impact.x, impact.y, .08f, .06f, stuckAngle);
+                p = clamp01(t / GameWorld.ArrowImpact.WALL_BURST);
+                fade = 1f - p;
+                if (p >= 1f) continue;
                 spriteBatch.setColor(.85f, .85f, .8f, .7f * fade);
                 ring(impact.x, impact.y, .1f + .3f * p);
                 for (int k = 0; k < 4; k++) {
