@@ -1467,10 +1467,11 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             wall.getHeroController().keyUp(Input.Keys.Z);
             int dashSteps = 0;
             float endpoint = Float.NaN, recoveryAt = Float.NaN, recoveryDrift = 0f, recoverySpeed = 0f;
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState wallPass = null;
             for (int i = 0; i < 110; i++) {
                 wall.update(GameWorld.FIXED_STEP);
                 com.cursedarchie.platformer.actors.hero.states.combat.AttackState running = heroAttack(hero);
-                if (running != null && running.isHeavy() && running.isDashEnded()) endpoint = running.getDashEndX();
+                if (running != null && running.isHeavy()) wallPass = running;
                 if (hero.getHeavyState() == DASH) dashSteps++;
                 if (hero.getHeavyState() == RECOVER) {
                     com.cursedarchie.platformer.actors.hero.states.combat.AttackState recovering = heroAttack(hero);
@@ -1485,6 +1486,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 throw new AssertionError("Dash stopped far short of the wall: " + hero.getPosition().x);
             if (hero.getBreakthroughImpactId() == impacts) throw new AssertionError("Wall hit produced no impact");
             if (dashSteps > 16) throw new AssertionError("Dash kept going after hitting the wall: " + dashSteps);
+            if (wallPass != null && wallPass.isDashEnded()) endpoint = wallPass.getDashEndX();
             if (Float.isNaN(endpoint) || Math.abs(endpoint - hero.getPosition().x) > .01f)
                 throw new AssertionError("Wall-limited dash did not stop at its endpoint");
             if (recoverySpeed > .001f || recoveryDrift > .001f)
