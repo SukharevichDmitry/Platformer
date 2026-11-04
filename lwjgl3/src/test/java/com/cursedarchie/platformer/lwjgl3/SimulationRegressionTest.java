@@ -1432,6 +1432,61 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             for (int i = 0; i < 110; i++) cd.update(GameWorld.FIXED_STEP);
             if (!hero.canHeavyAttack()) throw new AssertionError("Cooldown never ended");
         } finally { cd.dispose(); }
+
+        // 6) A guarding enemy is not simply cut down: the first blow breaks the guard and deals reduced damage.
+        GameWorld guard = combatFixture();
+        try {
+            parkEnemies(guard);
+            Hero hero = guard.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            Enemy raider = staticFoe(guard, 11.2f);
+            raider.setCanSeeHero(true);
+            raider.forceBlockForTest();
+            float full = hero.getDamage() * 2f;
+            float before = raider.getHealth();
+            guard.update(GameWorld.FIXED_STEP);
+            guard.getHeroController().keyDown(Input.Keys.Z);
+            guard.getHeroController().keyUp(Input.Keys.Z);
+            for (int i = 0; i < 110; i++) guard.update(GameWorld.FIXED_STEP);
+            float loss = before - raider.getHealth();
+            if (loss <= 0f || loss >= full - .05f)
+                throw new AssertionError("Guarding enemy took " + loss + " of a full " + full + " blow");
+            if (raider.isBlocking()) throw new AssertionError("The dash did not break the guard");
+        } finally { guard.dispose(); }
+
+        // 7) A heavy enemy slows the dash but never cancels it.
+        GameWorld heavy = combatFixture();
+        try {
+            parkEnemies(heavy);
+            Hero hero = heavy.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            Enemy brute = EnemyFactory.createHeavyHunter(heavy.getWorld(), new Vector2(11.2f, 2.5f));
+            brute.setActive(false);
+            heavy.addEnemy(brute);
+            brute.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+            float bruteHealth = brute.getHealth();
+            heavy.update(GameWorld.FIXED_STEP);
+            heavy.getHeroController().keyDown(Input.Keys.Z);
+            heavy.getHeroController().keyUp(Input.Keys.Z);
+            float startX = Float.NaN, endX = Float.NaN;
+            boolean reachedRecovery = false;
+            for (int i = 0; i < 120; i++) {
+                heavy.update(GameWorld.FIXED_STEP);
+                if (hero.getHeavyState() == DASH) {
+                    if (Float.isNaN(startX)) startX = hero.getPosition().x;
+                    endX = hero.getPosition().x;
+                }
+                if (hero.getHeavyState() == RECOVER) reachedRecovery = true;
+            }
+            if (!reachedRecovery) throw new AssertionError("A heavy enemy cancelled the dash");
+            if (brute.getHealth() >= bruteHealth) throw new AssertionError("The dash did not hurt the heavy enemy");
+            if (brute.getSize() >= 2f && endX - startX > 2.9f)
+                throw new AssertionError("A heavy enemy did not slow the dash: " + (endX - startX));
+        } finally { heavy.dispose(); }
     }
 
     private void checkArrowArcPhysics() {
