@@ -323,7 +323,9 @@ public class HeroController implements InputProcessor {
             return;
         }
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
+            if (heavyAttackBufferRemaining > 0f && !hero.canHeavyAttack()) heavyAttackBufferRemaining = 0f;
             if (heavyAttackBufferRemaining > 0f) {
+                hero.beginHeavyCooldown();
                 hero.getCombatStateMachine().changeState(new AttackState(true, 0));
                 heavyAttackBufferRemaining = 0f;
                 attackBufferRemaining = 0f;

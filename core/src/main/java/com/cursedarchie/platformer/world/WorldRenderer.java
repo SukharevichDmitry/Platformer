@@ -1525,8 +1525,39 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 hero.getPosition().y + .75f,
                 .96f * hero.getBlockStability() / hero.getMaxBlockStability(), .06f);
         }
+        if (hero.getBlockHeavyFlashRemaining() > 0f) {
+            // Partial absorb of a heavy blow: orange shock ring on the guard, bigger than the light spark.
+            float t = hero.getBlockHeavyFlashRemaining() / .3f;
+            float dir = hero.isFacingLeft() ? -1f : 1f;
+            spriteBatch.setColor(1f, .55f, .2f, t);
+            ring(hero.getPosition().x + dir * .55f, hero.getPosition().y + .1f, .25f + (1f - t) * .7f);
+        }
+        if (hero.getBlockBreakFlashRemaining() > 0f) {
+            // Guard shattered: red burst and a downward sag cue over the hero.
+            float t = hero.getBlockBreakFlashRemaining() / .45f;
+            float dir = hero.isFacingLeft() ? -1f : 1f;
+            float bx = hero.getPosition().x + dir * .5f, by = hero.getPosition().y + .1f;
+            spriteBatch.setColor(1f, .25f, .2f, t);
+            for (int i = 0; i < 8; i++) barFrom(bx, by, .15f + .6f * (1f - t), .05f, i * 45f);
+            ring(bx, by, .3f + (1f - t));
+        }
         if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
             AttackState attack = (AttackState) hero.getCombatStateMachine().getCurrentState();
+            if (attack.isHeavy() && attack.getPhase(hero) == AttackState.Phase.STARTUP) {
+                // Charge-up: converging sparks, a swelling glow and a ground ring that tightens as the strike nears.
+                float charge = clamp01(hero.getCombatStateTime() / attack.getStartup());
+                float cx = hero.getPosition().x, cy = hero.getPosition().y + .2f;
+                spriteBatch.setColor(1f, .5f, .15f, .25f + .5f * charge);
+                glow(cx, cy, .5f + .5f * charge);
+                spriteBatch.setColor(1f, .85f, .4f, .9f * charge);
+                for (int i = 0; i < 6; i++) {
+                    float ang = i * 60f + effectClock * 90f;
+                    float r = 1.1f * (1f - charge) + .25f;
+                    barCentered(cx + (float) Math.cos(Math.toRadians(ang)) * r,
+                        cy + (float) Math.sin(Math.toRadians(ang)) * r, .22f, .05f, ang);
+                }
+                ring(cx, hero.getPosition().y - hero.getSize() / 2f + .1f, 1.3f - .6f * charge);
+            }
             if (attack.getPhase(hero) == AttackState.Phase.STARTUP) {
                 float direction = attack.isFacingLeft() ? -1f : 1f;
                 float windup = hero.getCombatStateTime() / attack.getStartup();

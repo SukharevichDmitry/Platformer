@@ -78,6 +78,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkSpecialEnemyRoles();
         checkScavengerActionPriority();
         checkRaiderBlockAndDash();
+        checkHeroBlockAndHeavyRules();
         checkEnemyLungeRecovery();
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
@@ -868,6 +869,30 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             flank.takeMeleeHit(2f, flank.getPosition().x + 1f, 0f, false);
             closeTo(flank.getHealth(), flank.getMaxHealth() - 2f,
                 "Rear light strike did not bypass guard");
+        } finally {
+            fight.dispose();
+        }
+    }
+
+    private void checkHeroBlockAndHeavyRules() {
+        GameWorld fight = new GameWorld();
+        try {
+            Hero hero = fight.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.setFacingLeft(false);
+            hero.setBlockHeld(true);
+            if (!hero.isBlocking()) throw new AssertionError("Hero could not raise block while idle");
+            Enemy foe = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(11f, 2.5f));
+            float hp = hero.getHealth();
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, 11f, 1f, 3f, foe));
+            closeTo(hero.getHealth(), hp, "blocked light melee must deal no damage");
+            hero.receiveHit(new CombatHit(CombatHit.Type.PROJECTILE, .5f, 11f, 0f, 0f, foe));
+            closeTo(hero.getHealth(), hp - .5f, "arrows must pass through the hero block");
+            if (hero.canHeavyAttack() != true) throw new AssertionError("Heavy should start off cooldown");
+            hero.beginHeavyCooldown();
+            if (hero.canHeavyAttack()) throw new AssertionError("Heavy attack has no cooldown");
+            hero.update(Hero.HEAVY_COOLDOWN + .01f);
+            if (!hero.canHeavyAttack()) throw new AssertionError("Heavy cooldown never ends");
         } finally {
             fight.dispose();
         }

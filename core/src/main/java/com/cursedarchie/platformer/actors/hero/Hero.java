@@ -55,6 +55,8 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     private float blockBrokenRemaining;
     private float blockCounterCooldown;
     private float blockFlashRemaining;
+    public static final float HEAVY_COOLDOWN = 1.6f;
+    private float heavyCooldownRemaining, blockHeavyFlashRemaining, blockBreakFlashRemaining;
     private final AttackConfig firstAttackLeft = new AttackConfig(.9f, .82f, -1.0f, .02f);
     private final AttackConfig firstAttackRight = new AttackConfig(.9f, .82f, 1.0f, .02f);
     private final AttackConfig secondAttackLeft = new AttackConfig(1.32f, .66f, -1.38f, .16f);
@@ -68,8 +70,32 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     private static final AttackDefinition HEAVY = new AttackDefinition("hero_heavy",
         CombatHit.Type.MELEE_HEAVY, .52f, .18f, .22f,
         1.9f, 1.3f, 1.05f, .04f, 2f, 10f, .3f, 2f, true, .92f, .92f, .2f);
-    public void setBlockHeld(boolean value) { blockHeld = value; }
-    public boolean isBlocking() { return blockHeld && blockBrokenRemaining == 0f && blockStability > 0f; }
+    /** Block cannot be raised while staggered or mid-swing; an already raised guard drops when staggered. */
+    public void setBlockHeld(boolean value) {
+        blockHeld = value && !isStaggered() && !(combatStateMachine.getCurrentState() instanceof AttackState);
+    }
+    public boolean isBlocking() {
+        return blockHeld && !isStaggered() && blockBrokenRemaining == 0f && blockStability > 0f;
+    }
+    public boolean canHeavyAttack() { return heavyCooldownRemaining == 0f; }
+    public void beginHeavyCooldown() { heavyCooldownRemaining = HEAVY_COOLDOWN; }
+    public float getHeavyCooldownRemaining() { return heavyCooldownRemaining; }
+    public float getBlockHeavyFlashRemaining() { return blockHeavyFlashRemaining; }
+    public float getBlockBreakFlashRemaining() { return blockBreakFlashRemaining; }
+    public com.cursedarchie.platformer.combat.CombatPhase getCombatPhase() {
+        if (!alive) return com.cursedarchie.platformer.combat.CombatPhase.DEAD;
+        if (isStaggered() || isBlockBroken()) return com.cursedarchie.platformer.combat.CombatPhase.STAGGER;
+        Object cur = combatStateMachine.getCurrentState();
+        if (cur instanceof AttackState && ((AttackState) cur).getRuntime() != null) {
+            switch (((AttackState) cur).getRuntime().phase()) {
+                case STARTUP: return com.cursedarchie.platformer.combat.CombatPhase.WINDUP;
+                case ACTIVE: return com.cursedarchie.platformer.combat.CombatPhase.ACTIVE;
+                default: return com.cursedarchie.platformer.combat.CombatPhase.RECOVERY;
+            }
+        }
+        return isBlocking() ? com.cursedarchie.platformer.combat.CombatPhase.BLOCK :
+            com.cursedarchie.platformer.combat.CombatPhase.IDLE;
+    }
     /** True while a hero swing is winding up or active: the signal enemies use to decide to guard. */
     public boolean isAttackTelegraphing() {
         Object cur = combatStateMachine.getCurrentState();
@@ -93,6 +119,10 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             blockFlashRemaining = .18f;
             if (hit.type == CombatHit.Type.MELEE_HEAVY) {
                 takeDamage(hit.damage * .5f);
+                blockHeavyFlashRemaining = .3f;
+                // A strong blow shoves the guard back even though it holds.
+                body.setLinearVelocity(Math.copySign(Math.max(3f, hit.recoil * .6f), getPosition().x - hit.sourceX),
+                    body.getLinearVelocity().y);
                 if (inventory != null && inventory.count(ItemCatalog.WEIGHTED_BRACER) > 0 &&
                     blockCounterCooldown == 0f && hit.source != null) {
                     hit.source.getBody().setLinearVelocity(
@@ -101,7 +131,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
                     blockCounterCooldown = 3f;
                 }
             }
-            if (blockStability == 0f) blockBrokenRemaining = .85f;
+            if (blockStability == 0f) { blockBrokenRemaining = .85f; blockBreakFlashRemaining = .45f; }
             return true;
         }
         float healthBefore = health;
@@ -231,6 +261,10 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         blockBrokenRemaining = Math.max(0f, blockBrokenRemaining - delta);
         blockCounterCooldown = Math.max(0f, blockCounterCooldown - delta);
         blockFlashRemaining = Math.max(0f, blockFlashRemaining - delta);
+        heavyCooldownRemaining = Math.max(0f, heavyCooldownRemaining - delta);
+        blockHeavyFlashRemaining = Math.max(0f, blockHeavyFlashRemaining - delta);
+        blockBreakFlashRemaining = Math.max(0f, blockBreakFlashRemaining - delta);
+        if (isStaggered()) blockHeld = false;
         if (!blockHeld && blockBrokenRemaining == 0f)
             blockStability = Math.min(getMaxBlockStability(), blockStability + 1.15f * delta);
         invulnerabilityRemaining = Math.max(0f, invulnerabilityRemaining - delta);
