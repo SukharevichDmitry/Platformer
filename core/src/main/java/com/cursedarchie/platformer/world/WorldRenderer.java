@@ -98,6 +98,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final Sound heavySlash;
     private final Sound[] archerCueSounds = new Sound[Enemy.Cue.values().length];
     private final Sound arrowHitHeroSound;
+    private final java.util.EnumMap<GameWorld.CombatEvent.Kind, Sound> eventSounds = new java.util.EnumMap<>(GameWorld.CombatEvent.Kind.class);
+    private Sound staggerPopSound, deathSound;
     private final Sound arrowHitWallSound;
     private final Texture glowTexture;
     private final Texture ringTexture;
@@ -220,6 +222,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         heavySlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_heavy.wav"));
         loadArcherCueSounds();
         arrowHitHeroSound = Gdx.audio.newSound(Gdx.files.internal("sfx/arrow_hit_hero.wav"));
+        eventSounds.put(GameWorld.CombatEvent.Kind.HIT_LIGHT, Gdx.audio.newSound(Gdx.files.internal("sfx/hit_light.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.HIT_HEAVY, Gdx.audio.newSound(Gdx.files.internal("sfx/hit_heavy.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_METAL, Gdx.audio.newSound(Gdx.files.internal("sfx/block_metal.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_BREAK, Gdx.audio.newSound(Gdx.files.internal("sfx/block_break.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_HERO, Gdx.audio.newSound(Gdx.files.internal("sfx/block_hero.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_HERO_HEAVY, eventSounds.get(GameWorld.CombatEvent.Kind.BLOCK_HERO));
+        eventSounds.put(GameWorld.CombatEvent.Kind.WHIFF, Gdx.audio.newSound(Gdx.files.internal("sfx/whiff.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.WALL_BUMP, Gdx.audio.newSound(Gdx.files.internal("sfx/wall_bump.wav")));
+        staggerPopSound = Gdx.audio.newSound(Gdx.files.internal("sfx/stagger_pop.wav"));
+        deathSound = Gdx.audio.newSound(Gdx.files.internal("sfx/death.wav"));
         arrowHitWallSound = Gdx.audio.newSound(Gdx.files.internal("sfx/arrow_hit_wall.wav"));
         glowTexture = radialTexture(false);
         ringTexture = radialTexture(true);
@@ -621,6 +633,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             case MELEE_WINDUP: return "archer_melee_windup";
             case MELEE_STRIKE: return "archer_melee_strike";
             case RETREAT_DASH: return "archer_retreat_dash";
+            case RAIDER_DASH: return "raider_dash";
+            case RAIDER_GUARD: return "raider_guard";
             default: return "archer_dodge";
         }
     }
@@ -632,6 +646,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             case SHOT_STANDARD: case MELEE_WINDUP: case MELEE_STRIKE: return .5f;
             case DODGE: return .4f;
             case RETREAT_DASH: return .3f;
+            case RAIDER_DASH: return .45f;
+            case RAIDER_GUARD: return .4f;
             default: return .35f;
         }
     }
@@ -1822,6 +1838,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     /** Raider presentation: dash telegraph/trail, raised-weapon guard stance, block sparks and guard break. */
     private void drawRaiderEffects(Enemy enemy) {
+        playEnemyCues(enemy);
         float dir = enemy.isFacingLeft() ? -1f : 1f;
         float x = enemy.getPosition().x, y = enemy.getPosition().y;
         float ground = y - enemy.getSize() / 2f;
@@ -1866,13 +1883,18 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private void drawDefeatEffects() {
         for (GameWorld.DefeatEffect effect : gameWorld.getDefeatEffects()) {
             float progress = effect.getProgress();
+            if (effect.consumeSound()) deathSound.play(soundVolume(effect.x, effect.y, .6f));
             TextureRegion frame = effect.boss
                 ? (effect.facingLeft ? bossIdleLeft : bossIdleRight)
                 : (effect.facingLeft ? enemyIdleLeft : enemyIdleRight);
-            spriteBatch.setColor(1f, 0.7f + 0.3f * progress, 0.7f + 0.3f * progress,
-                1f - progress);
-            spriteBatch.draw(frame, effect.x - effect.size / 2f,
-                effect.y - effect.size / 2f + 0.3f * progress, effect.size, effect.size);
+            // Topples away from the killing blow: rotates about the feet, drifts, then fades on the ground.
+            float fall = Math.min(1f, progress * 1.8f);
+            fall = fall * fall;
+            float fade = progress < .6f ? 1f : 1f - (progress - .6f) / .4f;
+            spriteBatch.setColor(1f, 0.7f + 0.3f * progress, 0.7f + 0.3f * progress, fade);
+            float half = effect.size / 2f;
+            spriteBatch.draw(frame, effect.x - half + effect.fallDirection * .5f * fall, effect.y - half,
+                half, 0f, effect.size, effect.size, 1f, 1f, -effect.fallDirection * 85f * fall);
         }
         spriteBatch.setColor(Color.WHITE);
     }
@@ -1907,19 +1929,62 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         damageFont.setColor(Color.WHITE);
     }
 
+    /** One look and one sound per event kind: hit, block, guard break, stagger, whiff and wall bump differ. */
     private void drawCombatEvents() {
         for (GameWorld.CombatEvent event : gameWorld.getCombatEvents()) {
-            float progress = event.progress();
+            float p = event.progress(), inv = 1f - p;
+            boolean heavyHit = event.kind == GameWorld.CombatEvent.Kind.HIT_HEAVY;
             if (event.consumeSound()) {
-                Sound sound = event.hit.type == com.cursedarchie.platformer.physics.CombatHit.Type.MELEE_HEAVY
-                    ? heavySlash : firstSlash;
-                sound.play(.14f, event.hit.type == com.cursedarchie.platformer.physics.CombatHit.Type.PROJECTILE
-                    ? 1.8f : 1.45f, 0f);
+                Sound sound = eventSounds.get(event.kind);
+                float vol = soundVolume(event.x, event.y, event.kind == GameWorld.CombatEvent.Kind.WHIFF ? .3f : .7f);
+                if (sound != null) sound.play(vol);
+                if (event.stagger) staggerPopSound.play(vol * .6f);
             }
-            float radius = .24f * (1f - progress);
-            spriteBatch.setColor(1f, .82f, .3f, 1f - progress);
-            spriteBatch.draw(sceneryPixel, event.x - radius, event.y - .025f, radius * 2f, .05f);
-            spriteBatch.draw(sceneryPixel, event.x - .025f, event.y - radius, .05f, radius * 2f);
+            float x = event.x, y = event.y, d = event.direction == 0f ? 1f : event.direction;
+            switch (event.kind) {
+                case HIT_LIGHT: case HIT_HEAVY: {
+                    // Impact burst thrown along the blow; heavy is larger, orange and adds a shock ring.
+                    float len = (heavyHit ? .9f : .45f) * (.4f + p);
+                    spriteBatch.setColor(1f, heavyHit ? .55f : .9f, heavyHit ? .2f : .4f, inv);
+                    for (int i = -2; i <= 2; i++)
+                        barFrom(x, y, len, heavyHit ? .08f : .045f, (d < 0f ? 180f : 0f) + i * (heavyHit ? 24f : 18f));
+                    if (heavyHit) ring(x, y, .3f + p * .9f);
+                    break;
+                }
+                case BLOCK_METAL: {
+                    spriteBatch.setColor(.85f, .92f, 1f, inv);
+                    for (int i = 0; i < 6; i++) barFrom(x + d * -.7f, y, .15f + .4f * p, .04f, i * 60f);
+                    break;
+                }
+                case BLOCK_BREAK: {
+                    spriteBatch.setColor(1f, .35f, .2f, inv);
+                    ring(x, y, .35f + p * 1.1f);
+                    for (int i = 0; i < 8; i++) barFrom(x, y, .2f + .8f * p, .05f, i * 45f);
+                    break;
+                }
+                case BLOCK_HERO: case BLOCK_HERO_HEAVY: {
+                    // Dull cyan pulse: the hero absorbs, nothing metallic.
+                    spriteBatch.setColor(.4f, .8f, 1f, inv * .8f);
+                    ring(x + d * -.5f, y, .25f + p * (event.kind == GameWorld.CombatEvent.Kind.BLOCK_HERO_HEAVY ? .9f : .5f));
+                    break;
+                }
+                case WHIFF: {
+                    // Pale thin arc where the swing found nothing.
+                    spriteBatch.setColor(.85f, .9f, 1f, inv * .6f);
+                    barCentered(x, y, .9f, .025f, d < 0f ? 200f : -20f);
+                    break;
+                }
+                case WALL_BUMP: {
+                    spriteBatch.setColor(.8f, .75f, .65f, inv);
+                    for (int i = 0; i < 5; i++) barFrom(x + d * .4f, y - .2f, .12f + .3f * p, .05f, 90f + (i - 2) * 25f);
+                    break;
+                }
+            }
+            if (event.stagger) {
+                // Stagger: small white ring above the head, separate from the damage burst.
+                spriteBatch.setColor(1f, 1f, 1f, inv);
+                ring(x, y + .8f, .15f + p * .35f);
+            }
         }
         spriteBatch.setColor(Color.WHITE);
     }
@@ -2112,6 +2177,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         heavySlash.dispose();
         for (Sound cue : archerCueSounds) if (cue != null) cue.dispose();
         arrowHitHeroSound.dispose();
+        for (Sound sound : eventSounds.values()) if (sound != null) sound.dispose();
+        staggerPopSound.dispose();
+        deathSound.dispose();
         arrowHitWallSound.dispose();
         glowTexture.dispose();
         ringTexture.dispose();

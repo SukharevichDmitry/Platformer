@@ -57,7 +57,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         BOW_DRAW_STANDARD, BOW_DRAW_CHARGED, BOW_DRAW_VOLLEY,
         SHOT_STANDARD, SHOT_CHARGED, SHOT_VOLLEY,
         MELEE_WINDUP, MELEE_STRIKE,
-        RETREAT_DASH, DODGE
+        RETREAT_DASH, DODGE,
+        RAIDER_DASH, RAIDER_GUARD
     }
 
     /** Fraction of the draw after which the aim direction is frozen. */
@@ -541,6 +542,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             (dx < 0) == facingLeft && hero.isAttackTelegraphing()) {
             blockRemaining = RAIDER_BLOCK_DURATION;
             blockCooldownRemaining = RAIDER_BLOCK_COOLDOWN;
+            emitCue(Cue.RAIDER_GUARD);
             moveStop();
             return;
         }
@@ -550,6 +552,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             dashDirection = Math.signum(dx);
             facingLeft = dashDirection < 0f;
             dashWindupRemaining = DASH_WINDUP;
+            emitCue(Cue.RAIDER_DASH);
             dashCooldownRemaining = DASH_COOLDOWN;
             attackRequested = false;
             moveStop();

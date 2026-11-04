@@ -79,6 +79,9 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     }
     public boolean canHeavyAttack() { return heavyCooldownRemaining == 0f; }
     public void beginHeavyCooldown() { heavyCooldownRemaining = HEAVY_COOLDOWN; }
+    private boolean whiffPending;
+    public void markWhiff() { whiffPending = true; }
+    public boolean consumeWhiff() { boolean w = whiffPending; whiffPending = false; return w; }
     public float getHeavyCooldownRemaining() { return heavyCooldownRemaining; }
     public float getBlockHeavyFlashRemaining() { return blockHeavyFlashRemaining; }
     public float getBlockBreakFlashRemaining() { return blockBreakFlashRemaining; }

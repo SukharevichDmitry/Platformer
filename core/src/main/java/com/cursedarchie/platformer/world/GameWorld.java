@@ -156,6 +156,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         updateArrows(delta);
         // Contacts from this step affect input on the next step (including buffered jumps).
         refreshHeroGrounding();
+        detectFeedbackEvents();
 
         updateCurrentRoom();
         checkRoomExit();
@@ -200,8 +201,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public static final class CombatEvent {
+        public enum Kind { HIT_LIGHT, HIT_HEAVY, BLOCK_METAL, BLOCK_BREAK, BLOCK_HERO, BLOCK_HERO_HEAVY,
+            WHIFF, WALL_BUMP }
         public static final float DURATION = .22f;
         public final CombatHit hit;
+        public final Kind kind;
+        public final boolean stagger;
+        public final float direction;
         public final float x;
         public final float y;
         private float elapsed;
@@ -210,6 +216,32 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             this.hit = hit;
             this.x = hit.target.getPosition().x;
             this.y = hit.target.getPosition().y;
+            this.direction = hit.direction != 0f ? hit.direction : Math.signum(x - hit.sourceX);
+            boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY;
+            Kind k = heavy ? Kind.HIT_HEAVY : Kind.HIT_LIGHT;
+            boolean staggered = false;
+            if (hit.target instanceof Enemy) {
+                Enemy e = (Enemy) hit.target;
+                if (e.getBlockBreakFlashRemaining() > 0f) k = Kind.BLOCK_BREAK;
+                else if (e.getBlockHitFlashRemaining() > 0f) k = Kind.BLOCK_METAL;
+                else staggered = e.isStaggered();
+            } else if (hit.target instanceof Hero) {
+                Hero h = (Hero) hit.target;
+                if (h.getBlockBreakFlashRemaining() > 0f) k = Kind.BLOCK_BREAK;
+                else if (h.getBlockHeavyFlashRemaining() > 0f) k = Kind.BLOCK_HERO_HEAVY;
+                else if (h.getBlockFlashRemaining() > 0f) k = Kind.BLOCK_HERO;
+                else staggered = h.isStaggered();
+            }
+            this.kind = k;
+            this.stagger = staggered;
+        }
+        private CombatEvent(Kind kind, float x, float y, float direction) {
+            this.hit = null;
+            this.kind = kind;
+            this.stagger = false;
+            this.direction = direction;
+            this.x = x;
+            this.y = y;
         }
         public float progress() { return Math.min(1f, elapsed / DURATION); }
         public boolean consumeSound() {
@@ -217,6 +249,26 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             soundConsumed = true;
             return true;
         }
+    }
+
+    private final java.util.IdentityHashMap<Actor, Float> knockbackSpeed = new java.util.IdentityHashMap<>();
+
+    /** Whiffs (hero swing that struck nothing) and knockback into walls become feedback events. */
+    private void detectFeedbackEvents() {
+        if (hero.consumeWhiff())
+            combatEvents.add(new CombatEvent(CombatEvent.Kind.WHIFF, hero.getPosition().x +
+                (hero.isFacingLeft() ? -1f : 1f), hero.getPosition().y, hero.isFacingLeft() ? -1f : 1f));
+        trackKnockback(hero, hero.isStaggered());
+        for (Enemy enemy : enemies) trackKnockback(enemy, enemy.isStaggered());
+    }
+
+    private void trackKnockback(Actor actor, boolean staggered) {
+        if (!staggered) { knockbackSpeed.remove(actor); return; }
+        float speed = Math.abs(actor.getBody().getLinearVelocity().x);
+        Float previous = knockbackSpeed.put(actor, speed);
+        if (previous != null && previous > 3.5f && speed < .6f)
+            combatEvents.add(new CombatEvent(CombatEvent.Kind.WALL_BUMP, actor.getPosition().x,
+                actor.getPosition().y, Math.signum(actor.getBody().getLinearVelocity().x)));
     }
 
     private void refreshHeroGrounding() {
@@ -333,15 +385,20 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public static final class DefeatEffect {
-        public static final float DURATION = 0.3f;
+        public static final float DURATION = 0.55f;
         public final float x;
         public final float y;
         public final float size;
         public final boolean facingLeft;
         public final boolean boss;
+        public final float fallDirection;
         private float elapsed;
+        private boolean soundConsumed;
 
         private DefeatEffect(Enemy enemy) {
+            float source = enemy.getLastHitSourceX();
+            fallDirection = Float.isNaN(source) || enemy.getPosition().x == source ?
+                (enemy.isFacingLeft() ? 1f : -1f) : Math.signum(enemy.getPosition().x - source);
             x = enemy.getPosition().x;
             y = enemy.getPosition().y;
             size = enemy.getSize();
@@ -350,6 +407,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         }
 
         public float getProgress() { return Math.min(1f, elapsed / DURATION); }
+        public boolean consumeSound() { if (soundConsumed) return false; soundConsumed = true; return true; }
     }
 
     /** Transient proof of actual health loss, including a lethal hit before body cleanup. */
@@ -574,6 +632,20 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private RoomState getRoomState(int roomId) {
         return roomStates.computeIfAbsent(roomId, id -> new RoomState());
+    }
+
+    /** Debug combat test (F6): one Raider and one Archer appear in front of the hero. */
+    public void spawnCombatTestPair() {
+        float dir = hero.isFacingLeft() ? -1f : 1f;
+        Vector2 base = hero.getPosition();
+        EnemySpawnData raider = new EnemySpawnData();
+        raider.type = "default";
+        raider.position = new Vector2();
+        enemyController.spawnEnemy(raider, new Vector2(base.x + dir * 4f, base.y + .3f), world);
+        EnemySpawnData archer = new EnemySpawnData();
+        archer.type = "scavenger";
+        archer.position = new Vector2();
+        enemyController.spawnEnemy(archer, new Vector2(base.x + dir * 9f, base.y + .3f), world);
     }
 
     public Array<Enemy> getEnemies() {

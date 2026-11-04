@@ -76,6 +76,7 @@ public class AttackState implements HeroState {
             runtime.recordHit(target);
             Gdx.app.log("HERO", "dealt damage to " + target.getClass().getSimpleName());
         }
+        if (runtime.isComplete() && !runtime.hitAnyTarget()) hero.markWhiff();
         if (runtime.isComplete()) hero.getCombatStateMachine().changeState(new CombatIdleState());
     }
 

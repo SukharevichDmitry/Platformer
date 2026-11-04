@@ -909,7 +909,12 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             raider.setFacingLeft(true);
             raider.forceBlockForTest();
             float hp = raider.getHealth();
-            raider.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, 10f, 1f, 3f, hero));
+            CombatHit blockedHit = new CombatHit(CombatHit.Type.MELEE_LIGHT, 1f, hero, raider, 1f, 1f, 3f, .14f, true);
+            raider.takeMeleeHit(blockedHit);
+            hero.emitCombatHit(blockedHit);
+            if (fight.getCombatEvents().size == 0 ||
+                fight.getCombatEvents().peek().kind != GameWorld.CombatEvent.Kind.BLOCK_METAL)
+                throw new AssertionError("Blocked hit did not produce a block-specific feedback event");
             closeTo(raider.getHealth(), hp, "light hit on raider block must deal no damage");
             if (raider.isStaggered()) throw new AssertionError("Blocked light hit staggered the raider");
             raider.takeMeleeHit(new CombatHit(CombatHit.Type.MELEE_HEAVY, 2f, 10f, 2f, 5f, hero));
