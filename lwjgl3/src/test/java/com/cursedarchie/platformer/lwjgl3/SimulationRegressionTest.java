@@ -1532,10 +1532,24 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             arrow.update(GameWorld.FIXED_STEP);
             if (hero.getHeavyState() != CHARGE) throw new AssertionError("A light hit interrupted the charge");
             if (Math.abs(hero.getBody().getLinearVelocity().x) > .001f) throw new AssertionError("A light hit pushed the charging hero");
-            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_HEAVY, 0.1f, src, hero, 1f, 1f, 3f, .24f, true));
-            arrow.update(GameWorld.FIXED_STEP);
-            if (hero.getHeavyState() != NONE) throw new AssertionError("A heavy hit did not interrupt the charge");
         } finally { arrow.dispose(); }
+
+        // 8b) A heavy hit breaks the charge (separate world: the light hit above grants invulnerability frames).
+        GameWorld brk = combatFixture();
+        try {
+            parkEnemies(brk);
+            Hero hero = brk.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            brk.update(GameWorld.FIXED_STEP);
+            brk.getHeroController().keyDown(Input.Keys.Z);
+            brk.getHeroController().keyUp(Input.Keys.Z);
+            for (int i = 0; i < 6; i++) brk.update(GameWorld.FIXED_STEP);
+            if (hero.getHeavyState() != CHARGE) throw new AssertionError("Charge did not start");
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_HEAVY, 0.1f, brk.getEnemies().first(), hero, 1f, 1f, 3f, .24f, true));
+            brk.update(GameWorld.FIXED_STEP);
+            if (hero.getHeavyState() != NONE) throw new AssertionError("A heavy hit did not interrupt the charge");
+        } finally { brk.dispose(); }
 
         // 9) A hero who dies mid-charge does not go on to dash.
         GameWorld dead = combatFixture();
