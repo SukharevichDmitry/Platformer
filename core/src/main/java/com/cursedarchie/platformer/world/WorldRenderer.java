@@ -1529,6 +1529,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             // standard attack and there is no deceleration pose.
             if (attack.isHeavy() && time >= attack.getActiveEnd())
                 heroFrame = attack.isFacingLeft() ? heroIdleLeft : heroIdleRight;
+            // The dash itself is a fast run, not a swing: the walk cycle at triple speed, no attack frame at all.
+            else if (attack.isHeavy() && time >= attack.getStartup())
+                heroFrame = attack.isFacingLeft() ?
+                    heroWalkLeftAnimation.getKeyFrame(time * 3f, true) :
+                    heroWalkRightAnimation.getKeyFrame(time * 3f, true);
             if (displayedHeroAttack != attack) {
                 displayedHeroAttack = attack;
                 displayedHeroSwing = false;

@@ -1360,6 +1360,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             int charge = 0, dash = 0, recover = 0;
             float plannedDistance = Float.NaN, lockedX = Float.NaN;
             float dashStartX = Float.NaN, dashEndX = Float.NaN, maxChargeSpeed = 0f;
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState lastHeavy = null;
             float minDashSpeed = Float.POSITIVE_INFINITY, maxDashSpeed = 0f;
             float recoveryX = Float.NaN, maxRecoverySpeed = 0f, recoveryDrift = 0f;
             boolean attackPressedDuringDash = false, followUpAttackStarted = false;
@@ -1369,6 +1370,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 if (i == 40) { w.getHeroController().keyUp(Input.Keys.RIGHT); w.getHeroController().keyDown(Input.Keys.LEFT); }
                 w.update(GameWorld.FIXED_STEP);
                 com.cursedarchie.platformer.combat.HeavyState st = hero.getHeavyState();
+                if (heroAttack(hero) != null && heroAttack(hero).isHeavy()) lastHeavy = heroAttack(hero);
                 if (st == CHARGE) {
                     charge++;
                     maxChargeSpeed = Math.max(maxChargeSpeed, Math.abs(hero.getBody().getLinearVelocity().x));
@@ -1404,6 +1406,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 }
             }
             w.getHeroController().keyUp(Input.Keys.LEFT);
+            if (lastHeavy != null && lastHeavy.isDashEnded()) dashEndX = lastHeavy.getDashEndX();
             com.cursedarchie.platformer.combat.BreakthroughConfig bc = com.cursedarchie.platformer.combat.BreakthroughConfig.get();
             int dashLimit = Math.round(bc.dashDuration / GameWorld.FIXED_STEP) + 2;
             float expectedCharge = bc.chargeTimeForDistance(plannedDistance);
@@ -1419,7 +1422,6 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 throw new AssertionError("The dash did not go right despite the locked direction: " + dashStartX + " -> " + dashEndX);
             if (maxDashSpeed - minDashSpeed > .25f)
                 throw new AssertionError("Dash speed eased instead of staying constant: " + minDashSpeed + ".." + maxDashSpeed);
-            if (recover == 0) throw new AssertionError("Breakthrough skipped stationary recovery");
             if (maxRecoverySpeed > .001f || recoveryDrift > .001f)
                 throw new AssertionError("Recovery slid after the endpoint: speed=" + maxRecoverySpeed + ", drift=" + recoveryDrift);
             if (followUpAttackStarted) throw new AssertionError("Attack pressed during the dash started after it ended");
@@ -1467,6 +1469,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             float endpoint = Float.NaN, recoveryAt = Float.NaN, recoveryDrift = 0f, recoverySpeed = 0f;
             for (int i = 0; i < 110; i++) {
                 wall.update(GameWorld.FIXED_STEP);
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState running = heroAttack(hero);
+                if (running != null && running.isHeavy() && running.isDashEnded()) endpoint = running.getDashEndX();
                 if (hero.getHeavyState() == DASH) dashSteps++;
                 if (hero.getHeavyState() == RECOVER) {
                     com.cursedarchie.platformer.actors.hero.states.combat.AttackState recovering = heroAttack(hero);
@@ -1481,7 +1485,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 throw new AssertionError("Dash stopped far short of the wall: " + hero.getPosition().x);
             if (hero.getBreakthroughImpactId() == impacts) throw new AssertionError("Wall hit produced no impact");
             if (dashSteps > 16) throw new AssertionError("Dash kept going after hitting the wall: " + dashSteps);
-            if (Float.isNaN(endpoint) || Math.abs(endpoint - recoveryAt) > .01f)
+            if (Float.isNaN(endpoint) || Math.abs(endpoint - hero.getPosition().x) > .01f)
                 throw new AssertionError("Wall-limited dash did not stop at its endpoint");
             if (recoverySpeed > .001f || recoveryDrift > .001f)
                 throw new AssertionError("Wall recovery slid: speed=" + recoverySpeed + ", drift=" + recoveryDrift);
@@ -1524,11 +1528,10 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             cd.getHeroController().keyDown(Input.Keys.Z);
             cd.getHeroController().keyUp(Input.Keys.Z);
             if (!stepUntil(cd, hero, DASH, 120)) throw new AssertionError("no dash");
-            if (!stepUntil(cd, hero, RECOVER, 30)) throw new AssertionError("no stationary recovery");
-            if (Math.abs(hero.getBody().getLinearVelocity().x) > .001f)
-                throw new AssertionError("Recovery began before horizontal velocity reached zero");
             for (int i = 0; i < 30 && hero.getHeavyState() != NONE; i++) cd.update(GameWorld.FIXED_STEP);
-            if (hero.getHeavyState() != NONE) throw new AssertionError("Recovery did not return to idle");
+            if (hero.getHeavyState() != NONE) throw new AssertionError("The dash did not hand control back");
+            if (Math.abs(hero.getBody().getLinearVelocity().x) > .001f)
+                throw new AssertionError("The hero kept sliding after the dash: " + hero.getBody().getLinearVelocity().x);
             if (hero.canHeavyAttack()) throw new AssertionError("Cooldown did not start after recovery");
             for (int i = 0; i < 110; i++) cd.update(GameWorld.FIXED_STEP);
             if (!hero.canHeavyAttack()) throw new AssertionError("Cooldown never ended");
@@ -1575,6 +1578,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             heavy.getHeroController().keyUp(Input.Keys.Z);
             boolean startedDash = false, returnedToIdle = false;
             float dashStartX = Float.NaN, dashStopX = Float.NaN;
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState brutePass = null;
             for (int i = 0; i < 120; i++) {
                 heavy.update(GameWorld.FIXED_STEP);
                 if (hero.getHeavyState() == DASH) {
@@ -1582,10 +1586,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                     com.cursedarchie.platformer.actors.hero.states.combat.AttackState running = heroAttack(hero);
                     if (running != null) dashStartX = running.getDashOriginX();
                 }
-                if (startedDash && hero.getHeavyState() == RECOVER && Float.isNaN(dashStopX)) {
-                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState stopping = heroAttack(hero);
-                    dashStopX = stopping == null ? hero.getPosition().x : stopping.getDashEndX();
-                }
+                if (heroAttack(hero) != null && heroAttack(hero).isHeavy()) brutePass = heroAttack(hero);
+                if (brutePass != null && brutePass.isDashEnded()) dashStopX = brutePass.getDashEndX();
                 if (startedDash && hero.getHeavyState() == NONE) returnedToIdle = true;
             }
             if (!returnedToIdle) throw new AssertionError("A heavy enemy cancelled or stalled the dash");
@@ -1764,11 +1766,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 addLevelWall(clip, faceX + .1f, 2.5f, .1f, 1.5f);
                 for (int settle = 0; settle < 20; settle++) clip.update(GameWorld.FIXED_STEP);
                 float startY = hero.getPosition().y, maxDy = 0f, maxX = 0f;
+                boolean sawDash = false;
                 clip.getHeroController().keyDown(Input.Keys.Z);
                 clip.getHeroController().keyUp(Input.Keys.Z);
                 for (int i = 0; i < 120; i++) {
                     clip.update(GameWorld.FIXED_STEP);
-                    if (hero.getHeavyState() == DASH || hero.getHeavyState() == RECOVER) {
+                    if (hero.getHeavyState() == DASH) sawDash = true;
+                    if (sawDash) {
                         maxDy = Math.max(maxDy, Math.abs(hero.getPosition().y - startY));
                         maxX = Math.max(maxX, hero.getPosition().x);
                     }

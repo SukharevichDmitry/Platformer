@@ -6,7 +6,7 @@
   },
   "dashDistance": 3.0,
   "dashDuration": 0.18,
-  "recoveryTime": 0.1,
+  "recoveryTime": 0.0,
   "cooldown": 1.6,
   "damageMultiplier": 2.0,
   "knockback": 10.0,

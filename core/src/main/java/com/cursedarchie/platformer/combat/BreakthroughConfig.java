@@ -15,8 +15,8 @@ public final class BreakthroughConfig {
     /** Dash distance: fixed by the attack, never reduced by walls (they only stop the body mid-dash). */
     public float dashDistance = 3f;
     public float dashDuration = .18f;
-    /** Short, stationary recovery after the body has already stopped at the endpoint. */
-    public float recoveryTime = .1f;
+    /** Optional stationary pause after the body has stopped at the endpoint. 0 = movement is possible at once. */
+    public float recoveryTime = 0f;
     public float damageMultiplier = 2f;
     public float knockback = 10f;
     /** A hit with at least this stagger (or any heavy hit) interrupts the charge. */
