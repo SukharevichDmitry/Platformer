@@ -18,7 +18,10 @@
   "allowedEnemyTypes": [
     "default",
     "scavenger",
+    "infiltrator",
     "red_collector",
+    "overseer",
+    "heavy_hunter",
     "boss"
   ],
   "roomPatterns": [
@@ -45,7 +48,8 @@
       "difficultyBudget": 1,
       "allowedEnemyTypes": [
         "default",
-        "scavenger"
+        "scavenger",
+        "infiltrator"
       ]
     },
     {
@@ -72,7 +76,10 @@
       "allowedEnemyTypes": [
         "default",
         "scavenger",
+        "infiltrator",
         "red_collector",
+        "overseer",
+        "heavy_hunter",
         "boss"
       ]
     }
