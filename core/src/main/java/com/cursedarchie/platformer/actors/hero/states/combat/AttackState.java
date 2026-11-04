@@ -7,6 +7,7 @@ import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
 import com.cursedarchie.platformer.actors.hero.states.HeroState;
 import com.cursedarchie.platformer.combat.AttackDefinition;
+import com.cursedarchie.platformer.combat.AttackRhythmConfig;
 import com.cursedarchie.platformer.combat.AttackRuntime;
 import com.cursedarchie.platformer.physics.CombatHit;
 
@@ -38,6 +39,10 @@ public class AttackState implements HeroState {
     public boolean canQueueFollowUp(Hero hero) {
         return !heavy && comboStep == 1 && runtime.acceptsNextInput();
     }
+    /** Only the first light strike chains into the second; the combo always ends after strike two. */
+    public boolean chainsToNext() { return !heavy && comboStep == 1; }
+    /** Light strikes one and two take part in the attack rhythm; heavy, counter and jump strikes do not. */
+    public boolean usesRhythm() { return !heavy && (comboStep == 1 || comboStep == 2); }
 
     @Override public void enter(Hero hero) {
         runtime = new AttackRuntime(hero.attackDefinition(heavy, comboStep), hero.isFacingLeft());
@@ -62,12 +67,16 @@ public class AttackState implements HeroState {
         if (active) for (Actor target : hero.getAttackTargets()) {
             if (!runtime.canHit(hero, target, attackBounds, hurtBounds)) continue;
             AttackDefinition attack = runtime.definition();
+            AttackRhythmConfig rhythm = AttackRhythmConfig.get();
+            boolean hurried = runtime.isHurried();
             float damage = hero.getDamage() * attack.damageMultiplier *
-                hero.meleeDamageMultiplier(heavy, comboStep);
+                hero.meleeDamageMultiplier(heavy, comboStep) * (hurried ? rhythm.hurriedDamageMultiplier : 1f);
+            float knockback = (attack.knockback + hero.meleeRecoilBonus()) *
+                (hurried ? rhythm.hurriedKnockbackMultiplier : 1f) *
+                (comboStep == 2 && !heavy ? rhythm.secondStrikeKnockbackMultiplier : 1f);
+            float stagger = attack.staggerDuration * (hurried ? rhythm.hurriedStaggerMultiplier : 1f);
             CombatHit hit = new CombatHit(attack.type, damage, hero, target,
-                runtime.direction(), attack.stabilityDamage,
-                attack.knockback + hero.meleeRecoilBonus(), attack.staggerDuration,
-                attack.blockable);
+                runtime.direction(), attack.stabilityDamage, knockback, stagger, attack.blockable);
             float healthBefore = target.getHealth();
             boolean applied = target instanceof Enemy ? ((Enemy) target).takeMeleeHit(hit) : true;
             if (!(target instanceof Enemy)) target.takeDamage(damage);

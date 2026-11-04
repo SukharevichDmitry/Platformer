@@ -15,6 +15,8 @@ public final class AttackRuntime {
     private final boolean facesLeft;
     private final ObjectSet<Actor> struck = new ObjectSet<>();
     private float elapsed;
+    private AttackQuality quality = AttackQuality.NORMAL;
+    private InputResult inputResult = InputResult.NO_INPUT;
 
     public AttackRuntime(AttackDefinition definition, boolean facesLeft) {
         this.definition = definition;
@@ -27,7 +29,46 @@ public final class AttackRuntime {
     public float direction() { return facesLeft ? -1f : 1f; }
     public float elapsed() { return elapsed; }
     /** Total length of this swing: a swing that struck nothing pays the definition's miss recovery. */
-    public float duration() { return definition.duration + (struck.size > 0 ? 0f : definition.missRecovery); }
+    public float duration() {
+        float hurriedExtra = quality == AttackQuality.HURRIED ?
+            definition.recoveryDuration * (AttackRhythmConfig.get().hurriedRecoveryMultiplier - 1f) : 0f;
+        return definition.duration + hurriedExtra + (struck.size > 0 ? 0f : definition.missRecovery);
+    }
+
+    public AttackQuality quality() { return quality; }
+    public boolean isHurried() { return quality == AttackQuality.HURRIED; }
+    /** The one processed press of this strike; later presses never replace it. */
+    public InputResult inputResult() { return inputResult; }
+
+    /** Time at which a follow-up press starts to count as correct. */
+    public float comboWindowStart() { return definition.nextInputTime; }
+    public float comboWindowEnd() {
+        AttackRhythmConfig cfg = AttackRhythmConfig.get();
+        return Math.min(duration(), comboWindowStart() + cfg.comboWindowLength + cfg.comboWindowBonus);
+    }
+    /** True while a press would continue the combo and nothing has been pressed yet. */
+    public boolean isInComboWindow() {
+        return quality == AttackQuality.NORMAL && inputResult == InputResult.NO_INPUT &&
+            elapsed + EPSILON >= comboWindowStart() && elapsed <= comboWindowEnd();
+    }
+
+    /**
+     * Classifies one fresh attack press (the caller has already filtered out held-button repeats).
+     * Only the first classified press counts: further presses are ignored and never queue, so spamming
+     * cannot extend the combo or cut recovery short. A press so early that the swing has barely begun is
+     * ignored without penalty. {@code chains} says whether a correct press continues into a second strike.
+     */
+    public InputResult registerAttackPress(boolean chains) {
+        if (inputResult != InputResult.NO_INPUT) return InputResult.NO_INPUT;
+        float start = comboWindowStart();
+        if (elapsed + EPSILON < start - AttackRhythmConfig.get().earlyInputWindow) return InputResult.NO_INPUT;
+        if (elapsed + EPSILON < start) {
+            inputResult = InputResult.EARLY_INPUT;
+            quality = AttackQuality.HURRIED;
+        } else if (chains && elapsed <= comboWindowEnd()) inputResult = InputResult.COMBO_BUFFERED;
+        else inputResult = InputResult.LATE_INPUT;
+        return inputResult;
+    }
 
     public void advance(float delta) { elapsed += delta; }
 
@@ -47,10 +88,12 @@ public final class AttackRuntime {
 
     /** World-space hitbox in front of {@code origin}, on the side the attack is facing. */
     public Rectangle hitbox(Vector2 origin, Rectangle out) {
-        float centreX = origin.x + direction() * (definition.range - definition.hitboxWidth / 2f);
-        return out.set(centreX - definition.hitboxWidth / 2f,
+        float reach = isHurried() ? AttackRhythmConfig.get().hurriedReachMultiplier : 1f;
+        float range = definition.range * reach, width = definition.hitboxWidth * reach;
+        float centreX = origin.x + direction() * (range - width / 2f);
+        return out.set(centreX - width / 2f,
             origin.y + definition.offsetY - definition.hitboxHeight / 2f,
-            definition.hitboxWidth, definition.hitboxHeight);
+            width, definition.hitboxHeight);
     }
 
     /** True when the attack is overlapping the target's hurtbox and has not already struck it. */

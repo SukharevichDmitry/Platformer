@@ -96,6 +96,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final Sound firstSlash;
     private final Sound secondSlash;
     private final Sound heavySlash;
+    private final Sound hurriedSlash;
+    private final Sound comboChime;
+    private AttackState rhythmAttack;
+    private com.cursedarchie.platformer.combat.InputResult rhythmResult =
+        com.cursedarchie.platformer.combat.InputResult.NO_INPUT;
     private final Sound[] archerCueSounds = new Sound[Enemy.Cue.values().length];
     private final Sound arrowHitHeroSound;
     private final java.util.EnumMap<GameWorld.CombatEvent.Kind, Sound> eventSounds = new java.util.EnumMap<>(GameWorld.CombatEvent.Kind.class);
@@ -220,6 +225,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         firstSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_light_1.wav"));
         secondSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_light_2.wav"));
         heavySlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_heavy.wav"));
+        hurriedSlash = Gdx.audio.newSound(Gdx.files.internal("sfx/slash_hurried.wav"));
+        comboChime = Gdx.audio.newSound(Gdx.files.internal("sfx/combo_chain.wav"));
         loadArcherCueSounds();
         arrowHitHeroSound = Gdx.audio.newSound(Gdx.files.internal("sfx/arrow_hit_hero.wav"));
         eventSounds.put(GameWorld.CombatEvent.Kind.HIT_LIGHT, Gdx.audio.newSound(Gdx.files.internal("sfx/hit_light.wav")));
@@ -1498,6 +1505,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         if (this.hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
             AttackState attack = (AttackState) this.hero.getCombatStateMachine().getCurrentState();
             float time = hero.getCombatStateTime();
+            // A hurried strike snaps through its pose faster: a sharp, jerky motion with a cut-short wind-up.
+            if (attack.getRuntime().isHurried() && !attack.isHeavy()) time *= 1.35f;
             float pose = attack.isHeavy() ?
                 time < .35f ? 0f : time < attack.getStartup() ? .13f :
                     time < attack.getActiveEnd() ? .26f : .13f :
@@ -1510,6 +1519,17 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             if (displayedHeroAttack != attack) {
                 displayedHeroAttack = attack;
                 displayedHeroSwing = false;
+            }
+            if (rhythmAttack != attack) {
+                rhythmAttack = attack;
+                rhythmResult = com.cursedarchie.platformer.combat.InputResult.NO_INPUT;
+            }
+            com.cursedarchie.platformer.combat.InputResult inputNow = attack.getRuntime().inputResult();
+            if (inputNow != rhythmResult) {
+                rhythmResult = inputNow;
+                // Botched wind-up for a press that came too soon; a bright tick for a well-timed one.
+                if (inputNow == com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT) hurriedSlash.play(.5f);
+                else if (inputNow == com.cursedarchie.platformer.combat.InputResult.COMBO_BUFFERED) comboChime.play(.4f);
             }
             if (!displayedHeroSwing && attack.getRuntime().phase() != AttackRuntime.Phase.STARTUP) {
                 displayedHeroSwing = true;
@@ -1537,6 +1557,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         float drawX = hero.getPosition().x - hero.getSize()/2f;
         float drawY = hero.getPosition().y - hero.getSize()/2f;
         float drawSize = hero.getSize();
+        if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
+            ((AttackState) hero.getCombatStateMachine().getCurrentState()).getRuntime().isHurried()) {
+            // Hurried strike: the hero lurches forward off balance and wobbles through the extended recovery.
+            AttackState slip = (AttackState) hero.getCombatStateMachine().getCurrentState();
+            float lurch = slip.isFacingLeft() ? -1f : 1f;
+            float settle = 1f - clamp01((hero.getCombatStateTime() - slip.getRuntime().comboWindowStart()) /
+                Math.max(.05f, slip.getRuntime().duration() - slip.getRuntime().comboWindowStart()));
+            drawX += lurch * .06f + (float) Math.sin(effectClock * 55f) * .035f * settle;
+            drawY -= .035f * settle;
+        }
         // Flinch when an arrow lands: shoved along the arrow's path with a quick shake that settles.
         float arrowReaction = gameWorld.getHeroArrowReactionProgress();
         if (arrowReaction >= 0f && enteringPortal == null) {
@@ -1635,6 +1665,32 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 }
                 ring(cx, hero.getPosition().y - hero.getSize() / 2f + .1f, 1.3f - .6f * charge);
             }
+            if (attack.usesRhythm() && attack.getRuntime().isInComboWindow() && attack.chainsToNext()) {
+                // Timing cue: a brief glint on the blade hand while a press would continue the combo.
+                // Strong for new players, subtle once the rhythm has been mastered.
+                float strength = com.cursedarchie.platformer.combat.AttackRhythmConfig.get()
+                    .highlightIntensity(hero.getRhythmCombos());
+                float dirH = attack.isFacingLeft() ? -1f : 1f;
+                float pulse = .6f + .4f * (float) Math.sin(effectClock * 28f);
+                spriteBatch.setColor(1f, .9f, .45f, .5f * strength * pulse);
+                glow(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f, .28f + .22f * strength);
+                spriteBatch.setColor(1f, .97f, .75f, .8f * strength);
+                barCentered(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f, .22f, .04f, 0f);
+                barCentered(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f, .22f, .04f, 90f);
+            }
+            if (attack.getRuntime().isHurried()) {
+                // Slip: scuffed dust at the feet and a grey flinch mark; no spark of a successful follow-up.
+                float dirH = attack.isFacingLeft() ? -1f : 1f;
+                float fade = 1f - clamp01((hero.getCombatStateTime() - attack.getRuntime().comboWindowStart()) /
+                    Math.max(.05f, attack.getRuntime().duration() - attack.getRuntime().comboWindowStart()));
+                float footY = hero.getPosition().y - hero.getSize() / 2f + .05f;
+                spriteBatch.setColor(.72f, .68f, .6f, .6f * fade);
+                for (int i = 0; i < 3; i++)
+                    spriteBatch.draw(sceneryPixel, hero.getPosition().x + dirH * (.25f + i * .2f) - .1f,
+                        footY + i * .035f * (1f - fade), .22f - i * .04f, .06f);
+                spriteBatch.setColor(.6f, .62f, .68f, .7f * fade);
+                barCentered(hero.getPosition().x - dirH * .1f, hero.getPosition().y + .62f, .3f, .04f, dirH * 25f);
+            }
             if (attack.getPhase(hero) == AttackState.Phase.STARTUP) {
                 float direction = attack.isFacingLeft() ? -1f : 1f;
                 float windup = hero.getCombatStateTime() / attack.getStartup();
@@ -1648,6 +1704,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         if (hero.isLeftAttackActive() || hero.isRightAttackActive()) {
             AttackState attack = (AttackState) hero.getCombatStateMachine().getCurrentState();
             float direction = attack.isFacingLeft() ? -1f : 1f;
+            if (attack.getRuntime().isHurried()) {
+                // Hurried slash: a short, dull, wobbly smear with no bright leading edge.
+                float wobble = (float) Math.sin(effectClock * 70f) * .05f;
+                spriteBatch.setColor(.58f, .6f, .66f, .5f);
+                spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .55f - .2f,
+                    hero.getPosition().y + .08f + wobble, .4f, .1f);
+                spriteBatch.setColor(Color.WHITE);
+                return;
+            }
             spriteBatch.setColor(attack.isHeavy() ? .98f : attack.getComboStep() == 2 ? .38f : .76f,
                 attack.isHeavy() ? .55f : .86f, 1f, .8f);
             float trailY = attack.getComboStep() == 2 ? .34f : .1f;
@@ -1658,9 +1723,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction *
                 (attack.getComboStep() == 2 ? 1.55f : 1.12f) - .05f,
                 hero.getPosition().y + trailY, .10f, .10f);
-            if (attack.getComboStep() == 2)
+            if (attack.getComboStep() == 2) {
                 spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .95f - .24f,
                     hero.getPosition().y + .12f, .48f, .12f);
+                // Well-timed follow-up: gold crescent sparks fan out from the blade.
+                float burst = clamp01(1f - (hero.getCombatStateTime() - attack.getStartup()) / .2f);
+                spriteBatch.setColor(1f, .85f, .4f, .9f * burst);
+                for (int i = -1; i <= 1; i++)
+                    barFrom(hero.getPosition().x + direction * 1.45f, hero.getPosition().y + .16f,
+                        .3f + .25f * (1f - burst), .05f, (direction < 0f ? 180f : 0f) + direction * (i * 28f));
+            }
         }
         spriteBatch.setColor(Color.WHITE);
     }
@@ -2353,6 +2425,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         firstSlash.dispose();
         secondSlash.dispose();
         heavySlash.dispose();
+        hurriedSlash.dispose();
+        comboChime.dispose();
         for (Sound cue : archerCueSounds) if (cue != null) cue.dispose();
         arrowHitHeroSound.dispose();
         for (Sound sound : eventSounds.values()) if (sound != null) sound.dispose();

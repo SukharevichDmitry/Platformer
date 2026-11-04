@@ -1,0 +1,13 @@
+{
+  "earlyInputWindow": 0.12,
+  "comboWindowLength": 0.15,
+  "comboWindowBonus": 0.0,
+  "hurriedDamageMultiplier": 0.9,
+  "hurriedReachMultiplier": 0.9,
+  "hurriedKnockbackMultiplier": 0.9,
+  "hurriedStaggerMultiplier": 0.9,
+  "hurriedRecoveryMultiplier": 1.15,
+  "secondStrikeKnockbackMultiplier": 1.15,
+  "highlightFadeCombos": 12,
+  "highlightMinIntensity": 0.3
+}

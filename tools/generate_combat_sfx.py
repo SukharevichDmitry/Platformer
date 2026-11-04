@@ -69,6 +69,18 @@ def build_combat():
     s["breaker_slam"] = g.finish(g.mix((g.sweep(90, 28, .55, (1.0, .5)) * g.decay(.55, 6), 0, 1.0),
                                        (g.lowpass(g.noise(.4), 900) * g.decay(.4, 11), 0, .8),
                                        (g.bandpass(g.noise(.08), 1500, 5000) * g.decay(.08, 60), 0, .5)), .95)
+    # Hurried strike: a choppy, uneven swish that cuts off plus a dull scuff of a slipping foot.
+    t = g.time(.24)
+    choppy = g.highpass(g.noise(.24), 900) * g.decay(.24, 14) * (.55 + .45 * g.np.sign(g.np.sin(2 * g.np.pi * 38 * t)))
+    scuff = g.lowpass(g.noise(.12), 1400) * g.decay(.12, 26)
+    stumble = g.sweep(210, 120, .1) * g.decay(.1, 30)
+    s["slash_hurried"] = g.finish(g.mix((choppy, 0, .8), (scuff, .06, .7), (stumble, .1, .5)), .6)
+    # Combo continuation: short bright two-note tick that says "well timed".
+    t = g.time(.16)
+    tick = (g.np.sin(2 * g.np.pi * 1180 * t) + .5 * g.np.sin(2 * g.np.pi * 1770 * t)) * g.decay(.16, 24)
+    t2 = g.time(.2)
+    chime = (g.np.sin(2 * g.np.pi * 1570 * t2) + .4 * g.np.sin(2 * g.np.pi * 2355 * t2)) * g.decay(.2, 18)
+    s["combo_chain"] = g.finish(g.mix((tick, 0, .7), (chime, .07, .8)), .5)
     return s
 
 

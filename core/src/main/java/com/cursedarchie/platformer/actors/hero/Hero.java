@@ -263,6 +263,10 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         return combatStateMachine;
     }
     public float getInvulnerabilityRemaining() { return invulnerabilityRemaining; }
+    private int rhythmCombos;
+    /** Counts clean, correctly timed combo presses; the timing highlight fades as this grows. */
+    public void noteRhythmSuccess() { rhythmCombos++; }
+    public int getRhythmCombos() { return rhythmCombos; }
     public boolean isStaggered() { return staggerRemaining > 0f; }
     public float getLastHitSourceX() { return lastHitSourceX; }
     public void setInventory(Inventory inventory) { this.inventory = inventory; }

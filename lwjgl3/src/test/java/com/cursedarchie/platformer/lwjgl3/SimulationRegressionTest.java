@@ -83,6 +83,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkGroupAttackSlots();
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
+        checkAttackRhythm();
         checkArcherMemoryAndMirroredTurn();
         checkArrowCeilingAndSightLoss();
         checkMeleeReachMatchesHitbox();
@@ -1107,6 +1108,136 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             }
             if (!fired) throw new AssertionError("Archer dropped its shot as soon as sight was lost");
         } finally { v.dispose(); }
+    }
+
+    private static com.cursedarchie.platformer.actors.hero.states.combat.AttackState heroAttack(Hero hero) {
+        Object state = hero.getCombatStateMachine().getCurrentState();
+        return state instanceof com.cursedarchie.platformer.actors.hero.states.combat.AttackState ?
+            (com.cursedarchie.platformer.actors.hero.states.combat.AttackState) state : null;
+    }
+
+    /** Presses X at {@code pressAt} seconds into a strike, releases at once, and returns the ids of every strike that started. */
+    private java.util.List<String> rhythmRun(float pressAt, int totalSteps, int extraTaps, float[] hurriedFlags) {
+        GameWorld w = combatFixture();
+        try {
+            for (Enemy e : w.getEnemies()) { e.setActive(false); e.getBody().setTransform(30f, 2.5f, 0f); }
+            Hero hero = w.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            w.update(GameWorld.FIXED_STEP);
+            java.util.List<String> started = new java.util.ArrayList<String>();
+            Object last = null;
+            w.getHeroController().keyDown(Input.Keys.X);
+            w.getHeroController().keyUp(Input.Keys.X);
+            int pressStep = Math.round(pressAt / GameWorld.FIXED_STEP);
+            for (int i = 1; i <= totalSteps; i++) {
+                if (i == pressStep) {
+                    for (int tap = 0; tap <= extraTaps; tap++) {
+                        w.getHeroController().keyDown(Input.Keys.X);
+                        w.getHeroController().keyUp(Input.Keys.X);
+                    }
+                }
+                w.update(GameWorld.FIXED_STEP);
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState a = heroAttack(hero);
+                if (a != null && a != last) { started.add(a.getDefinition().id); last = a; }
+                if (a != null && a.getRuntime().isHurried() && hurriedFlags != null) hurriedFlags[0] = 1f;
+            }
+            return started;
+        } finally { w.dispose(); }
+    }
+
+    private void checkAttackRhythm() {
+        // Defaults load from the config file shape.
+        com.cursedarchie.platformer.combat.AttackRhythmConfig parsed =
+            com.cursedarchie.platformer.combat.AttackRhythmConfig.parse("{\"earlyInputWindow\":0.2}");
+        closeTo(parsed.earlyInputWindow, .2f, "config value was not read");
+        closeTo(parsed.hurriedRecoveryMultiplier, 1.15f, "missing config keys must keep their defaults");
+
+        // A single press is a full, normal strike and never hurried.
+        float[] hurried = new float[1];
+        java.util.List<String> single = rhythmRun(99f, 60, 0, hurried);
+        if (single.size() != 1 || !"hero_light_1".equals(single.get(0)) || hurried[0] != 0f)
+            throw new AssertionError("A single press must be one normal first strike: " + single);
+
+        // Pressing inside the combo window continues into the second strike.
+        java.util.List<String> calm = rhythmRun(.27f, 60, 0, hurried);
+        if (calm.size() < 2 || !"hero_light_2".equals(calm.get(1)) || hurried[0] != 0f)
+            throw new AssertionError("A well-timed press did not chain into strike two: " + calm);
+
+        // A press that is too early makes the strike hurried, breaks the combo and does not cancel the strike.
+        hurried[0] = 0f;
+        java.util.List<String> early = rhythmRun(.17f, 60, 0, hurried);
+        if (hurried[0] != 1f) throw new AssertionError("An early press did not make the strike hurried");
+        if (early.contains("hero_light_2") || early.size() != 1)
+            throw new AssertionError("An early press must not continue or restart the combo: " + early);
+
+        // Spamming right after the early press is not queued and cannot extend or restart anything.
+        java.util.List<String> spam = rhythmRun(.17f, 90, 6, hurried);
+        if (spam.contains("hero_light_2") || spam.size() != 1)
+            throw new AssertionError("Spam produced extra or chained strikes: " + spam);
+
+        // Hurried strikes are weaker and slower to recover; correct ones are untouched.
+        com.cursedarchie.platformer.combat.AttackRhythmConfig cfg =
+            com.cursedarchie.platformer.combat.AttackRhythmConfig.get();
+        GameWorld w = combatFixture();
+        try {
+            Hero hero = w.getHero();
+            com.cursedarchie.platformer.combat.AttackDefinition def = hero.attackDefinition(false, 1);
+            com.cursedarchie.platformer.combat.AttackRuntime normal =
+                new com.cursedarchie.platformer.combat.AttackRuntime(def, false);
+            com.cursedarchie.platformer.combat.AttackRuntime rushed =
+                new com.cursedarchie.platformer.combat.AttackRuntime(def, false);
+            normal.advance(.01f);
+            rushed.advance(def.nextInputTime - cfg.earlyInputWindow + .01f);
+            if (rushed.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT)
+                throw new AssertionError("Press just before the window was not classified as early");
+            if (rushed.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT)
+                throw new AssertionError("A second press of the same strike must be ignored");
+            if (normal.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT)
+                throw new AssertionError("A press while the swing has barely begun must be ignored, not punished");
+            if (!(rushed.duration() > normal.duration()))
+                throw new AssertionError("Hurried strike did not get a longer recovery");
+            com.badlogic.gdx.math.Rectangle a = new com.badlogic.gdx.math.Rectangle();
+            com.badlogic.gdx.math.Rectangle b = new com.badlogic.gdx.math.Rectangle();
+            com.badlogic.gdx.math.Vector2 origin = new com.badlogic.gdx.math.Vector2(10f, 2.5f);
+            normal.hitbox(origin, a);
+            rushed.hitbox(origin, b);
+            if (!(b.width < a.width)) throw new AssertionError("Hurried strike did not lose reach");
+            closeTo(rushed.definition().damageMultiplier, normal.definition().damageMultiplier,
+                "Hurried strike must keep the same base definition");
+        } finally { w.dispose(); }
+
+        // A late press (after a shortened window) starts a fresh first strike, not strike two.
+        com.cursedarchie.platformer.combat.AttackRhythmConfig saved = cfg;
+        com.cursedarchie.platformer.combat.AttackRhythmConfig tight =
+            new com.cursedarchie.platformer.combat.AttackRhythmConfig();
+        tight.comboWindowLength = .03f;
+        com.cursedarchie.platformer.combat.AttackRhythmConfig.set(tight);
+        try {
+            java.util.List<String> late = rhythmRun(.33f, 90, 0, hurried);
+            if (late.size() < 2 || !"hero_light_1".equals(late.get(1)))
+                throw new AssertionError("A late press did not begin a fresh first strike: " + late);
+        } finally { com.cursedarchie.platformer.combat.AttackRhythmConfig.set(saved); }
+
+        // Holding the button is one strike, not a stream of them.
+        GameWorld held = combatFixture();
+        try {
+            for (Enemy e : held.getEnemies()) { e.setActive(false); e.getBody().setTransform(30f, 2.5f, 0f); }
+            Hero hero = held.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            held.update(GameWorld.FIXED_STEP);
+            held.getHeroController().keyDown(Input.Keys.X);
+            int strikes = 0;
+            Object last = null;
+            for (int i = 0; i < 180; i++) {
+                held.update(GameWorld.FIXED_STEP);
+                Object a = heroAttack(hero);
+                if (a != null && a != last) { strikes++; last = a; }
+            }
+            held.getHeroController().keyUp(Input.Keys.X);
+            if (strikes != 1) throw new AssertionError("Holding attack started " + strikes + " strikes");
+        } finally { held.dispose(); }
     }
 
     private void checkArrowArcPhysics() {
