@@ -1088,17 +1088,22 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             Hero hero = v.getHero();
             hero.getBody().setTransform(10f, 2.5f, 0f);
             Enemy archer = EnemyFactory.createScavenger(v.getWorld(), new Vector2(15f, 2.5f));
+            archer.setBrain(new SimpleEnemyBrain(v));
             archer.setFacingLeft(true);
             v.addEnemy(archer);
-            archer.setCanSeeHero(true);
-            if (!archer.beginRangedAttack(RangedAttackConfig.NORMAL, hero))
-                throw new AssertionError("Archer refused to begin a clear shot");
-            archer.setCanSeeHero(false);
+            boolean drawing = false;
+            for (int i = 0; i < 240 && !drawing; i++) {
+                v.update(GameWorld.FIXED_STEP);
+                drawing = archer.isRangedBusy();
+            }
+            if (!drawing) throw new AssertionError("Archer never began drawing at a clear target");
+            // The hero slips out of view mid-draw: the shot must still be released.
+            hero.getBody().setTransform(40f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
             boolean fired = false;
             for (int i = 0; i < 120 && !fired; i++) {
                 v.update(GameWorld.FIXED_STEP);
-                archer.setCanSeeHero(false);
-                fired = v.getArrows().size > 0 || hero.getHealth() < hero.getMaxHealth();
+                fired = v.getArrows().size > 0;
             }
             if (!fired) throw new AssertionError("Archer dropped its shot as soon as sight was lost");
         } finally { v.dispose(); }
