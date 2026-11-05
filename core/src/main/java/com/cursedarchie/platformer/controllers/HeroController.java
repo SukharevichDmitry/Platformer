@@ -180,6 +180,24 @@ public class HeroController implements InputProcessor {
 
         dashCooldownRemaining = Math.max(0f, dashCooldownRemaining - delta);
         hero.setPlatformDropRemaining(hero.getPlatformDropRemaining() - delta);
+        if (hero.isFalling()) {
+            // Lost balance on an enemy's head: no steering, attack, guard, roll or dash, and nothing pressed now is
+            // remembered for when the hero is back on their feet.
+            climbing = false;
+            dashRemaining = 0f;
+            dashQueued = false;
+            jumpBufferRemaining = 0f;
+            attackBufferRemaining = 0f;
+            rollBufferRemaining = 0f;
+            clearComboBuffer();
+            hero.getBody().setGravityScale(1f);
+            hero.getBody().setLinearVelocity(0f, hero.getBody().getLinearVelocity().y);
+            interactQueued = false;
+            pocketQueued = -1;
+            checkHeroPositionForDeathFall();
+            hero.update(delta);
+            return;
+        }
         processInput(delta);
 
         checkHeroPositionForDeathFall();

@@ -438,15 +438,70 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         turnGraceRemaining = TURN_ATTACK_GRACE;
         attackRequested = false;
     }
-    private float stompCooldownRemaining, stompFlashRemaining;
-    public float getStompFlashRemaining() { return stompFlashRemaining; }
-    /** Hero landed on this enemy's head: brief stagger, no damage; returns false while the cooldown runs. */
-    public boolean takeHeadStomp() {
-        if (!alive || stompCooldownRemaining > 0f) return false;
-        stompCooldownRemaining = .8f;
-        stompFlashRemaining = .3f;
-        applyStagger(.28f);
+    /** The two stages of being knocked over by a hero who landed on the head. */
+    public enum KnockdownPhase { NONE, KNOCKDOWN_FROM_ABOVE, KNOCKDOWN_RECOVERY }
+    private boolean canBeKnockedDownFromAbove = true;
+    private KnockdownPhase knockdownPhase = KnockdownPhase.NONE;
+    private float knockdownTimer, knockdownFallDuration, knockdownRecoveryDuration, knockdownDirection;
+    /** Standard and light enemies fall when landed on; heavy enemies and bosses do not. */
+    public boolean canBeKnockedDownFromAbove() { return canBeKnockedDownFromAbove; }
+    public void setCanBeKnockedDownFromAbove(boolean value) { canBeKnockedDownFromAbove = value; }
+    public KnockdownPhase getKnockdownPhase() { return knockdownPhase; }
+    public boolean isKnockedDown() { return knockdownPhase != KnockdownPhase.NONE; }
+    public float getKnockdownDirection() { return knockdownDirection; }
+    /** 0..1 progress through the whole knockdown (fall, then recovery); 0 when not knocked down. */
+    public float getKnockdownProgress() {
+        float total = knockdownFallDuration + knockdownRecoveryDuration;
+        if (!isKnockedDown() || total <= 0f) return 0f;
+        float t = knockdownPhase == KnockdownPhase.KNOCKDOWN_FROM_ABOVE ? knockdownTimer :
+            knockdownFallDuration + knockdownTimer;
+        return Math.min(1f, t / total);
+    }
+    public float getKnockdownFallFraction() {
+        float total = knockdownFallDuration + knockdownRecoveryDuration;
+        return total <= 0f ? 0f : knockdownFallDuration / total;
+    }
+    /**
+     * The hero landed on this enemy's head: it loses its balance and falls toward {@code direction}.
+     * No damage. Returns false if it cannot be knocked down right now.
+     */
+    public boolean beginKnockdownFromAbove(float direction, float fallDuration, float recoveryDuration) {
+        if (!alive || isKnockedDown() || !canBeKnockedDownFromAbove) return false;
+        knockdownPhase = KnockdownPhase.KNOCKDOWN_FROM_ABOVE;
+        knockdownTimer = 0f;
+        knockdownFallDuration = fallDuration;
+        knockdownRecoveryDuration = recoveryDuration;
+        knockdownDirection = direction;
+        haltForKnockdown();
         return true;
+    }
+    /** Everything the AI was doing stops: no attack, guard, pursuit, patrol, dash or cast survives. */
+    private void haltForKnockdown() {
+        cancelRangedAttack();
+        cancelCast(0f);
+        attackRequested = false;
+        blockRemaining = 0f;
+        dashWindupRemaining = 0f;
+        dashRemaining = 0f;
+        retreatRemaining = 0f;
+        currentIntent = Intent.IDLE;
+        if (combatStateMachine.getCurrentState() instanceof AttackState)
+            combatStateMachine.changeState(new CombatIdleState());
+        moveStop();
+    }
+    private void updateKnockdown(float delta) {
+        knockdownTimer += delta;
+        if (knockdownPhase == KnockdownPhase.KNOCKDOWN_FROM_ABOVE && knockdownTimer >= knockdownFallDuration) {
+            knockdownPhase = KnockdownPhase.KNOCKDOWN_RECOVERY;
+            knockdownTimer = 0f;
+        } else if (knockdownPhase == KnockdownPhase.KNOCKDOWN_RECOVERY && knockdownTimer >= knockdownRecoveryDuration) {
+            knockdownPhase = KnockdownPhase.NONE;
+            knockdownTimer = 0f;
+            attackCooldownRemaining = Math.max(attackCooldownRemaining, .15f);   // AI picks a fresh action
+            return;
+        }
+        haltForKnockdown();
+        body.setLinearVelocity(0f, body.getLinearVelocity().y);
     }
     public void applyStagger(float seconds) {
         if (!alive) return;
@@ -515,6 +570,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     }
     public void updateSpecialActions(GameWorld gameWorld, Hero hero, Array<Enemy> allies, float delta) {
         if (!active || !alive) return;
+        if (isKnockedDown()) { blockRemaining = 0f; return; }
         if (Float.isNaN(anchorX)) anchorX = getPosition().x;
         groupAllies = allies;
         lineBlockedRemaining = Math.max(0f, lineBlockedRemaining - delta);
@@ -526,7 +582,6 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         blockBreakFlashRemaining = Math.max(0f, blockBreakFlashRemaining - delta);
         dashCooldownRemaining = Math.max(0f, dashCooldownRemaining - delta);
         flankRemaining = Math.max(0f, flankRemaining - delta);
-        stompCooldownRemaining = Math.max(0f, stompCooldownRemaining - delta);
         turnFlashRemaining = Math.max(0f, turnFlashRemaining - delta);
         turnGraceRemaining = Math.max(0f, turnGraceRemaining - delta);
         awarenessTime += delta;
@@ -539,7 +594,6 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
                 searchLookRemaining = SEARCH_LOOK_INTERVAL;
             }
         }
-        stompFlashRemaining = Math.max(0f, stompFlashRemaining - delta);
         buffRemaining = Math.max(0f, buffRemaining - delta);
         if (dashWindupRemaining > 0f) {
             dashWindupRemaining = Math.max(0f, dashWindupRemaining - delta);
@@ -1012,7 +1066,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     /*==============================================COMBAT============================================================*/
 
     public void requestAttack() {
-        if (attackCooldownRemaining > 0f || isBlocking() ||
+        if (isKnockedDown() || attackCooldownRemaining > 0f || isBlocking() ||
             isStaggered() || isDodging() || isRetreating() || isActionRecovering() ||
             isRangedWindingUp() || combatStateMachine.getCurrentState() instanceof AttackState) return;
 
@@ -1086,6 +1140,11 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
 
     @Override
     public void update(float delta) {
+        if (isKnockedDown()) {
+            // Knocked over: no AI, no attack, no guard, no pursuit or patrol, until the recovery has finished.
+            updateKnockdown(delta);
+            if (isKnockedDown()) return;
+        }
         if (!active) {
             return;
         }

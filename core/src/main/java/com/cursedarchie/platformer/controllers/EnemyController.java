@@ -70,10 +70,10 @@ public class EnemyController {
         Vector2 hero = gameWorld.getHero().getPosition();
         for (int i = 0; i < enemies.size; i++) {
             Enemy a = enemies.get(i);
-            if (!a.isAlive() || a.isAttacking() || a.isStaggered() || a.isDodging() || a.isDashing()) continue;
+            if (!a.isAlive() || a.isKnockedDown() || a.isAttacking() || a.isStaggered() || a.isDodging() || a.isDashing()) continue;
             for (int j = i + 1; j < enemies.size; j++) {
                 Enemy b = enemies.get(j);
-                if (!b.isAlive() || b.isAttacking() || b.isStaggered() || b.isDodging() || b.isDashing()) continue;
+                if (!b.isAlive() || b.isKnockedDown() || b.isAttacking() || b.isStaggered() || b.isDodging() || b.isDashing()) continue;
                 float dx = b.getPosition().x - a.getPosition().x;
                 float minGap = (a.getSize() + b.getSize()) * .45f;
                 if (Math.abs(dx) >= minGap || Math.abs(b.getPosition().y - a.getPosition().y) > .9f) continue;

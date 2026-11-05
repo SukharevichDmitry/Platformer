@@ -234,7 +234,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_HERO, Gdx.audio.newSound(Gdx.files.internal("sfx/block_hero.wav")));
         eventSounds.put(GameWorld.CombatEvent.Kind.BLOCK_HERO_HEAVY, eventSounds.get(GameWorld.CombatEvent.Kind.BLOCK_HERO));
         eventSounds.put(GameWorld.CombatEvent.Kind.WHIFF, Gdx.audio.newSound(Gdx.files.internal("sfx/whiff.wav")));
-        eventSounds.put(GameWorld.CombatEvent.Kind.HEAD_STOMP, Gdx.audio.newSound(Gdx.files.internal("sfx/head_stomp.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.HEAD_COLLISION, Gdx.audio.newSound(Gdx.files.internal("sfx/head_stomp.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.HEAD_FALL, Gdx.audio.newSound(Gdx.files.internal("sfx/fall_land.wav")));
+        eventSounds.put(GameWorld.CombatEvent.Kind.GET_UP, Gdx.audio.newSound(Gdx.files.internal("sfx/get_up.wav")));
         eventSounds.put(GameWorld.CombatEvent.Kind.WALL_BUMP, Gdx.audio.newSound(Gdx.files.internal("sfx/wall_bump.wav")));
         staggerPopSound = Gdx.audio.newSound(Gdx.files.internal("sfx/stagger_pop.wav"));
         deathSound = Gdx.audio.newSound(Gdx.files.internal("sfx/death.wav"));
@@ -1614,10 +1616,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             }
             spriteBatch.setColor(Color.WHITE);
         }
+        beginTip(hero.getPosition().x, hero.getPosition().y - Hero.BODY_SIZE / 2f, heroTipAngle());
         spriteBatch.draw(
             heroFrame,
             drawX, drawY, drawSize, drawSize
         );
+        endTip();
         if (arrowReaction >= 0f && arrowReaction < .35f) {
             // Brief white flash over the hero before the red damage tint takes over.
             spriteBatch.setColor(1f, 1f, 1f, .75f * (1f - arrowReaction / .35f));
@@ -1892,8 +1896,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         Array<Enemy> enemies = gameWorld.getAliveEnemies();
 
         for (Enemy enemy : enemies) {
+            endTip();   // the previous enemy's tumble must not carry over
             if (enemy.isAlive()) {
                 drawAwarenessMark(enemy);
+                beginTip(enemy.getPosition().x, enemy.getPosition().y - enemy.getSize() / 2f, enemyTipAngle(enemy));
                 if ("scavenger".equals(enemy.getArchetypeId())) {
                     drawArcher(enemy);
                     continue;
@@ -1932,8 +1938,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
                 if (enemy.getDodgeFlashRemaining() > 0f) {
                     spriteBatch.setColor(.4f, 1f, 1f, .8f);
-                } else if (enemy.getStompFlashRemaining() > 0f) {
-                    spriteBatch.setColor(.8f, .75f, .6f, 1f);
+                } else if (enemy.isKnockedDown()) {
+                    spriteBatch.setColor(.85f, .8f, .68f, 1f);   // dusty: it has just hit the ground
                 } else if (enemy.isDashWindingUp()) {
                     spriteBatch.setColor(1f, .85f, .3f, 1f);   // crouched, amber: dash is coming
                 } else if (enemy.isDashing()) {
@@ -2026,6 +2032,59 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 spriteBatch.setColor(Color.WHITE);
             }
         }
+        endTip();
+    }
+
+    private final Matrix4 savedTransform = new Matrix4();
+    private final Matrix4 tipTransform = new Matrix4();
+    private boolean tipActive;
+
+    /** Draws everything until {@link #endTip()} rotated about a ground pivot: used for the head-landing tumble. */
+    private void beginTip(float pivotX, float pivotY, float degrees) {
+        endTip();
+        if (degrees == 0f) return;
+        savedTransform.set(spriteBatch.getTransformMatrix());
+        tipTransform.idt().translate(pivotX, pivotY, 0f).rotate(0f, 0f, 1f, degrees).translate(-pivotX, -pivotY, 0f);
+        spriteBatch.setTransformMatrix(tipTransform);
+        tipActive = true;
+    }
+
+    private void endTip() {
+        if (!tipActive) return;
+        spriteBatch.setTransformMatrix(savedTransform);
+        tipActive = false;
+    }
+
+    private static float smoothStep(float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        return t * t * (3f - 2f * t);
+    }
+
+    /** Falls over fast (accelerating), lies still for a beat, then pushes itself up. 0 upright .. 1 lying. */
+    private static float tumbleLie(float fallProgress, float recoveryProgress, boolean inRecovery) {
+        if (!inRecovery) return fallProgress * fallProgress;
+        return 1f - smoothStep((recoveryProgress - .35f) / .65f);
+    }
+
+    /** The hero tumbles away from the enemy (toward the side they landed on); a heavy enemy only makes them stumble. */
+    private float heroTipAngle() {
+        if (!hero.isFalling()) return 0f;
+        float dir = hero.getFallDirection();
+        if (hero.getFallPartner() == null) {
+            float r = hero.getFallRecoveryProgress();
+            return -dir * 16f * (float) Math.sin(Math.PI * r);
+        }
+        boolean recovering = hero.getFallPhase() == Hero.FallPhase.FALL_RECOVERY;
+        return -dir * 85f * tumbleLie(hero.getFallProgress(), hero.getFallRecoveryProgress(), recovering);
+    }
+
+    /** The enemy tips over the other way, so the pair lie beside each other instead of on top of each other. */
+    private float enemyTipAngle(Enemy enemy) {
+        if (!enemy.isKnockedDown()) return 0f;
+        float progress = enemy.getKnockdownProgress(), fall = Math.max(.01f, enemy.getKnockdownFallFraction());
+        boolean recovering = progress >= fall;
+        float lie = tumbleLie(Math.min(1f, progress / fall), (progress - fall) / Math.max(.01f, 1f - fall), recovering);
+        return enemy.getKnockdownDirection() * 85f * lie;
     }
 
     /** Alert "!" on first sight, "?" while heading for the last known spot or searching, and a quick turn whip. */
@@ -2244,7 +2303,28 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     // the hero after every attack, reading as a stray diagonal stroke.
                     break;
                 }
-                case HEAD_STOMP: {
+                case HEAD_FALL: {
+                    // Ground impact: a low cloud of dust rolling outward along the floor, no weapon spark.
+                    for (int i = -2; i <= 2; i++) {
+                        spriteBatch.setColor(.78f, .7f, .58f, inv * .55f);
+                        glow(x + i * .22f * (.5f + p * 1.2f), y + .1f + .22f * p * (1f - Math.abs(i) * .2f),
+                            .18f + .22f * p);
+                    }
+                    spriteBatch.setColor(.85f, .78f, .65f, inv * .7f);
+                    barCentered(x, y + .04f, .6f + 1.4f * p, .05f, 0f);
+                    break;
+                }
+                case GET_UP: {
+                    // Getting back up: a few pale dust wisps lifting off the ground.
+                    for (int i = -1; i <= 1; i++) {
+                        spriteBatch.setColor(.9f, .88f, .8f, inv * .6f);
+                        barFrom(x + i * .24f, y + .08f, .12f + .4f * p, .035f, 90f + i * 14f);
+                    }
+                    spriteBatch.setColor(.85f, .8f, .7f, inv * .35f);
+                    glow(x, y + .12f + .15f * p, .2f + .25f * p);
+                    break;
+                }
+                case HEAD_COLLISION: {
                     // Dust ring spreading across the top of the head and two downward chevrons: "hit from above".
                     spriteBatch.setColor(.85f, .8f, .7f, inv);
                     barCentered(x, y, .4f + 1.0f * p, .05f, 0f);

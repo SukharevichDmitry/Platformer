@@ -92,16 +92,80 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             if (attack.isInRecovery(this) && !attack.getRuntime().isHurried() && !isRolling() && !isStaggered())
                 combatStateMachine.changeState(new CombatIdleState());
         }
-        blockHeld = value && !isRolling() && !isStaggered() && !(combatStateMachine.getCurrentState() instanceof AttackState);
+        blockHeld = value && !isRolling() && !isStaggered() && !isFalling() &&
+            !(combatStateMachine.getCurrentState() instanceof AttackState);
     }
     public boolean isBlocking() {
-        return blockHeld && !isStaggered() && blockBrokenRemaining == 0f && blockStability > 0f && !attackLocksBlock();
+        return blockHeld && !isStaggered() && !isFalling() && blockBrokenRemaining == 0f && blockStability > 0f && !attackLocksBlock();
     }
     /** The recovery of a rushed strike leaves the hero unable to guard. */
     private boolean attackLocksBlock() {
         if (!(combatStateMachine.getCurrentState() instanceof AttackState)) return false;
         AttackState a = (AttackState) combatStateMachine.getCurrentState();
         return a.getRuntime() != null && a.getRuntime().isHurried() && a.isInRecovery(this);
+    }
+    /** Hero stages of landing on an enemy's head: tumble beside it, then get back up. */
+    public enum FallPhase { NONE, FALL_COLLISION, FALL_RECOVERY }
+    private FallPhase fallPhase = FallPhase.NONE;
+    private float fallTimer, fallDuration, fallRecoveryDuration, fallDirection;
+    private com.cursedarchie.platformer.actors.enemies.Enemy fallPartner;
+    public FallPhase getFallPhase() { return fallPhase; }
+    /** True through the whole fall and recovery: no control, attack, guard, roll or dash. */
+    public boolean isFalling() { return fallPhase != FallPhase.NONE; }
+    public float getFallDirection() { return fallDirection; }
+    /** The enemy whose head caused the fall; null outside the event (and for heavy enemies that do not fall). */
+    public com.cursedarchie.platformer.actors.enemies.Enemy getFallPartner() { return fallPartner; }
+    /** 0..1 through the tumble, 0 when not in FALL_COLLISION. */
+    public float getFallProgress() {
+        return fallPhase == FallPhase.FALL_COLLISION && fallDuration > 0f ? Math.min(1f, fallTimer / fallDuration) : 0f;
+    }
+    /** 0..1 through the get-up, 0 when not in FALL_RECOVERY. */
+    public float getFallRecoveryProgress() {
+        return fallPhase == FallPhase.FALL_RECOVERY && fallRecoveryDuration > 0f ? Math.min(1f, fallTimer / fallRecoveryDuration) : 0f;
+    }
+    /**
+     * Loses balance on an enemy's head. {@code partner} is the enemy that falls with the hero (null when the enemy
+     * is too heavy to topple: the hero then only goes through the recovery).
+     */
+    public void beginFall(com.cursedarchie.platformer.actors.enemies.Enemy partner, float direction,
+                          float fallSeconds, float recoverySeconds) {
+        fallDirection = direction < 0f ? -1f : 1f;
+        fallPartner = partner;
+        fallDuration = fallSeconds;
+        fallRecoveryDuration = recoverySeconds;
+        fallTimer = 0f;
+        fallPhase = partner != null ? FallPhase.FALL_COLLISION : FallPhase.FALL_RECOVERY;
+        haltForFall();
+    }
+    /** Cancels every action the hero could be in the middle of. */
+    private void haltForFall() {
+        rollRemaining = 0f;
+        blockHeld = false;
+        if (combatStateMachine.getCurrentState() instanceof AttackState)
+            combatStateMachine.changeState(new CombatIdleState());
+        if (body != null) body.setLinearVelocity(0f, body.getLinearVelocity().y);
+    }
+    private void updateFall(float delta) {
+        if (fallPhase == FallPhase.NONE) return;
+        fallTimer += delta;
+        if (fallPhase == FallPhase.FALL_COLLISION && fallTimer >= fallDuration) {
+            fallPhase = FallPhase.FALL_RECOVERY;
+            fallTimer = 0f;
+        } else if (fallPhase == FallPhase.FALL_RECOVERY && fallTimer >= fallRecoveryDuration) {
+            endFall();
+            return;
+        }
+        haltForFall();
+    }
+    /** Back to normal: reference dropped, so contacts with the partner are solid again, and control returns. */
+    public void endFall() {
+        fallPhase = FallPhase.NONE;
+        fallTimer = 0f;
+        fallPartner = null;
+        if (combatStateMachine.getCurrentState() instanceof AttackState)
+            combatStateMachine.changeState(new CombatIdleState());
+        if (!(motionStateMachine.getCurrentState() instanceof MotionIdleState))
+            motionStateMachine.changeState(new MotionIdleState());
     }
     public static final float ROLL_DURATION = .30f, ROLL_INVULNERABLE = .2f;
     /** A roll is 25% faster than walking: quick enough to cross an enemy's reach, not a teleport. No cooldown. */
@@ -117,11 +181,11 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public float getPerfectFlashRemaining() { return perfectFlashRemaining; }
     public void consumeCounter() { counterWindowRemaining = 0f; }
     public boolean isAirborne() { return !isGrounded(); }
-    public boolean canJumpAttack() { return isAirborne() && !jumpAttackUsed && !isStaggered(); }
+    public boolean canJumpAttack() { return isAirborne() && !jumpAttackUsed && !isStaggered() && !isFalling(); }
     public void markJumpAttackUsed() { jumpAttackUsed = true; }
     /** The dodge roll: ground only, fixed direction, brief invulnerability, no cooldown. It cannot cancel an attack or a stagger. */
     public boolean tryRoll(float direction) {
-        if (rollRemaining > 0f || isStaggered() || isBlockBroken() || !isGrounded() ||
+        if (rollRemaining > 0f || isStaggered() || isFalling() || isBlockBroken() || !isGrounded() ||
             combatStateMachine.getCurrentState() instanceof AttackState) return false;
         rollDirection = direction == 0f ? (facingLeft ? -1f : 1f) : Math.signum(direction);   // fixed at start
         rollRemaining = ROLL_DURATION;
@@ -228,6 +292,9 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         blockHeavyFlashRemaining = 0f;
         blockBreakFlashRemaining = 0f;
         rollRemaining = 0f;
+        fallPhase = FallPhase.NONE;
+        fallTimer = 0f;
+        fallPartner = null;
         rollDirection = 0f;
         blockAge = 0f;
         counterWindowRemaining = 0f;
@@ -382,6 +449,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         staggerRemaining = Math.max(0f, staggerRemaining - delta);
         motionStateMachine.update(delta);
         combatStateMachine.update(delta);
+        updateFall(delta);
     }
 
     @Override

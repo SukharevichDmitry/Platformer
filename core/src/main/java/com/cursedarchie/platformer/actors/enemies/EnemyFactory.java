@@ -123,6 +123,7 @@ public class EnemyFactory {
         cfg.attackRight = new AttackConfig(1.2f, 1f, 1.3f, 0f);
         Enemy enemy = new DefaultEnemy(world, pos, cfg);
         enemy.setArchetypeId(HEAVY_HUNTER.id);
+        enemy.setCanBeKnockedDownFromAbove(false);   // too heavy to be toppled by a landing
         return enemy;
     }
 
@@ -188,6 +189,7 @@ public class EnemyFactory {
 
         Enemy enemy = new Boss(world, pos, cfg);
         enemy.setArchetypeId(BOSS.id);
+        enemy.setCanBeKnockedDownFromAbove(false);
         return enemy;
     }
 }

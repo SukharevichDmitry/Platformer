@@ -69,7 +69,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkHeroMovementAndContacts();
         checkDropThroughPlatform();
         checkJumpBuffer();
-        checkEnemyHeadBounce();
+        checkHeadLandingFall();
         checkRenderRateConsistency();
         checkUnifiedAttackModel();
         checkHeroAttackTimingAndDirection();
@@ -582,64 +582,292 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         }
     }
 
-    private void checkEnemyHeadBounce() {
-        GameWorld headWorld = combatFixture();
+    private static Enemy headFoe(GameWorld w, float x, boolean ai) {
+        Enemy e = EnemyFactory.createDefaultEnemy(w.getWorld(), new Vector2(x, 2.5f));
+        e.setFacingLeft(!ai);
+        if (ai) e.setBrain(new SimpleEnemyBrain(w));
+        e.setActive(false);   // an AI enemy is switched on by the test once it has been knocked down
+        w.addEnemy(e);
+        if (!ai) e.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+        return e;
+    }
+
+    private static void placeHero(Hero hero, float x, float y, float vy) {
+        hero.getBody().setTransform(x, y, 0f);
+        hero.getBody().setLinearVelocity(0f, vy);
+    }
+
+    private static int headCollisions(GameWorld w, java.util.Set<Object> seen) {
+        for (GameWorld.CombatEvent ev : w.getCombatEvents())
+            if (ev.kind == GameWorld.CombatEvent.Kind.HEAD_COLLISION) seen.add(ev);
+        return seen.size();
+    }
+
+    /**
+     * Landing on a head: hero and a standard enemy lose their balance, fall side by side, recover and carry on. No
+     * damage, no standing on heads, no repeat triggers, heavy enemies stay up.
+     */
+    private void checkHeadLandingFall() {
+        com.cursedarchie.platformer.combat.HeadCollisionConfig cfg =
+            com.cursedarchie.platformer.combat.HeadCollisionConfig.get();
+        float minGap = Hero.BODY_SIZE / 2f + .5f + .03f;
+        java.util.Set<Object> collisions = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Object, Boolean>());
+
+        // ---- 1. A standard enemy and the hero fall together, recover, and can be landed on again later.
+        GameWorld w = combatFixture();
         try {
-            Enemy platformEnemy = null;
-            for (Enemy enemy : headWorld.getEnemies()) {
-                if (enemy.getSize() < 2f) platformEnemy = enemy;
-                else enemy.setAlive(false);
+            parkEnemies(w);
+            Hero hero = w.getHero();
+            Enemy foe = headFoe(w, 10f, false);
+            float foeHealth = foe.getHealth(), heroHealth = hero.getHealth();
+            placeHero(hero, 10.1f, 5.2f, 0f);
+            int started = -1, heroDown = 0, foeDown = 0;
+            for (int i = 0; i < 170; i++) {
+                w.update(GameWorld.FIXED_STEP);
+                headCollisions(w, collisions);
+                if (hero.isFalling() && started < 0) {
+                    started = i;
+                    if (hero.getFallPhase() != Hero.FallPhase.FALL_COLLISION)
+                        throw new AssertionError("A standard enemy must put the hero in FALL_COLLISION");
+                    if (foe.getKnockdownPhase() != Enemy.KnockdownPhase.KNOCKDOWN_FROM_ABOVE)
+                        throw new AssertionError("The enemy did not enter KNOCKDOWN_FROM_ABOVE with the hero");
+                    if (hero.getPosition().x <= foe.getPosition().x)
+                        throw new AssertionError("Hero landed right of the head but fell left");
+                    if (foe.getPosition().x - 10f < cfg.enemyShift * .75f)
+                        throw new AssertionError("The enemy did not shift the way the hero fell");
+                }
+                if (hero.isFalling()) {
+                    heroDown++;
+                    int sinceStart = i - started;
+                    if (sinceStart == 3) w.getHeroController().keyDown(Input.Keys.B);
+                    if (sinceStart == 5) { w.getHeroController().keyDown(Input.Keys.X); w.getHeroController().keyUp(Input.Keys.X); }
+                    if (sinceStart == 6) { w.getHeroController().keyDown(Input.Keys.Z); w.getHeroController().keyUp(Input.Keys.Z); }
+                    if (sinceStart == 7) { w.getHeroController().keyDown(Input.Keys.SPACE); w.getHeroController().keyUp(Input.Keys.SPACE); }
+                    if (sinceStart == 8) { w.getHeroController().keyDown(Input.Keys.RIGHT); }
+                    if (heroAttack(hero) != null) throw new AssertionError("Hero attacked while falling");
+                    if (hero.isRolling()) throw new AssertionError("Hero rolled while falling");
+                    if (hero.isBlocking()) throw new AssertionError("Hero blocked while falling");
+                    if (Math.abs(hero.getBody().getLinearVelocity().x) > .01f)
+                        throw new AssertionError("Hero kept horizontal speed while falling: " + hero.getBody().getLinearVelocity().x);
+                    if (hero.getPosition().y - .5f < 2f - .06f)
+                        throw new AssertionError("Hero sank into the floor during the fall");
+                    if (hero.getPosition().y - .5f > 2f + .3f)
+                        throw new AssertionError("Hero is still on top of the enemy during the fall");
+                }
+                if (foe.isKnockedDown()) {
+                    foeDown++;
+                    if (foe.isAttacking() || foe.isBlocking()) throw new AssertionError("Fallen enemy attacked or guarded");
+                    if (foe.getPosition().y - .5f < 2f - .06f) throw new AssertionError("Enemy sank into the floor");
+                }
+                if (hero.isFalling() || foe.isKnockedDown()) {
+                    float dx = Math.abs(hero.getPosition().x - foe.getPosition().x);
+                    if (hero.isFalling() && foe.isKnockedDown() && dx < minGap - .01f)
+                        throw new AssertionError("Fallen pair overlap or are closer than the minimum gap: " + dx);
+                    if (dx > minGap + .35f && hero.isFalling() && foe.isKnockedDown())
+                        throw new AssertionError("Fallen pair drifted apart: " + dx);
+                }
+                if (started >= 0 && i - started == 12) w.getHeroController().keyUp(Input.Keys.B);
+                if (started >= 0 && i - started == 14) w.getHeroController().keyUp(Input.Keys.RIGHT);
             }
-            if (platformEnemy == null) throw new AssertionError("No enemy for head-jump check");
-            platformEnemy.setActive(false);
-            platformEnemy.getBody().setTransform(10f, 2.5f, 0f);
-            platformEnemy.getBody().setLinearVelocity(0f, 0f);
-            Hero hero = headWorld.getHero();
-            hero.getBody().setTransform(10f, 5.2f, 0f);
-            hero.getBody().setLinearVelocity(0f, 0f);
-            boolean landedOnEnemy = false;
-            for (int i = 0; i < 40; i++) {
-                headWorld.update(GameWorld.FIXED_STEP);
-                if (hero.isGrounded() && hero.getFootContacts() == 0 &&
-                    hero.getPosition().y > platformEnemy.getPosition().y + 0.8f) {
-                    landedOnEnemy = true;
+            if (started < 0) throw new AssertionError("Landing on a head from above did not start a fall");
+            if (collisions.size() != 1) throw new AssertionError("Head collision fired " + collisions.size() + " times");
+            float heroSteps = (cfg.heroFallDuration + cfg.heroFallRecovery) / GameWorld.FIXED_STEP;
+            float foeSteps = (cfg.enemyKnockdownDuration + cfg.enemyKnockdownRecovery) / GameWorld.FIXED_STEP;
+            if (Math.abs(heroDown - heroSteps) > 3f) throw new AssertionError("Hero was down " + heroDown + " steps, expected " + heroSteps);
+            if (Math.abs(foeDown - foeSteps) > 3f) throw new AssertionError("Enemy was down " + foeDown + " steps, expected " + foeSteps);
+            if (foeDown <= heroDown) throw new AssertionError("The enemy must stay down longer than the hero");
+            if (hero.isFalling() || hero.getFallPartner() != null || foe.isKnockedDown())
+                throw new AssertionError("Both must be back to normal after the recovery");
+            if (heroAttack(hero) != null) throw new AssertionError("A button pressed during the fall was replayed afterwards");
+            closeTo(hero.getHealth(), heroHealth, "The head landing damaged the hero");
+            closeTo(foe.getHealth(), foeHealth, "The head landing damaged the enemy");
+            if (hero.getInvulnerabilityRemaining() > 0f) throw new AssertionError("The head landing granted invulnerability");
+
+            // Collisions are solid again: walking into the (immovable) enemy stops the hero at its side.
+            w.getHeroController().keyUp(Input.Keys.RIGHT);
+            placeHero(hero, 8.5f, 2.5f, 0f);
+            for (int i = 0; i < 20; i++) w.update(GameWorld.FIXED_STEP);
+            w.getHeroController().keyDown(Input.Keys.RIGHT);
+            for (int i = 0; i < 50; i++) w.update(GameWorld.FIXED_STEP);
+            w.getHeroController().keyUp(Input.Keys.RIGHT);
+            if (hero.getPosition().x >= foe.getPosition().x - .5f)
+                throw new AssertionError("Hero walked through the enemy after recovery: collisions were not restored");
+
+            // A new jump and a new landing triggers a new fall, this time to the other side.
+            placeHero(hero, foe.getPosition().x - .1f, 5.2f, 0f);
+            boolean second = false;
+            for (int i = 0; i < 60 && !second; i++) {
+                w.update(GameWorld.FIXED_STEP);
+                headCollisions(w, collisions);
+                second = hero.isFalling();
+            }
+            if (!second || collisions.size() != 2) throw new AssertionError("A new landing did not trigger a new fall");
+            if (hero.getPosition().x >= foe.getPosition().x) throw new AssertionError("Hero landed left of the head but fell right");
+        } finally { w.dispose(); }
+
+        // ---- 2. No repeat while the enemy is still down: the hero is moved off, the fall does not restart.
+        GameWorld again = combatFixture();
+        try {
+            parkEnemies(again);
+            Hero hero = again.getHero();
+            Enemy foe = headFoe(again, 10f, false);
+            collisions.clear();
+            placeHero(hero, 10.1f, 5.2f, 0f);
+            boolean began = false, window = false;
+            for (int i = 0; i < 200 && !window; i++) {
+                again.update(GameWorld.FIXED_STEP);
+                headCollisions(again, collisions);
+                if (hero.isFalling()) began = true;
+                window = began && !hero.isFalling() && foe.isKnockedDown();
+            }
+            if (!window)
+                throw new AssertionError("Expected a window where the hero is up and the enemy is still down");
+            placeHero(hero, foe.getPosition().x, 3.7f, -3f);
+            boolean sawRecovery = false;
+            for (int i = 0; i < 90; i++) {
+                again.update(GameWorld.FIXED_STEP);
+                headCollisions(again, collisions);
+                if (foe.getKnockdownPhase() == Enemy.KnockdownPhase.KNOCKDOWN_RECOVERY) sawRecovery = true;
+                if (sawRecovery && foe.getKnockdownPhase() == Enemy.KnockdownPhase.KNOCKDOWN_FROM_ABOVE)
+                    throw new AssertionError("Landing on the same enemy again restarted its knockdown");
+            }
+            if (collisions.size() != 1) throw new AssertionError("A repeat landing during recovery fired a new collision");
+            if (hero.getPosition().y - .5f > 2f + .3f) throw new AssertionError("Hero ended up standing on the fallen enemy");
+        } finally { again.dispose(); }
+
+        // ---- 3. Only a downward landing triggers; a rest on the head slides the hero off; the side never triggers.
+        GameWorld rest = combatFixture();
+        try {
+            parkEnemies(rest);
+            Hero hero = rest.getHero();
+            Enemy foe = headFoe(rest, 10f, false);
+            placeHero(hero, 10f, 3.45f, 6f);
+            for (int i = 0; i < 4; i++) rest.update(GameWorld.FIXED_STEP);
+            if (hero.isFalling() || foe.isKnockedDown()) throw new AssertionError("A rising hero triggered a head fall");
+            placeHero(hero, 10f, 3.5f, 0f);
+            for (int i = 0; i < 3; i++) rest.update(GameWorld.FIXED_STEP);
+            if (hero.isFalling() || foe.isKnockedDown()) throw new AssertionError("Touching a head without moving down triggered a fall");
+            boolean slid = false;
+            for (int i = 0; i < 60; i++) {
+                rest.update(GameWorld.FIXED_STEP);
+                if (hero.isFalling()) slid = true;
+            }
+            if (!slid) throw new AssertionError("The hero was allowed to stand on a head");
+            if (foe.isKnockedDown()) throw new AssertionError("A mere rest on a head knocked the enemy down");
+            if (hero.getPosition().y - .5f > 2f + .3f) throw new AssertionError("Hero is still standing on the enemy's head");
+        } finally { rest.dispose(); }
+
+        GameWorld flank = combatFixture();
+        try {
+            parkEnemies(flank);
+            Hero hero = flank.getHero();
+            Enemy foe = headFoe(flank, 10f, false);
+            placeHero(hero, 7.5f, 2.5f, 0f);
+            for (int i = 0; i < 20; i++) flank.update(GameWorld.FIXED_STEP);
+            flank.getHeroController().keyDown(Input.Keys.RIGHT);
+            for (int i = 0; i < 70; i++) {
+                flank.update(GameWorld.FIXED_STEP);
+                if (hero.isFalling() || foe.isKnockedDown()) throw new AssertionError("A side collision triggered a head fall");
+            }
+            flank.getHeroController().keyUp(Input.Keys.RIGHT);
+        } finally { flank.dispose(); }
+
+        // ---- 4. A heavy enemy does not fall and takes no damage; only the hero recovers, off to the side.
+        GameWorld heavyWorld = combatFixture();
+        try {
+            parkEnemies(heavyWorld);
+            Hero hero = heavyWorld.getHero();
+            Enemy heavy = EnemyFactory.createHeavyHunter(heavyWorld.getWorld(), new Vector2(10f, 2.85f));
+            heavy.setActive(false);
+            heavyWorld.addEnemy(heavy);
+            heavy.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+            if (heavy.canBeKnockedDownFromAbove()) throw new AssertionError("The heavy hunter must not be topplable");
+            float heavyHealth = heavy.getHealth(), heroHealth = hero.getHealth();
+            placeHero(hero, 10.2f, 5.6f, 0f);
+            boolean sawFall = false;
+            for (int i = 0; i < 100; i++) {
+                heavyWorld.update(GameWorld.FIXED_STEP);
+                if (heavy.isKnockedDown()) throw new AssertionError("A heavy enemy was knocked down");
+                if (hero.isFalling()) {
+                    sawFall = true;
+                    if (hero.getFallPhase() != Hero.FallPhase.FALL_RECOVERY || hero.getFallPartner() != null)
+                        throw new AssertionError("Landing on a heavy enemy must only put the hero into FALL_RECOVERY");
+                    if (hero.getPosition().x - heavy.getPosition().x < Hero.BODY_SIZE / 2f + .85f + .02f)
+                        throw new AssertionError("Hero was left inside the heavy enemy");
+                }
+            }
+            if (!sawFall) throw new AssertionError("Landing on a heavy enemy did nothing: the hero can stand on it");
+            closeTo(heavy.getPosition().x, 10f, "The heavy enemy was pushed");
+            closeTo(heavy.getHealth(), heavyHealth, "The head landing damaged the heavy enemy");
+            closeTo(hero.getHealth(), heroHealth, "The head landing damaged the hero");
+            if (hero.getPosition().y - .5f > 2f + .3f) throw new AssertionError("Hero is standing on the heavy enemy");
+        } finally { heavyWorld.dispose(); }
+
+        // ---- 5. Walls: the pair is placed in open space, never into the wall.
+        GameWorld walled = combatFixture();
+        try {
+            parkEnemies(walled);
+            Hero hero = walled.getHero();
+            addLevelWall(walled, 12.2f, 3.5f, 1f, 2f);        // its left face is at x = 11.2
+            Enemy foe = headFoe(walled, 10f, false);
+            placeHero(hero, 10.1f, 5.2f, 0f);
+            boolean fell = false;
+            for (int i = 0; i < 80; i++) {
+                walled.update(GameWorld.FIXED_STEP);
+                if (hero.isFalling() && foe.isKnockedDown()) {
+                    fell = true;
+                    if (hero.getPosition().x + .5f > 11.2f + .02f || foe.getPosition().x + .5f > 11.2f + .02f)
+                        throw new AssertionError("The fallen pair were pushed into the wall");
+                    if (hero.getPosition().x >= foe.getPosition().x)
+                        throw new AssertionError("The hero should have fallen to the open side");
+                    if (Math.abs(hero.getPosition().x - foe.getPosition().x) < minGap - .01f)
+                        throw new AssertionError("The pair overlap next to a wall");
+                }
+            }
+            if (!fell) throw new AssertionError("No fall happened beside a wall");
+        } finally { walled.dispose(); }
+
+        GameWorld corridor = combatFixture();
+        try {
+            parkEnemies(corridor);
+            Hero hero = corridor.getHero();
+            addLevelWall(corridor, 8.2f, 3.5f, 1f, 2f);       // right face at x = 9.2
+            addLevelWall(corridor, 12.2f, 3.5f, 1f, 2f);      // left face at x = 11.2
+            Enemy foe = headFoe(corridor, 10.2f, false);
+            placeHero(hero, 10.3f, 5.2f, 0f);
+            for (int i = 0; i < 80; i++) {
+                corridor.update(GameWorld.FIXED_STEP);
+                if (hero.getPosition().x - .5f < 9.2f - .06f || hero.getPosition().x + .5f > 11.2f + .06f)
+                    throw new AssertionError("Hero was pushed into a wall with no room for the pair");
+                if (foe.isKnockedDown()) throw new AssertionError("The pair fell although there was no room");
+            }
+        } finally { corridor.dispose(); }
+
+        // ---- 6. The enemy's AI is back after the recovery.
+        GameWorld brainy = combatFixture();
+        try {
+            parkEnemies(brainy);
+            Hero hero = brainy.getHero();
+            Enemy foe = headFoe(brainy, 10f, true);
+            placeHero(hero, 10.1f, 5.2f, 0f);
+            boolean wasDown = false, resumed = false;
+            for (int i = 0; i < 260; i++) {
+                brainy.update(GameWorld.FIXED_STEP);
+                if (foe.isKnockedDown()) {
+                    if (!wasDown) foe.setActive(true);   // from now on its AI is running and must still stay quiet
+                    wasDown = true;
+                    if (foe.isAttacking() || foe.isBlocking() || foe.isDashPhase())
+                        throw new AssertionError("A knocked-down enemy acted");
+                    if (foe.getCurrentIntent() != Enemy.Intent.IDLE)
+                        throw new AssertionError("A knocked-down enemy kept an AI intent: " + foe.getCurrentIntent());
+                } else if (wasDown && (foe.isAttacking() || foe.getCurrentIntent() != Enemy.Intent.IDLE)) {
+                    resumed = true;
                     break;
                 }
             }
-            if (landedOnEnemy) throw new AssertionError("Enemy head must not act as a stable platform");
-            // Landing on a head bounces the hero off sideways with a hop and staggers the enemy briefly.
-            platformEnemy.getBody().setTransform(10f, 2.5f, 0f);
-            platformEnemy.getBody().setLinearVelocity(0f, 0f);
-            hero.getBody().setTransform(10.05f, 5.2f, 0f);
-            hero.getBody().setLinearVelocity(0f, 0f);
-            float enemyHealthBefore = platformEnemy.getHealth();
-            boolean bounced = false;
-            boolean enemyStaggered = false;
-            for (int i = 0; i < 60 && !bounced; i++) {
-                headWorld.update(GameWorld.FIXED_STEP);
-                if (platformEnemy.isStaggered()) enemyStaggered = true;
-                if (Math.abs(hero.getBody().getLinearVelocity().x) > 2f && hero.getBody().getLinearVelocity().y > 1f)
-                    bounced = true;
-            }
-            if (!bounced) throw new AssertionError("Landing on an enemy head did not bounce the hero off");
-            if (!enemyStaggered && !platformEnemy.isStaggered())
-                throw new AssertionError("Enemy showed no 'hit from above' reaction");
-            closeTo(platformEnemy.getHealth(), enemyHealthBefore, "A plain landing must not damage the enemy");
-            if (hero.getInvulnerabilityRemaining() > 0f)
-                throw new AssertionError("Landing on an enemy granted the hero invulnerability");
-            for (int i = 0; i < 30; i++) headWorld.update(GameWorld.FIXED_STEP);
-            if (hero.isGrounded() && hero.getFootContacts() == 0)
-                throw new AssertionError("Hero is still being supported by an enemy head");
-            platformEnemy.getBody().setTransform(14f, 6f, 0f);
-            platformEnemy.getBody().setLinearVelocity(0f, 0f);
-            hero.getBody().setTransform(13f, 6f, 0f);
-            hero.getBody().setLinearVelocity(0f, 0f);
-            headWorld.update(GameWorld.FIXED_STEP);
-            if (hero.isGrounded() || hero.getFootContacts() != 0)
-                throw new AssertionError("Enemy side contact incorrectly granted a jump");
-        } finally {
-            headWorld.dispose();
-        }
+            if (!wasDown) throw new AssertionError("The AI enemy was never knocked down");
+            if (!resumed) throw new AssertionError("The enemy's AI did not resume after the recovery");
+        } finally { brainy.dispose(); }
     }
 
     private void checkRenderRateConsistency() {

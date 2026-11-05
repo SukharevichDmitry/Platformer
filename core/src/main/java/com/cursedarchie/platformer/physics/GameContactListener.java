@@ -2,6 +2,7 @@ package com.cursedarchie.platformer.physics;
 
 import com.badlogic.gdx.physics.box2d.*;
 import com.cursedarchie.platformer.actors.Actor;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.hero.Hero;
 
 /** Maintains sensor overlap sets; never creates or destroys Box2D bodies in callbacks. */
@@ -135,6 +136,12 @@ public class GameContactListener implements ContactListener {
             contact.setEnabled(false);
             return;
         }
+        // Hero and the enemy that fell with them pass through each other until both have recovered, so the physics
+        // cannot shove the pair apart (or back onto a head) while they are down.
+        if (!a.isSensor() && !b.isSensor() && isFallPair(ownerA, ownerB)) {
+            contact.setEnabled(false);
+            return;
+        }
         Fixture platform = a.getUserData() instanceof OneWaySurface ? a :
             b.getUserData() instanceof OneWaySurface ? b : null;
         if (platform == null) return;
@@ -153,6 +160,13 @@ public class GameContactListener implements ContactListener {
         // Keep an already-supported body on top, but never snag a rising body or its side.
         if (feet < top - 0.06f || actor.getBody().getLinearVelocity().y > 0.05f)
             contact.setEnabled(false);
+    }
+
+    private static boolean isFallPair(Object a, Object b) {
+        Hero hero = a instanceof Hero ? (Hero) a : b instanceof Hero ? (Hero) b : null;
+        Object other = hero == a ? b : a;
+        return hero != null && other instanceof Enemy && hero.isFalling() && hero.getFallPartner() == other &&
+            ((Enemy) other).isKnockedDown();
     }
 
     @Override

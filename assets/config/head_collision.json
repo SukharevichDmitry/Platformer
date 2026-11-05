@@ -1,0 +1,9 @@
+{
+  "heroFallDuration": 0.22,
+  "heroFallRecovery": 0.55,
+  "enemyKnockdownDuration": 0.22,
+  "enemyKnockdownRecovery": 0.70,
+  "repeatCollisionLock": 0.20,
+  "smallGap": 0.05,
+  "enemyShift": 0.20
+}

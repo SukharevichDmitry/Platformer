@@ -52,6 +52,12 @@ def build_combat():
     # Head stomp: soft low thump with a short squeak of leather.
     s["head_stomp"] = g.finish(g.mix((g.sweep(150, 70, .14) * g.decay(.14, 24), 0, 1.0),
                                      (g.sweep(900, 600, .06) * g.decay(.06, 50), .02, .25)), .65)
+    # Landing on a head: the hero and the enemy go down together. Dull low thump with a scatter of dust,
+    # then the soft rustle of getting back up. Nothing metallic, so it never sounds like a weapon hit.
+    s["fall_land"] = g.finish(g.mix((g.sweep(110, 42, .32, (1.0, .4)) * g.decay(.32, 10), 0, 1.0),
+                                    (g.lowpass(g.noise(.28), 1500) * g.decay(.28, 12), .01, .8)), .7)
+    s["get_up"] = g.finish(g.mix((g.lowpass(g.noise(.3), 1800) * g.swell(.3, .6), 0, .7),
+                                 (g.sweep(200, 320, .25) * g.swell(.25, .5), .02, .35)), .45)
     # Alert: short rising two-note ping, clearly "noticed you".
     ping = g.np.sin(2 * g.np.pi * 700 * g.time(.07)) * g.decay(.07, 40)
     ping2 = g.np.sin(2 * g.np.pi * 1000 * g.time(.09)) * g.decay(.09, 35)
