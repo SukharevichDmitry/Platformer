@@ -2400,9 +2400,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     break;
                 }
                 case WHIFF: {
-                    // Pale thin arc where the swing found nothing.
-                    spriteBatch.setColor(.85f, .9f, 1f, inv * .6f);
-                    barCentered(x, y, .9f, .025f, d < 0f ? 200f : -20f);
+                    // A missed swing is marked by its sound only. The old pale line was left hanging in front of
+                    // the hero after every attack, reading as a stray diagonal stroke.
                     break;
                 }
                 case HEAD_STOMP: {
