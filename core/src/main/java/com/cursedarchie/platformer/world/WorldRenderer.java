@@ -153,6 +153,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final BitmapFont damageFont;
     /** Small world-space font for the group-positioning debug labels. */
     private final BitmapFont slotFont;
+    /** Slot cells closer than this horizontally are stacked into one column; the step is the height between cells. */
+    private static final float SLOT_COLUMN_GAP = .5f, SLOT_COLUMN_STEP = .72f;
     private final GlyphLayout damageLayout = new GlyphLayout();
     private final boolean debug;
     private boolean combatDebug;
@@ -2391,23 +2393,29 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         if (!any) return;
         List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slotList = manager.getSlots();
         int[] rank = slotLabelRanks(slotList);
+        float[] cellY = new float[slotList.size()];
+        int[] stack = slotColumns(slotList, cellY);
         for (int i = 0; i < slotList.size(); i++) {
             com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot = slotList.get(i);
             float r = slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.MELEE ? .28f :
                 slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.RESERVE ? .2f : .14f;
             if (!slot.valid) debugRenderer.setColor(.35f, .35f, .35f, 1f);
             else debugRenderer.setColor(slot.isOccupied() ? Color.RED : Color.GREEN);
-            debugRenderer.rect(slot.x - r, slot.y - r, r * 2f, r * 2f);
+            float cy = cellY[i];
+            debugRenderer.rect(slot.x - r, cy - r, r * 2f, r * 2f);
             if (slot.isAttackCapable()) {
                 debugRenderer.setColor(Color.YELLOW);
-                debugRenderer.rect(slot.x - r - .06f, slot.y - r - .06f, r * 2f + .12f, r * 2f + .12f);
+                debugRenderer.rect(slot.x - r - .06f, cy - r - .06f, r * 2f + .12f, r * 2f + .12f);
             }
             if (slot.isOccupied()) {
                 debugRenderer.setColor(Color.ORANGE);
-                debugRenderer.line(slot.x, slot.y, slot.getOwner().getPosition().x, slot.getOwner().getPosition().y);
+                debugRenderer.line(slot.x, cy, slot.getOwner().getPosition().x, slot.getOwner().getPosition().y);
             }
-            debugRenderer.setColor(.7f, .7f, .7f, .6f);
-            debugRenderer.line(slot.x, slot.y + (rank[i] % 2 == 0 ? r : -r), slot.x, slotLabelY(slot, rank[i]) - (rank[i] % 2 == 0 ? .4f : 0f));
+            if (stack[i] == 1) {   // a lone cell links to its label row; a column's labels sit beside the cells
+                debugRenderer.setColor(.7f, .7f, .7f, .6f);
+                debugRenderer.line(slot.x, cy + (rank[i] % 2 == 0 ? r : -r), slot.x,
+                    slotLabelY(slot, rank[i]) - (rank[i] % 2 == 0 ? .4f : 0f));
+            }
         }
         Vector2 heroPos = hero.getPosition();
         for (Enemy enemy : gameWorld.getAliveEnemies()) {
@@ -2415,6 +2423,32 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             debugRenderer.setColor(enemy.isLineBlockedByAlly(heroPos) || !enemy.isCanSeeHero() ? Color.RED : Color.GREEN);
             debugRenderer.line(enemy.getPosition().x, enemy.getPosition().y, heroPos.x, heroPos.y);
         }
+    }
+
+    /**
+     * Cells that share a horizontal point would be drawn on top of each other, so they are arranged in a vertical
+     * column instead: the lowest id stays on the ground line and the rest stack upwards. Fills {@code cellY} with the
+     * drawn height of every cell and returns the size of the column each cell belongs to (1 = alone).
+     */
+    private int[] slotColumns(List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slots, float[] cellY) {
+        int n = slots.size();
+        Integer[] order = new Integer[n];
+        for (int i = 0; i < n; i++) order[i] = i;
+        java.util.Arrays.sort(order, (a, b) -> Float.compare(slots.get(a).x, slots.get(b).x));
+        int[] size = new int[n];
+        int start = 0;
+        while (start < n) {
+            int end = start + 1;
+            while (end < n && slots.get(order[end]).x - slots.get(order[end - 1]).x < SLOT_COLUMN_GAP) end++;
+            Integer[] column = java.util.Arrays.copyOfRange(order, start, end);
+            java.util.Arrays.sort(column, (a, b) -> Integer.compare(slots.get(a).id, slots.get(b).id));
+            for (int k = 0; k < column.length; k++) {
+                cellY[column[k]] = slots.get(column[k]).y + k * SLOT_COLUMN_STEP;
+                size[column[k]] = column.length;
+            }
+            start = end;
+        }
+        return size;
     }
 
     /**
@@ -2447,12 +2481,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slots =
             gameWorld.getEnemyController().getSlotManager().getSlots();
         int[] rank = slotLabelRanks(slots);
+        float[] cellY = new float[slots.size()];
+        int[] stack = slotColumns(slots, cellY);
         spriteBatch.setProjectionMatrix(cam.combined);
         spriteBatch.begin();
         for (int i = 0; i < slots.size(); i++) {
             com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot = slots.get(i);
-            float x = slot.x - .3f;
-            float y = slotLabelY(slot, rank[i]);
+            boolean column = stack[i] > 1;
+            float x = column ? slot.x + .38f : slot.x - .3f;                   // column: beside the cell
+            float y = column ? cellY[i] + .2f : slotLabelY(slot, rank[i]);
             slotFont.setColor(!slot.valid ? Color.GRAY : slot.isOccupied() ? Color.SALMON : Color.LIME);
             slotFont.draw(spriteBatch, slot.name + " (" + slot.type + ")", x, y);
             if (slot.isOccupied()) {
