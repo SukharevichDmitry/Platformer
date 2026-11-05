@@ -25,10 +25,9 @@ public final class AttackRuntime {
 
     public AttackDefinition definition() { return definition; }
     public boolean facesLeft() { return facesLeft; }
-    /** Only the breakthrough charge may still turn, and only until its direction lock-in. */
     public void setFacesLeft(boolean value) { facesLeft = value; }
     public boolean hasStruck(Actor target) { return struck.contains(target); }
-    /** Jumps ahead in time (a dash that hit a wall goes straight to its recovery). */
+    /** Jumps ahead in time. */
     public void jumpTo(float time) { elapsed = Math.max(elapsed, time); }
     /** Direction locked when the attack began: -1 left, +1 right. */
     public float direction() { return facesLeft ? -1f : 1f; }

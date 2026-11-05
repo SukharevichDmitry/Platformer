@@ -11,7 +11,6 @@ import com.cursedarchie.platformer.run.Inventory;
 import com.cursedarchie.platformer.run.ItemCatalog;
 import com.cursedarchie.platformer.physics.CombatHit;
 import com.cursedarchie.platformer.combat.AttackDefinition;
-import com.cursedarchie.platformer.combat.BreakthroughConfig;
 import com.cursedarchie.platformer.combat.AttackRhythmConfig;
 import com.cursedarchie.platformer.combat.Hurtbox;
 import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
@@ -30,7 +29,6 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public static final float ATTACK_STARTUP = 0.12f;
     public static final float ATTACK_ACTIVE_END = 0.24f;
     public static final float ATTACK_DURATION = 0.36f;
-    public static final float HEAVY_ATTACK_DURATION = 0.92f;
     public static final float DAMAGE_INVULNERABILITY = 0.5f;
 
     /*===========================================PARAMETERS===========================================================*/
@@ -58,7 +56,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     private float blockBrokenRemaining;
     private float blockCounterCooldown;
     private float blockFlashRemaining;
-    private float heavyCooldownRemaining, blockHeavyFlashRemaining, blockBreakFlashRemaining;
+    private float blockHeavyFlashRemaining, blockBreakFlashRemaining;
     private final AttackConfig firstAttackLeft = new AttackConfig(.9f, .82f, -1.0f, .02f);
     private final AttackConfig firstAttackRight = new AttackConfig(.9f, .82f, 1.0f, .02f);
     private final AttackConfig secondAttackLeft = new AttackConfig(1.32f, .66f, -1.38f, .16f);
@@ -84,42 +82,6 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
             c.finisherDamageMultiplier, c.finisherKnockback, c.finisherStaggerDuration,
             c.finisherShieldDamageMultiplier, true, total, total, 0f);
     }
-    /** The breakthrough dash: charge (startup), dash (active), recovery; timings come from the config file. */
-    private static AttackDefinition heavyDefinition(float chargeTime) {
-        BreakthroughConfig c = BreakthroughConfig.get();
-        float total = chargeTime + c.dashDuration + c.recoveryTime;
-        return new AttackDefinition("hero_heavy", CombatHit.Type.MELEE_HEAVY, chargeTime, c.dashDuration,
-            c.recoveryTime, 1.9f, 1.3f, 1.05f, .04f, c.damageMultiplier, c.knockback, .3f, 2f, true, total, total, 0f);
-    }
-    public AttackDefinition breakthroughDefinition(float chargeTime) { return heavyDefinition(chargeTime); }
-    private boolean breakthroughDashing;
-    private int breakthroughImpactId;
-    private float breakthroughImpactRemaining, breakthroughImpactX, breakthroughImpactY, breakthroughImpactDir;
-    public boolean isBreakthroughDashing() { return breakthroughDashing; }
-    public void setBreakthroughDashing(boolean value) { breakthroughDashing = value; }
-    /** The dash ran into a wall: renderers show an impact at this point. */
-    public void noteBreakthroughImpact(float x, float y, float direction) {
-        breakthroughImpactId++;
-        breakthroughImpactRemaining = .45f;
-        breakthroughImpactX = x;
-        breakthroughImpactY = y;
-        breakthroughImpactDir = direction;
-    }
-    public int getBreakthroughImpactId() { return breakthroughImpactId; }
-    public float getBreakthroughImpactRemaining() { return breakthroughImpactRemaining; }
-    public float getBreakthroughImpactX() { return breakthroughImpactX; }
-    public float getBreakthroughImpactY() { return breakthroughImpactY; }
-    public float getBreakthroughImpactDirection() { return breakthroughImpactDir; }
-    public com.cursedarchie.platformer.combat.HeavyState getHeavyState() {
-        Object cur = combatStateMachine.getCurrentState();
-        if (!(cur instanceof AttackState) || !((AttackState) cur).isHeavy())
-            return com.cursedarchie.platformer.combat.HeavyState.NONE;
-        switch (((AttackState) cur).getRuntime().phase()) {
-            case STARTUP: return com.cursedarchie.platformer.combat.HeavyState.HEAVY_CHARGE;
-            case ACTIVE: return com.cursedarchie.platformer.combat.HeavyState.HEAVY_DASH;
-            default: return com.cursedarchie.platformer.combat.HeavyState.HEAVY_RECOVERY;
-        }
-    }
     /** Block cannot be raised while staggered or mid-swing; an already raised guard drops when staggered. */
     public void setBlockHeld(boolean value) {
         boolean wasHeld = blockHeld;
@@ -128,43 +90,40 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public boolean isBlocking() {
         return blockHeld && !isStaggered() && blockBrokenRemaining == 0f && blockStability > 0f && !attackLocksBlock();
     }
-    /** A heavy attack, or the recovery of a rushed strike, leaves the hero unable to guard. */
+    /** The recovery of a rushed strike leaves the hero unable to guard. */
     private boolean attackLocksBlock() {
         if (!(combatStateMachine.getCurrentState() instanceof AttackState)) return false;
         AttackState a = (AttackState) combatStateMachine.getCurrentState();
-        return a.isHeavy() || a.getRuntime() != null && a.getRuntime().isHurried() && a.isInRecovery(this);
+        return a.getRuntime() != null && a.getRuntime().isHurried() && a.isInRecovery(this);
     }
-    public boolean canHeavyAttack() { return heavyCooldownRemaining == 0f; }
-    public void beginHeavyCooldown() { heavyCooldownRemaining = BreakthroughConfig.get().cooldown; }
-    public static final float ROLL_DURATION = .32f, ROLL_INVULNERABLE = .2f, ROLL_COOLDOWN = 1.1f, ROLL_SPEED = 11f;
+    public static final float ROLL_DURATION = .30f, ROLL_INVULNERABLE = .2f;
+    /** A roll is 25% faster than walking: quick enough to cross an enemy's reach, not a teleport. No cooldown. */
+    public static final float ROLL_SPEED = WALK_SPEED * 1.25f;
     public static final float PERFECT_BLOCK_WINDOW = .18f, COUNTER_WINDOW = .7f;
-    private float rollRemaining, rollCooldownRemaining, rollDirection, blockAge, counterWindowRemaining, perfectFlashRemaining;
+    private float rollRemaining, rollDirection, blockAge, counterWindowRemaining, perfectFlashRemaining;
     private boolean jumpAttackUsed;
     public boolean isRolling() { return rollRemaining > 0f; }
     public float getRollDirection() { return rollDirection; }
     public float getRollProgress() { return rollRemaining > 0f ? 1f - rollRemaining / ROLL_DURATION : 0f; }
     public boolean isRollInvulnerable() { return rollRemaining > ROLL_DURATION - ROLL_INVULNERABLE; }
-    public float getRollCooldownRemaining() { return rollCooldownRemaining; }
     public boolean isCounterReady() { return counterWindowRemaining > 0f; }
     public float getPerfectFlashRemaining() { return perfectFlashRemaining; }
     public void consumeCounter() { counterWindowRemaining = 0f; }
     public boolean isAirborne() { return !isGrounded(); }
     public boolean canJumpAttack() { return isAirborne() && !jumpAttackUsed && !isStaggered(); }
     public void markJumpAttackUsed() { jumpAttackUsed = true; }
-    /** A roll cannot cancel any attack recovery, interrupt a stagger, or be spammed (cooldown). */
+    /** The dodge roll: ground only, fixed direction, brief invulnerability, no cooldown. It cannot cancel an attack or a stagger. */
     public boolean tryRoll(float direction) {
-        if (rollRemaining > 0f || rollCooldownRemaining > 0f || isStaggered() || isBlockBroken() || !isGrounded() ||
+        if (rollRemaining > 0f || isStaggered() || isBlockBroken() || !isGrounded() ||
             combatStateMachine.getCurrentState() instanceof AttackState) return false;
         rollDirection = direction == 0f ? (facingLeft ? -1f : 1f) : Math.signum(direction);   // fixed at start
         rollRemaining = ROLL_DURATION;
-        rollCooldownRemaining = ROLL_COOLDOWN;
         blockHeld = false;
         return true;
     }
     private boolean whiffPending;
     public void markWhiff() { whiffPending = true; }
     public boolean consumeWhiff() { boolean w = whiffPending; whiffPending = false; return w; }
-    public float getHeavyCooldownRemaining() { return heavyCooldownRemaining; }
     public float getBlockHeavyFlashRemaining() { return blockHeavyFlashRemaining; }
     public float getBlockBreakFlashRemaining() { return blockBreakFlashRemaining; }
     public com.cursedarchie.platformer.combat.CombatPhase getCombatPhase() {
@@ -233,16 +192,10 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         takeDamage(hit.damage);
         lastHitSourceX = hit.sourceX;
         if (alive) staggerRemaining = Math.max(staggerRemaining, hit.staggerDuration);
-        // A hit breaks off a swing, a charge or a recovery; a dash in full flight carries on (no free cancel,
-        // but also no free invulnerability: the damage above still lands).
-        com.cursedarchie.platformer.combat.HeavyState heavyState = getHeavyState();
-        boolean heavyHit = hit.type == CombatHit.Type.MELEE_HEAVY || hit.type == CombatHit.Type.MELEE_FINISHER ||
-            hit.staggerDuration >= com.cursedarchie.platformer.combat.BreakthroughConfig.get().interruptStagger;
-        boolean keepsHeavy = heavyState == com.cursedarchie.platformer.combat.HeavyState.HEAVY_DASH ||
-            heavyState == com.cursedarchie.platformer.combat.HeavyState.HEAVY_CHARGE && !heavyHit;
-        if (combatStateMachine.getCurrentState() instanceof AttackState && (!alive || !keepsHeavy))
+        // A hit breaks off a swing or a recovery.
+        if (combatStateMachine.getCurrentState() instanceof AttackState)
             combatStateMachine.changeState(new CombatIdleState());
-        if (hit.recoil > 0f && alive && !keepsHeavy)
+        if (hit.recoil > 0f && alive)
             body.setLinearVelocity(hit.direction == 0f ?
                     Math.copySign(hit.recoil, getPosition().x - hit.sourceX) : hit.direction * hit.recoil,
                 body.getLinearVelocity().y);
@@ -265,11 +218,9 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         blockBrokenRemaining = 0f;
         blockCounterCooldown = 0f;
         blockFlashRemaining = 0f;
-        heavyCooldownRemaining = 0f;
         blockHeavyFlashRemaining = 0f;
         blockBreakFlashRemaining = 0f;
         rollRemaining = 0f;
-        rollCooldownRemaining = 0f;
         rollDirection = 0f;
         blockAge = 0f;
         counterWindowRemaining = 0f;
@@ -364,14 +315,14 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public boolean isStaggered() { return staggerRemaining > 0f; }
     public float getLastHitSourceX() { return lastHitSourceX; }
     public void setInventory(Inventory inventory) { this.inventory = inventory; }
-    public float meleeDamageMultiplier(boolean heavy, int comboStep) {
+    public float meleeDamageMultiplier(int comboStep) {
         if (inventory == null) return 1f;
         boolean fused = inventory.count(ItemCatalog.FUSED_RELIC) > 0;
         if (!fused && inventory.count(ItemCatalog.BLADE_SHARD) == 0) return 1f;
         float base = ItemCatalog.bladeShard().bonus;
-        float bonus = heavy || comboStep == AttackState.COMBO_FINISHER ? base * 3f :
+        float bonus = comboStep == AttackState.COMBO_FINISHER ? base * 3f :
             comboStep == AttackState.COMBO_SECOND ? base * 2f : base;
-        if (fused && heavy) bonus += ItemCatalog.fusedRelic().bonus;
+        if (fused && comboStep == AttackState.COMBO_FINISHER) bonus += ItemCatalog.fusedRelic().bonus;
         return 1f + bonus;
     }
     public float meleeRecoilBonus() {
@@ -386,11 +337,9 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     private static final AttackDefinition JUMP_ATTACK = new AttackDefinition("hero_jump_attack",
         CombatHit.Type.MELEE_LIGHT, .08f, .16f, .1f,
         1.25f, .85f, .8f, -.3f, .9f, 4f, .12f, 1f, true, .34f, .34f, .5f);
-    public AttackDefinition attackDefinition(boolean heavy, int comboStep) {
-        if (!heavy && comboStep == AttackState.COUNTER_ATTACK) return COUNTER;
-        if (!heavy && comboStep == AttackState.JUMP_ATTACK) return JUMP_ATTACK;
-        BreakthroughConfig cfg = BreakthroughConfig.get();
-        if (heavy) return heavyDefinition(cfg.chargeTimeForDistance(cfg.dashDistance));
+    public AttackDefinition attackDefinition(int comboStep) {
+        if (comboStep == AttackState.COUNTER_ATTACK) return COUNTER;
+        if (comboStep == AttackState.JUMP_ATTACK) return JUMP_ATTACK;
         if (comboStep == AttackState.COMBO_FINISHER) return finisherDefinition();
         return comboStep == AttackState.COMBO_SECOND ? light2Definition() : light1Definition();
     }
@@ -412,9 +361,6 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         blockBrokenRemaining = Math.max(0f, blockBrokenRemaining - delta);
         blockCounterCooldown = Math.max(0f, blockCounterCooldown - delta);
         blockFlashRemaining = Math.max(0f, blockFlashRemaining - delta);
-        heavyCooldownRemaining = Math.max(0f, heavyCooldownRemaining - delta);
-        breakthroughImpactRemaining = Math.max(0f, breakthroughImpactRemaining - delta);
-        rollCooldownRemaining = Math.max(0f, rollCooldownRemaining - delta);
         rollRemaining = Math.max(0f, rollRemaining - delta);
         counterWindowRemaining = Math.max(0f, counterWindowRemaining - delta);
         perfectFlashRemaining = Math.max(0f, perfectFlashRemaining - delta);

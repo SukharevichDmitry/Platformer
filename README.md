@@ -116,14 +116,16 @@ Esc leaves the settings screen without applying staged display changes. Esc also
 continues the game from the pause menu. These settings are separate from the run.
 Ground movement starts, stops, and reverses in one simulation step. X makes a short
 light strike; tap X again during its follow-up window for a second pose, higher
-slash, distinct sound, and stronger recoil. Z winds up for about 0.52 seconds,
-slows movement, then delivers a heavy strike. A miss leaves a longer recovery.
-It breaks the Red collector's raised frontal guard. Confirmed
+slash, distinct sound, and stronger recoil; a third tap is the wide finisher, which
+breaks the Red collector's raised frontal guard. Combos work on the ground only; in the
+air there is a single jump attack. Z is a dodge roll: no charge-up, no damage, no
+cooldown, 25% faster than walking, brief invulnerability, and the hero passes through
+enemies while rolling. Confirmed
 melee hits push ordinary enemies back; the collector and boss resist the push.
 The blade shard in the courtyard increases melee damage. The impact core in the
 broad street adds knockback. In the bag, select one relic and press C, choose the
 highlighted second relic, inspect the result, then press C or Interact to confirm.
-Incompatible pairs leave both items intact. The fused relic retains both bonuses and adds 25% heavy-strike
+Incompatible pairs leave both items intact. The fused relic retains both bonuses and adds 25% finisher
 damage. The fused relic persists with the run.
 One map character now represents one 1 × 1 terrain tile and one world unit.
 Room JSON rows directly define the collision grid; there is no runtime 2 × 2

@@ -125,12 +125,12 @@ public class GameContactListener implements ContactListener {
     public void preSolve(Contact contact, Manifold oldManifold) {
         Fixture a = contact.getFixtureA();
         Fixture b = contact.getFixtureB();
-        // A breakthrough dash passes through enemies (solid level geometry still stops it).
+        // A dodge roll passes through enemies (solid level geometry still stops it).
         Object ownerA = a.getBody().getUserData(), ownerB = b.getBody().getUserData();
         if (!a.isSensor() && !b.isSensor() &&
-            ((ownerA instanceof Hero && ((Hero) ownerA).isBreakthroughDashing() &&
+            ((ownerA instanceof Hero && ((Hero) ownerA).isRolling() &&
                 ownerB instanceof Actor && !(ownerB instanceof Hero)) ||
-             (ownerB instanceof Hero && ((Hero) ownerB).isBreakthroughDashing() &&
+             (ownerB instanceof Hero && ((Hero) ownerB).isRolling() &&
                 ownerA instanceof Actor && !(ownerA instanceof Hero)))) {
             contact.setEnabled(false);
             return;

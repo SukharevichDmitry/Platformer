@@ -19,6 +19,7 @@ public class HeroController implements InputProcessor {
     private static final float CLIMB_HORIZONTAL_SPEED = 8f;
     private static final float ATTACK_BUFFER_SECONDS = 0.12f;
     private static final float JUMP_BUFFER_SECONDS = 0.1f;
+    private static final float ROLL_BUFFER_SECONDS = 0.12f;
     private static final float DASH_SECONDS = 0.15f;
     private static final float DASH_SPEED = 26f;
     private static final float DASH_COOLDOWN = 0.8f;
@@ -29,14 +30,15 @@ public class HeroController implements InputProcessor {
     private boolean climbing;
     private boolean climbRegrabBlocked;
     private boolean attackHeld;
-    private boolean heavyAttackHeld;
+    private boolean rollHeld;
     private boolean blockHeld;
     private boolean interactHeld;
     private boolean interactQueued;
     private int pocketQueued = -1;
     private ControlBindings bindings = new ControlBindings(null);
     private float attackBufferRemaining;
-    private float heavyAttackBufferRemaining;
+    /** A roll press stays valid for a moment so it still fires if it lands just before the hero is free. */
+    private float rollBufferRemaining;
     private int comboStep;
     /** Exact follow-up step buffered by the current strike (2 or 3); zero means none. */
     private int queuedComboStep;
@@ -84,7 +86,7 @@ public class HeroController implements InputProcessor {
                 if (current == null) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
                 else if (current.usesRhythm()) {
                     // Only the first press of a strike is classified; the rest are ignored, never queued.
-                    switch (current.getRuntime().registerAttackPress(current.chainsToNext())) {
+                    switch (current.getRuntime().registerAttackPress(current.chainsToNext() && hero.isGrounded())) {
                         case COMBO_BUFFERED:
                             queuedComboStep = current.getComboStep() + 1;
                             // A press already accepted inside COMBO_READY must survive until this strike ends.
@@ -103,15 +105,10 @@ public class HeroController implements InputProcessor {
                 }
             }
             attackHeld = true;
-        } else if (bindings.matches(Action.HEAVY_ATTACK, keycode)) {
-            AttackState now = hero.getCombatStateMachine().getCurrentState() instanceof AttackState ?
-                (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
-            // A heavy or rushed strike takes no queued input; mashing during it is simply lost.
-            boolean locked = now != null && (now.isHeavy() || now.getRuntime().isHurried());
-            // Heavy attacks are ground-only: an airborne press is discarded, never buffered for the landing.
-            if (!heavyAttackHeld && !locked && heavyAllowedHere()) heavyAttackBufferRemaining =
-                now != null ? 1.12f + ATTACK_BUFFER_SECONDS : ATTACK_BUFFER_SECONDS;
-            heavyAttackHeld = true;
+        } else if (bindings.matches(Action.ROLL, keycode)) {
+            // Dodge roll: a fresh press only; holding the key never repeats it.
+            if (!rollHeld) rollBufferRemaining = ROLL_BUFFER_SECONDS;
+            rollHeld = true;
         } else if (bindings.matches(Action.BLOCK, keycode)) {
             blockHeld = true;
             hero.setBlockHeld(true);
@@ -133,7 +130,7 @@ public class HeroController implements InputProcessor {
         else if (bindings.matches(Action.DOWN, keycode)) downHeld = false;
         else if (bindings.matches(Action.JUMP, keycode)) jumpHeld = false;
         else if (bindings.matches(Action.ATTACK, keycode)) attackHeld = false;
-        else if (bindings.matches(Action.HEAVY_ATTACK, keycode)) heavyAttackHeld = false;
+        else if (bindings.matches(Action.ROLL, keycode)) rollHeld = false;
         else if (bindings.matches(Action.BLOCK, keycode)) {
             blockHeld = false;
             hero.setBlockHeld(false);
@@ -174,7 +171,7 @@ public class HeroController implements InputProcessor {
     public void update(float delta) {
         if (!hero.isAlive()) {
             attackBufferRemaining = 0f;
-            heavyAttackBufferRemaining = 0f;
+            rollBufferRemaining = 0f;
             clearComboBuffer();
             return;
         }
@@ -204,11 +201,11 @@ public class HeroController implements InputProcessor {
         dashRemaining = 0f;
         if (hero.getBody() != null) hero.getBody().setGravityScale(1f);
         attackHeld = false;
-        heavyAttackHeld = false;
+        rollHeld = false;
         blockHeld = false;
         hero.setBlockHeld(false);
         attackBufferRemaining = 0f;
-        heavyAttackBufferRemaining = 0f;
+        rollBufferRemaining = 0f;
         clearComboBuffer();
         observedHealth = hero.getHealth();
         interactHeld = false;
@@ -237,15 +234,6 @@ public class HeroController implements InputProcessor {
     }
 
     private void handleMovementInput(float delta) {
-        AttackState heavyAttack = hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
-            ((AttackState) hero.getCombatStateMachine().getCurrentState()).isHeavy() ?
-            (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
-        if (hero.isBreakthroughDashing()) {
-            // The dash owns the hero's velocity; walking physics, steering and jumping are suspended.
-            climbing = false;
-            dashQueued = false;
-            return;
-        }
         if (hero.isStaggered()) {
             climbing = false;
             hero.getBody().setLinearVelocity(approach(hero.getBody().getLinearVelocity().x,
@@ -256,7 +244,18 @@ public class HeroController implements InputProcessor {
             // Roll: direction was fixed when it began; steering and gravity-drop are ignored until it ends.
             hero.getBody().setLinearVelocity(hero.getRollDirection() * Hero.ROLL_SPEED, hero.getBody().getLinearVelocity().y);
             dashQueued = false;
+            rollBufferRemaining = 0f;
             return;
+        }
+        if (rollBufferRemaining > 0f) {
+            float rollDir = leftHeld && !rightHeld ? -1f : rightHeld && !leftHeld ? 1f : 0f;
+            if (hero.tryRoll(rollDir)) {
+                climbing = false;
+                rollBufferRemaining = 0f;
+                dashQueued = false;
+                return;
+            }
+            rollBufferRemaining = Math.max(0f, rollBufferRemaining - delta);
         }
         if (dashQueued && !gameWorld.hasEchoDash()) {
             float dir = leftHeld && !rightHeld ? -1f : rightHeld && !leftHeld ? 1f : 0f;
@@ -277,13 +276,6 @@ public class HeroController implements InputProcessor {
             hero.getBody().setGravityScale(0f);
             hero.getBody().setLinearVelocity(hero.isFacingLeft() ? -DASH_SPEED : DASH_SPEED, 0f);
             if (dashRemaining == 0f) hero.getBody().setGravityScale(1f);
-            return;
-        }
-        if (heavyAttack != null) {
-            // Charge and recovery are stationary; only HEAVY_DASH changes horizontal position.
-            hero.getBody().setLinearVelocity(0f,
-                Math.max(hero.getBody().getLinearVelocity().y, -Hero.MAX_FALL_SPEED));
-            jumpBufferRemaining = 0f;
             return;
         }
         float direction = 0f;
@@ -341,8 +333,7 @@ public class HeroController implements InputProcessor {
         float moveY = Math.max(currentY, -Hero.MAX_FALL_SPEED);
         hero.getBody().setLinearVelocity(moveX, moveY);
 
-        if (jumpBufferRemaining > 0f && hero.isGrounded() && moveY <= 0.1f &&
-            !(attack != null && attack.isHeavy())) {
+        if (jumpBufferRemaining > 0f && hero.isGrounded() && moveY <= 0.1f) {
             // Grounding was refreshed after the previous physics step, but JumpState may
             // still be active until hero.update below. Leave it so re-entering JumpState
             // starts a new jump animation instead of being ignored as the same state.
@@ -368,11 +359,6 @@ public class HeroController implements InputProcessor {
         }
     }
 
-    /** A heavy attack may only be started from the ground. */
-    private boolean heavyAllowedHere() {
-        return hero.isGrounded() && hero.getBody().getLinearVelocity().y < .5f;
-    }
-
     private static float approach(float current, float target, float step) {
         if (current < target) return Math.min(current + step, target);
         return Math.max(current - step, target);
@@ -387,16 +373,6 @@ public class HeroController implements InputProcessor {
         observedHealth = hero.getHealth();
         if (!hero.isAlive() || tookDamage || hero.isRolling() || dashRemaining > 0f) {
             attackBufferRemaining = 0f;
-            heavyAttackBufferRemaining = 0f;
-            clearComboBuffer();
-            return;
-        }
-        if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
-            ((AttackState) hero.getCombatStateMachine().getCurrentState()).isHeavy()) {
-            // Charge, dash and recovery take no attack input at all: anything pressed or buffered is discarded,
-            // so no standard strike can follow the heavy attack. A held button is not a new press.
-            attackBufferRemaining = 0f;
-            heavyAttackBufferRemaining = 0f;
             clearComboBuffer();
             return;
         }
@@ -408,43 +384,36 @@ public class HeroController implements InputProcessor {
             hero.setBlockHeld(false);
             clearComboBuffer();
             attackBufferRemaining = 0f;
-            hero.getCombatStateMachine().changeState(new AttackState(false, AttackState.COUNTER_ATTACK));
+            hero.getCombatStateMachine().changeState(new AttackState(AttackState.COUNTER_ATTACK));
             return;
         }
         if (blockHeld || hero.isStaggered()) {
             attackBufferRemaining = 0f;
-            heavyAttackBufferRemaining = 0f;
             clearComboBuffer();
             return;
         }
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
-            if (heavyAttackBufferRemaining > 0f && (!hero.canHeavyAttack() || !heavyAllowedHere()))
-                heavyAttackBufferRemaining = 0f;
-            if (heavyAttackBufferRemaining > 0f) {
-                hero.beginHeavyCooldown();
-                hero.getCombatStateMachine().changeState(new AttackState(true, 0));
-                heavyAttackBufferRemaining = 0f;
-                attackBufferRemaining = 0f;
-                clearComboBuffer();
-            } else if (queuedComboStep > 0) {
+            if (queuedComboStep > 0 && !hero.isGrounded()) clearComboBuffer();   // combos are ground-only
+            if (queuedComboStep > 0) {
                 comboStep = queuedComboStep;
-                hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
+                hero.getCombatStateMachine().changeState(new AttackState(comboStep));
                 queuedComboStep = 0;
                 queuedComboRemaining = 0f;
                 attackBufferRemaining = 0f;
             } else if (attackBufferRemaining > 0f && hero.canJumpAttack()) {
                 hero.markJumpAttackUsed();
                 comboStep = 0;
-                hero.getCombatStateMachine().changeState(new AttackState(false, AttackState.JUMP_ATTACK));
+                hero.getCombatStateMachine().changeState(new AttackState(AttackState.JUMP_ATTACK));
                 attackBufferRemaining = 0f;
+            } else if (attackBufferRemaining > 0f && !hero.isGrounded()) {
+                attackBufferRemaining = 0f;   // airborne: only the single jump attack, never a combo strike
             } else if (attackBufferRemaining > 0f) {
                 comboStep = AttackState.COMBO_FIRST;
-                hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
+                hero.getCombatStateMachine().changeState(new AttackState(comboStep));
                 attackBufferRemaining = 0f;
             }
         }
         attackBufferRemaining = Math.max(0f, attackBufferRemaining - delta);
-        heavyAttackBufferRemaining = Math.max(0f, heavyAttackBufferRemaining - delta);
         if (queuedComboStep > 0) {
             queuedComboRemaining = Math.max(0f, queuedComboRemaining - delta);
             if (queuedComboRemaining == 0f) clearComboBuffer();
