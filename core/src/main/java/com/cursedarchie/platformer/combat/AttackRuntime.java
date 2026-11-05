@@ -50,25 +50,31 @@ public final class AttackRuntime {
     public float comboWindowStart() { return definition.nextInputTime; }
     public float comboWindowEnd() {
         AttackRhythmConfig cfg = AttackRhythmConfig.get();
-        return Math.min(duration(), comboWindowStart() + cfg.comboWindowLength + cfg.comboWindowBonus);
+        float baseLength = "hero_light_2".equals(definition.id) ?
+            cfg.finisherComboWindowLength : cfg.comboWindowLength;
+        return Math.min(duration(), comboWindowStart() + baseLength + cfg.comboWindowBonus);
+    }
+    /** Visual COMBO_READY phase; unlike input acceptance, it remains true after a valid press. */
+    public boolean isComboReady() {
+        return elapsed + EPSILON >= comboWindowStart() && elapsed <= comboWindowEnd();
     }
     /** True while a press would continue the combo and nothing has been pressed yet. */
     public boolean isInComboWindow() {
         return quality == AttackQuality.NORMAL && inputResult == InputResult.NO_INPUT &&
-            elapsed + EPSILON >= comboWindowStart() && elapsed <= comboWindowEnd();
+            isComboReady();
     }
 
     /**
      * Classifies one fresh attack press (the caller has already filtered out held-button repeats).
      * Only the first classified press counts: further presses are ignored and never queue, so spamming
-     * cannot extend the combo or cut recovery short. Too early is hurried, in the window is a combo, too late is a new attack. {@code chains} says whether a correct press continues into a second strike.
+     * cannot extend the combo or cut recovery short. Early and late presses are consumed without changing the
+     * current strike; only a press inside the window can continue the chain.
      */
     public InputResult registerAttackPress(boolean chains) {
         if (inputResult != InputResult.NO_INPUT) return InputResult.NO_INPUT;
         float start = comboWindowStart();
         if (elapsed + EPSILON < start) {
             inputResult = InputResult.EARLY_INPUT;
-            quality = AttackQuality.HURRIED;
         } else if (chains && elapsed <= comboWindowEnd()) inputResult = InputResult.COMBO_BUFFERED;
         else inputResult = InputResult.LATE_INPUT;
         return inputResult;
@@ -85,9 +91,9 @@ public final class AttackRuntime {
     public boolean isActive() { return phase() == Phase.ACTIVE; }
     public boolean isComplete() { return elapsed + EPSILON >= duration(); }
 
-    /** A follow-up press is accepted only during recovery, once the combo window has opened. */
+    /** A follow-up press is accepted once this strike's combo window has opened. */
     public boolean acceptsNextInput() {
-        return phase() == Phase.RECOVERY && elapsed + EPSILON >= definition.nextInputTime;
+        return isInComboWindow();
     }
 
     /** World-space hitbox in front of {@code origin}, on the side the attack is facing. */

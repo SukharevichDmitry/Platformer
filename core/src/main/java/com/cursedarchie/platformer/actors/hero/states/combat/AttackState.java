@@ -20,7 +20,12 @@ import com.cursedarchie.platformer.physics.CombatHit;
 /** Gameplay authority for one hero strike; rendering only reads its runtime. */
 public class AttackState implements HeroState {
     private static final float DASH_WALL_SKIN = .02f;
-    public enum Phase { STARTUP, ACTIVE, RECOVERY }
+    public static final int COMBO_FIRST = 1;
+    public static final int COMBO_SECOND = 2;
+    public static final int COMBO_FINISHER = 3;
+    public static final int COUNTER_ATTACK = 4;
+    public static final int JUMP_ATTACK = 5;
+    public enum Phase { STARTUP, ACTIVE, RECOVERY, COMBO_READY }
     private final boolean heavy;
     private final int comboStep;
     private final Rectangle attackBounds = new Rectangle();
@@ -62,17 +67,23 @@ public class AttackState implements HeroState {
     public int getDashHits() { return dashHits; }
     public float getDashOriginX() { return dashOriginX; }
     public Phase getPhase(Hero hero) {
+        if (chainsToNext() && runtime.isComboReady()) return Phase.COMBO_READY;
         return runtime.phase() == AttackRuntime.Phase.STARTUP ? Phase.STARTUP :
             runtime.phase() == AttackRuntime.Phase.ACTIVE ? Phase.ACTIVE : Phase.RECOVERY;
     }
     public boolean isInRecovery(Hero hero) { return runtime.phase() == AttackRuntime.Phase.RECOVERY; }
-    public boolean canQueueFollowUp(Hero hero) {
-        return !heavy && comboStep == 1 && runtime.acceptsNextInput();
+    public boolean isFinisherRecovery(Hero hero) {
+        return comboStep == COMBO_FINISHER && runtime.phase() == AttackRuntime.Phase.RECOVERY;
     }
-    /** Only the first light strike chains into the second; the combo always ends after strike two. */
-    public boolean chainsToNext() { return !heavy && comboStep == 1; }
-    /** Light strikes one and two take part in the attack rhythm; heavy, counter and jump strikes do not. */
-    public boolean usesRhythm() { return !heavy && (comboStep == 1 || comboStep == 2); }
+    public boolean canQueueFollowUp(Hero hero) {
+        return !heavy && comboStep < COMBO_FINISHER && runtime.isInComboWindow();
+    }
+    /** The first two light strikes open windows; the third is the finisher. */
+    public boolean chainsToNext() {
+        return !heavy && (comboStep == COMBO_FIRST || comboStep == COMBO_SECOND);
+    }
+    /** Only chainable light strikes classify follow-up timing. */
+    public boolean usesRhythm() { return chainsToNext(); }
 
     @Override public void enter(Hero hero) {
         lunged = false;
@@ -116,14 +127,17 @@ public class AttackState implements HeroState {
         boolean active = runtime.isActive();
         hero.setLeftAttackActive(active && runtime.facesLeft());
         hero.setRightAttackActive(active && !runtime.facesLeft());
-        if (active && !lunged && comboStep != 4) {
+        if (active && !lunged && comboStep != JUMP_ATTACK) {
             hero.getBody().setLinearVelocity(runtime.direction() *
-                    (heavy ? 6f : comboStep == 2 ? 6.5f : 4f),
+                    (heavy ? 6f : comboStep == COMBO_FINISHER ? 7.5f :
+                        comboStep == COMBO_SECOND ? 6.5f : 4f),
                 hero.getBody().getLinearVelocity().y);
             lunged = true;
         }
         if (active) for (Actor target : hero.getAttackTargets()) {
             if (!runtime.canHit(hero, target, attackBounds, hurtBounds)) continue;
+            if (comboStep == COMBO_FINISHER && target instanceof Enemy &&
+                blockedByLevel(hero, target.getPosition().x, target.getPosition().y)) continue;
             AttackDefinition attack = runtime.definition();
             AttackRhythmConfig rhythm = AttackRhythmConfig.get();
             boolean hurried = runtime.isHurried();
@@ -131,7 +145,7 @@ public class AttackState implements HeroState {
                 hero.meleeDamageMultiplier(heavy, comboStep) * (hurried ? rhythm.hurriedDamageMultiplier : 1f);
             float knockback = (attack.knockback + hero.meleeRecoilBonus()) *
                 (hurried ? rhythm.hurriedKnockbackMultiplier : 1f) *
-                (comboStep == 2 && !heavy ? rhythm.secondStrikeKnockbackMultiplier : 1f);
+                (comboStep == COMBO_SECOND && !heavy ? rhythm.secondStrikeKnockbackMultiplier : 1f);
             float stagger = attack.staggerDuration * (hurried ? rhythm.hurriedStaggerMultiplier : 1f);
             CombatHit hit = new CombatHit(attack.type, damage, hero, target,
                 runtime.direction(), attack.stabilityDamage, knockback, stagger, attack.blockable);

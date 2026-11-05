@@ -849,6 +849,8 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     }
     public boolean takeMeleeHit(CombatHit hit) {
         if (!alive) return false;
+        boolean finisher = hit.type == CombatHit.Type.MELEE_FINISHER;
+        boolean wasAttacking = isAttacking();
         // Sidestep i-frame: only light strikes whiff; heavy and area hits still catch the infiltrator mid-step.
         if ("infiltrator".equals(archetypeId) && isDodging() && hit.type == CombatHit.Type.MELEE_LIGHT) return false;
         if ("scavenger".equals(archetypeId) && hit.type == CombatHit.Type.MELEE_LIGHT &&
@@ -878,7 +880,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         float amount = hit.damage;
         float sourceX = hit.sourceX;
         float recoil = hit.recoil;
-        boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY;
+        boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY || finisher;
         boolean raiderGuard = "default".equals(archetypeId) && hit.blockable && isBlocking() && !isStaggered() &&
             !isAttacking() && ((sourceX < getPosition().x) == facingLeft);
         if (raiderGuard) {
@@ -913,10 +915,25 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         body.setLinearVelocity((hit.direction == 0f ?
                 Math.copySign(recoil, getPosition().x - sourceX) : hit.direction * recoil) * resistance,
             Math.max(body.getLinearVelocity().y, 1.5f * resistance));
-        float stagger = "boss".equals(archetypeId) ? Math.min(.05f, hit.staggerDuration) :
+        float stagger = "boss".equals(archetypeId) ? Math.min(finisher ? .12f : .05f, hit.staggerDuration) :
             "heavy_hunter".equals(archetypeId) ? hit.staggerDuration * (heavy ? .6f : .12f) : hit.staggerDuration;
         if (buffRemaining > 0f) stagger *= .5f;
-        staggerRemaining = stagger;
+        // Ordinary light hits may react and push, but never cancel an enemy attack already in progress.
+        if (wasAttacking && hit.type == CombatHit.Type.MELEE_LIGHT) stagger = 0f;
+        staggerRemaining = Math.max(staggerRemaining, stagger);
+        if (finisher) {
+            // The finisher is the sole combo step with hard interrupt authority.
+            attackRequested = false;
+            lungeRequested = false;
+            areaRequested = false;
+            slamRequested = false;
+            blockRemaining = 0f;
+            blockBreakFlashRemaining = .45f;
+            cancelRangedAttack();
+            currentIntent = Intent.IDLE;
+            if (combatStateMachine.getCurrentState() instanceof AttackState)
+                combatStateMachine.changeState(new CombatIdleState());
+        }
         return true;
     }
 

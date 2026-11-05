@@ -4,7 +4,7 @@ import com.cursedarchie.platformer.actors.Actor;
 
 /** Damage source and force are explicit so guards never infer attack type from enemy names. */
 public final class CombatHit {
-    public enum Type { MELEE_LIGHT, MELEE_HEAVY, PROJECTILE }
+    public enum Type { MELEE_LIGHT, MELEE_HEAVY, MELEE_FINISHER, PROJECTILE }
     public final Type type;
     public final float damage;
     public final float sourceX;
@@ -24,7 +24,8 @@ public final class CombatHit {
         this.stabilityDamage = stabilityDamage;
         this.recoil = recoil;
         this.direction = 0f;
-        this.staggerDuration = type == Type.MELEE_HEAVY ? .24f : type == Type.MELEE_LIGHT ? .14f : .08f;
+        this.staggerDuration = type == Type.MELEE_FINISHER ? .62f :
+            type == Type.MELEE_HEAVY ? .24f : type == Type.MELEE_LIGHT ? .14f : .08f;
         this.blockable = type != Type.PROJECTILE;
         this.source = source;
         this.target = null;

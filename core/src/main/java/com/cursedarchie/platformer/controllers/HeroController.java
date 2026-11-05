@@ -38,9 +38,10 @@ public class HeroController implements InputProcessor {
     private float attackBufferRemaining;
     private float heavyAttackBufferRemaining;
     private int comboStep;
-    private boolean comboQueued;
-    /** A late press: starts a fresh first strike once the current one has finished (never extends the combo). */
-    private boolean freshQueued;
+    /** Exact follow-up step buffered by the current strike (2 or 3); zero means none. */
+    private int queuedComboStep;
+    private float queuedComboRemaining;
+    private float observedHealth;
     private boolean jumpHeld;
     private float jumpBufferRemaining;
     private boolean dashQueued;
@@ -50,12 +51,14 @@ public class HeroController implements InputProcessor {
     public HeroController(GameWorld gameWorld) {
         this.gameWorld = gameWorld;
         this.hero = gameWorld.getHero();
+        this.observedHealth = hero.getHealth();
     }
 
     public void setBindings(ControlBindings bindings) { this.bindings = bindings; clearInput(); }
 
     @Override
     public boolean keyDown(int keycode) {
+        if (!hero.isAlive()) return true;
         if (bindings.matches(Action.LEFT, keycode)) leftHeld = true;
         else if (bindings.matches(Action.RIGHT, keycode)) rightHeld = true;
         else if (bindings.matches(Action.UP, keycode)) upHeld = true;
@@ -76,15 +79,26 @@ public class HeroController implements InputProcessor {
             if (!attackHeld) {
                 AttackState current = hero.getCombatStateMachine().getCurrentState() instanceof AttackState
                     ? (AttackState) hero.getCombatStateMachine().getCurrentState() : null;
-                // The second press only belongs to a combo during strike one's recovery.
-                // Any later press is deliberately treated as the next standalone first hit.
+                // A fresh press belongs to the current chain only inside that strike's own recovery window.
+                // The queued step is explicit so strike two can continue to the finisher instead of restarting.
                 if (current == null) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
                 else if (current.usesRhythm()) {
                     // Only the first press of a strike is classified; the rest are ignored, never queued.
                     switch (current.getRuntime().registerAttackPress(current.chainsToNext())) {
-                        case COMBO_BUFFERED: comboQueued = true; hero.noteRhythmSuccess(); break;
-                        case LATE_INPUT: freshQueued = true; break;
-                        default: break;   // EARLY_INPUT already turned the strike hurried; NO_INPUT is ignored
+                        case COMBO_BUFFERED:
+                            queuedComboStep = current.getComboStep() + 1;
+                            // A press already accepted inside COMBO_READY must survive until this strike ends.
+                            // The configurable lifetime remains the floor; one fixed step covers boundary rounding.
+                            queuedComboRemaining = Math.max(
+                                com.cursedarchie.platformer.combat.AttackRhythmConfig.get().inputBufferTime,
+                                current.getRuntime().duration() - current.getRuntime().elapsed() + GameWorld.FIXED_STEP);
+                            hero.noteRhythmSuccess();
+                            break;
+                        case EARLY_INPUT:
+                        case LATE_INPUT:
+                            clearComboBuffer();
+                            break;
+                        default: break;
                     }
                 }
             }
@@ -159,6 +173,9 @@ public class HeroController implements InputProcessor {
 
     public void update(float delta) {
         if (!hero.isAlive()) {
+            attackBufferRemaining = 0f;
+            heavyAttackBufferRemaining = 0f;
+            clearComboBuffer();
             return;
         }
 
@@ -192,9 +209,8 @@ public class HeroController implements InputProcessor {
         hero.setBlockHeld(false);
         attackBufferRemaining = 0f;
         heavyAttackBufferRemaining = 0f;
-        comboQueued = false;
-            freshQueued = false;
-        comboStep = 0;
+        clearComboBuffer();
+        observedHealth = hero.getHealth();
         interactHeld = false;
         interactQueued = false;
         pocketQueued = -1;
@@ -361,12 +377,18 @@ public class HeroController implements InputProcessor {
         if (current < target) return Math.min(current + step, target);
         return Math.max(current - step, target);
     }
+    private void clearComboBuffer() {
+        queuedComboStep = 0;
+        queuedComboRemaining = 0f;
+        comboStep = 0;
+    }
     private void handleCombatInput(float delta) {
-        if (hero.isRolling()) {
+        boolean tookDamage = hero.getHealth() < observedHealth;
+        observedHealth = hero.getHealth();
+        if (!hero.isAlive() || tookDamage || hero.isRolling() || dashRemaining > 0f) {
             attackBufferRemaining = 0f;
             heavyAttackBufferRemaining = 0f;
-            comboQueued = false;
-            freshQueued = false;
+            clearComboBuffer();
             return;
         }
         if (hero.getCombatStateMachine().getCurrentState() instanceof AttackState &&
@@ -375,13 +397,8 @@ public class HeroController implements InputProcessor {
             // so no standard strike can follow the heavy attack. A held button is not a new press.
             attackBufferRemaining = 0f;
             heavyAttackBufferRemaining = 0f;
-            comboQueued = false;
-            freshQueued = false;
+            clearComboBuffer();
             return;
-        }
-        if (freshQueued && !(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
-            attackBufferRemaining = ATTACK_BUFFER_SECONDS;
-            freshQueued = false;
         }
         boolean counterPressed = hero.isCounterReady() && attackBufferRemaining > 0f && !hero.isStaggered() &&
             !(hero.getCombatStateMachine().getCurrentState() instanceof AttackState);
@@ -389,19 +406,15 @@ public class HeroController implements InputProcessor {
             hero.consumeCounter();
             blockHeld = false;
             hero.setBlockHeld(false);
-            comboStep = 0;
-            comboQueued = false;
-            freshQueued = false;
+            clearComboBuffer();
             attackBufferRemaining = 0f;
-            hero.getCombatStateMachine().changeState(new AttackState(false, 3));
+            hero.getCombatStateMachine().changeState(new AttackState(false, AttackState.COUNTER_ATTACK));
             return;
         }
         if (blockHeld || hero.isStaggered()) {
             attackBufferRemaining = 0f;
             heavyAttackBufferRemaining = 0f;
-            comboQueued = false;
-            freshQueued = false;
-            comboStep = 0;
+            clearComboBuffer();
             return;
         }
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
@@ -412,27 +425,29 @@ public class HeroController implements InputProcessor {
                 hero.getCombatStateMachine().changeState(new AttackState(true, 0));
                 heavyAttackBufferRemaining = 0f;
                 attackBufferRemaining = 0f;
-                comboQueued = false;
-            freshQueued = false;
-                comboStep = 0;
-            } else if (comboQueued) {
-                comboStep = 2;
+                clearComboBuffer();
+            } else if (queuedComboStep > 0) {
+                comboStep = queuedComboStep;
                 hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
-                comboQueued = false;
-            freshQueued = false;
+                queuedComboStep = 0;
+                queuedComboRemaining = 0f;
                 attackBufferRemaining = 0f;
             } else if (attackBufferRemaining > 0f && hero.canJumpAttack()) {
                 hero.markJumpAttackUsed();
                 comboStep = 0;
-                hero.getCombatStateMachine().changeState(new AttackState(false, 4));
+                hero.getCombatStateMachine().changeState(new AttackState(false, AttackState.JUMP_ATTACK));
                 attackBufferRemaining = 0f;
             } else if (attackBufferRemaining > 0f) {
-                comboStep = 1;
+                comboStep = AttackState.COMBO_FIRST;
                 hero.getCombatStateMachine().changeState(new AttackState(false, comboStep));
                 attackBufferRemaining = 0f;
             }
         }
         attackBufferRemaining = Math.max(0f, attackBufferRemaining - delta);
         heavyAttackBufferRemaining = Math.max(0f, heavyAttackBufferRemaining - delta);
+        if (queuedComboStep > 0) {
+            queuedComboRemaining = Math.max(0f, queuedComboRemaining - delta);
+            if (queuedComboRemaining == 0f) clearComboBuffer();
+        }
     }
 }

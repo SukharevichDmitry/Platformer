@@ -12,9 +12,11 @@ import com.cursedarchie.platformer.run.ItemCatalog;
 import com.cursedarchie.platformer.physics.CombatHit;
 import com.cursedarchie.platformer.combat.AttackDefinition;
 import com.cursedarchie.platformer.combat.BreakthroughConfig;
+import com.cursedarchie.platformer.combat.AttackRhythmConfig;
 import com.cursedarchie.platformer.combat.Hurtbox;
 import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.hero.states.combat.CombatIdleState;
+import com.cursedarchie.platformer.actors.hero.states.motion.MotionIdleState;
 
 public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     public static final float BODY_SIZE = 1f;
@@ -61,12 +63,27 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     private final AttackConfig firstAttackRight = new AttackConfig(.9f, .82f, 1.0f, .02f);
     private final AttackConfig secondAttackLeft = new AttackConfig(1.32f, .66f, -1.38f, .16f);
     private final AttackConfig secondAttackRight = new AttackConfig(1.32f, .66f, 1.38f, .16f);
-    private static final AttackDefinition LIGHT_1 = new AttackDefinition("hero_light_1",
-        CombatHit.Type.MELEE_LIGHT, .12f, .12f, .12f,
-        1.45f, .9f, .82f, .02f, 1f, 5f, .14f, 1f, true, .25f, .36f);
-    private static final AttackDefinition LIGHT_2 = new AttackDefinition("hero_light_2",
-        CombatHit.Type.MELEE_LIGHT, .08f, .15f, .23f,
-        2.04f, 1.32f, .66f, .16f, 1.1f, 8.5f, .2f, 1f, true, .46f, .46f);
+    private final AttackConfig finisherAttackLeft = new AttackConfig(1.45f, .95f, -1.55f, .06f);
+    private final AttackConfig finisherAttackRight = new AttackConfig(1.45f, .95f, 1.55f, .06f);
+    private static AttackDefinition light1Definition() {
+        AttackRhythmConfig c = AttackRhythmConfig.get();
+        return new AttackDefinition("hero_light_1", CombatHit.Type.MELEE_LIGHT, .10f, .09f, .20f,
+            1.45f, .9f, .82f, .02f, 1f, 5f, .14f, 1f, true, c.light1WindowStart, .39f);
+    }
+    private static AttackDefinition light2Definition() {
+        AttackRhythmConfig c = AttackRhythmConfig.get();
+        return new AttackDefinition("hero_light_2", CombatHit.Type.MELEE_LIGHT, .07f, .12f, .29f,
+            2.04f, 1.32f, .66f, .16f, 1.1f, 8.5f, .2f, 1f, true, c.light2WindowStart, .48f);
+    }
+    private static AttackDefinition finisherDefinition() {
+        AttackRhythmConfig c = AttackRhythmConfig.get();
+        float total = c.finisherStartupDuration + c.finisherActiveDuration + c.finisherRecoveryDuration;
+        return new AttackDefinition("hero_light_3", CombatHit.Type.MELEE_FINISHER,
+            c.finisherStartupDuration, c.finisherActiveDuration, c.finisherRecoveryDuration,
+            c.finisherRange, c.finisherHitboxWidth, c.finisherHitboxHeight, c.finisherOffsetY,
+            c.finisherDamageMultiplier, c.finisherKnockback, c.finisherStaggerDuration,
+            c.finisherShieldDamageMultiplier, true, total, total, 0f);
+    }
     /** The breakthrough dash: charge (startup), dash (active), recovery; timings come from the config file. */
     private static AttackDefinition heavyDefinition(float chargeTime) {
         BreakthroughConfig c = BreakthroughConfig.get();
@@ -195,7 +212,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         if (hit.blockable && frontal && isBlocking()) {
             blockStability = Math.max(0f, blockStability - hit.stabilityDamage);
             blockFlashRemaining = .18f;
-            if (hit.type == CombatHit.Type.MELEE_HEAVY) {
+            if (hit.type == CombatHit.Type.MELEE_HEAVY || hit.type == CombatHit.Type.MELEE_FINISHER) {
                 takeDamage(hit.damage * .5f);
                 blockHeavyFlashRemaining = .3f;
                 // A strong blow shoves the guard back even though it holds.
@@ -219,7 +236,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         // A hit breaks off a swing, a charge or a recovery; a dash in full flight carries on (no free cancel,
         // but also no free invulnerability: the damage above still lands).
         com.cursedarchie.platformer.combat.HeavyState heavyState = getHeavyState();
-        boolean heavyHit = hit.type == CombatHit.Type.MELEE_HEAVY ||
+        boolean heavyHit = hit.type == CombatHit.Type.MELEE_HEAVY || hit.type == CombatHit.Type.MELEE_FINISHER ||
             hit.staggerDuration >= com.cursedarchie.platformer.combat.BreakthroughConfig.get().interruptStagger;
         boolean keepsHeavy = heavyState == com.cursedarchie.platformer.combat.HeavyState.HEAVY_DASH ||
             heavyState == com.cursedarchie.platformer.combat.HeavyState.HEAVY_CHARGE && !heavyHit;
@@ -233,6 +250,37 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     }
     public float getPlatformDropRemaining() { return platformDropRemaining; }
     public void setPlatformDropRemaining(float seconds) { platformDropRemaining = Math.max(0f, seconds); }
+
+    /** Restores a neutral, repeatable state when the debug combat room is reset. */
+    public void resetForCombatTest() {
+        alive = true;
+        health = maxHealth;
+        damage = 1f;
+        invulnerabilityRemaining = 0f;
+        staggerRemaining = 0f;
+        lastHitSourceX = Float.NaN;
+        platformDropRemaining = 0f;
+        blockHeld = false;
+        blockStability = getMaxBlockStability();
+        blockBrokenRemaining = 0f;
+        blockCounterCooldown = 0f;
+        blockFlashRemaining = 0f;
+        heavyCooldownRemaining = 0f;
+        blockHeavyFlashRemaining = 0f;
+        blockBreakFlashRemaining = 0f;
+        rollRemaining = 0f;
+        rollCooldownRemaining = 0f;
+        rollDirection = 0f;
+        blockAge = 0f;
+        counterWindowRemaining = 0f;
+        perfectFlashRemaining = 0f;
+        jumpAttackUsed = false;
+        whiffPending = false;
+        combatStateMachine.changeState(new CombatIdleState());
+        motionStateMachine.changeState(new MotionIdleState());
+        body.setGravityScale(1f);
+        body.setLinearVelocity(0f, 0f);
+    }
     private Inventory inventory;
 
     /*===========================================CONSTRUCTOR==========================================================*/
@@ -321,7 +369,8 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         boolean fused = inventory.count(ItemCatalog.FUSED_RELIC) > 0;
         if (!fused && inventory.count(ItemCatalog.BLADE_SHARD) == 0) return 1f;
         float base = ItemCatalog.bladeShard().bonus;
-        float bonus = heavy ? base * 3f : comboStep == 2 ? base * 2f : base;
+        float bonus = heavy || comboStep == AttackState.COMBO_FINISHER ? base * 3f :
+            comboStep == AttackState.COMBO_SECOND ? base * 2f : base;
         if (fused && heavy) bonus += ItemCatalog.fusedRelic().bonus;
         return 1f + bonus;
     }
@@ -338,17 +387,21 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         CombatHit.Type.MELEE_LIGHT, .08f, .16f, .1f,
         1.25f, .85f, .8f, -.3f, .9f, 4f, .12f, 1f, true, .34f, .34f, .5f);
     public AttackDefinition attackDefinition(boolean heavy, int comboStep) {
-        if (!heavy && comboStep == 3) return COUNTER;
-        if (!heavy && comboStep == 4) return JUMP_ATTACK;
+        if (!heavy && comboStep == AttackState.COUNTER_ATTACK) return COUNTER;
+        if (!heavy && comboStep == AttackState.JUMP_ATTACK) return JUMP_ATTACK;
         BreakthroughConfig cfg = BreakthroughConfig.get();
-        return heavy ? heavyDefinition(cfg.chargeTimeForDistance(cfg.dashDistance)) : comboStep == 2 ? LIGHT_2 : LIGHT_1;
+        if (heavy) return heavyDefinition(cfg.chargeTimeForDistance(cfg.dashDistance));
+        if (comboStep == AttackState.COMBO_FINISHER) return finisherDefinition();
+        return comboStep == AttackState.COMBO_SECOND ? light2Definition() : light1Definition();
     }
 
-    /** The two light strikes intentionally use different logical hitboxes. */
+    /** Every light strike uses the geometry of its own combo step. */
     public boolean isTargetInAttack(Actor target, boolean attackFacesLeft, int comboStep) {
-        AttackConfig attack = comboStep == 2 ?
-            (attackFacesLeft ? secondAttackLeft : secondAttackRight) :
-            (attackFacesLeft ? firstAttackLeft : firstAttackRight);
+        AttackConfig attack = comboStep == AttackState.COMBO_FINISHER ?
+            (attackFacesLeft ? finisherAttackLeft : finisherAttackRight) :
+            comboStep == AttackState.COMBO_SECOND ?
+                (attackFacesLeft ? secondAttackLeft : secondAttackRight) :
+                (attackFacesLeft ? firstAttackLeft : firstAttackRight);
         return isTargetInAttack(target, attack);
     }
 

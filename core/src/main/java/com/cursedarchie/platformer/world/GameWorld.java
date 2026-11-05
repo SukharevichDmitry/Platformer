@@ -84,6 +84,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     private String portalOriginLocation;
     private int portalOriginRoomId;
     private String portalOriginSpawnId;
+    private String combatTestOriginLocation;
+    private int combatTestOriginRoomId;
+    private final Vector2 combatTestOriginPosition = new Vector2();
     private float smokeRemaining;
     private final Vector2 smokeCenter = new Vector2();
 
@@ -218,7 +221,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             this.x = hit.target.getPosition().x;
             this.y = hit.target.getPosition().y;
             this.direction = hit.direction != 0f ? hit.direction : Math.signum(x - hit.sourceX);
-            boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY;
+            boolean heavy = hit.type == CombatHit.Type.MELEE_HEAVY ||
+                hit.type == CombatHit.Type.MELEE_FINISHER;
             Kind k = heavy ? Kind.HIT_HEAVY : Kind.HIT_LIGHT;
             boolean staggered = false;
             if (hit.target instanceof Enemy) {
@@ -657,7 +661,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     /** Debug combat test (F6): one Raider and one Archer appear in front of the hero. */
     public void spawnCombatTestPair() {
-        float dir = hero.isFacingLeft() ? -1f : 1f;
+        if (isCombatTestLocation()) clearCombatTestEnemies();
+        float dir = isCombatTestLocation() ? 1f : hero.isFacingLeft() ? -1f : 1f;
         Vector2 base = hero.getPosition();
         EnemySpawnData raider = new EnemySpawnData();
         raider.type = "default";
@@ -671,15 +676,70 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     /** Debug (F7): one of every new combat role, spaced in front of the hero. */
     public void spawnRoleShowcase() {
-        float dir = hero.isFacingLeft() ? -1f : 1f;
+        if (isCombatTestLocation()) clearCombatTestEnemies();
+        float dir = isCombatTestLocation() ? 1f : hero.isFacingLeft() ? -1f : 1f;
         Vector2 base = hero.getPosition();
         String[] types = {"default", "infiltrator", "heavy_hunter", "overseer", "scavenger"};
         for (int i = 0; i < types.length; i++) {
             EnemySpawnData spawn = new EnemySpawnData();
             spawn.type = types[i];
             spawn.position = new Vector2();
-            enemyController.spawnEnemy(spawn, new Vector2(base.x + dir * (4f + 2.5f * i), base.y + .3f), world);
+            float spacing = isCombatTestLocation() ? 2.35f : 2.5f;
+            enemyController.spawnEnemy(spawn, new Vector2(base.x + dir * (8f + spacing * i), base.y + .3f), world);
         }
+    }
+
+    private void clearCombatTestEnemies() {
+        if (!isCombatTestLocation() || world.isLocked()) return;
+        for (int i = enemies.size - 1; i >= 0; i--) {
+            Enemy enemy = enemies.get(i);
+            forgetEnemy(enemy);
+            world.destroyBody(enemy.getBody());
+        }
+        enemies.clear();
+        observedHealth.clear();
+        observedHealth.put(hero, hero.getHealth());
+        arrows.clear();
+        arrowImpacts.clear();
+        combatEvents.clear();
+        damageIndicators.clear();
+    }
+
+    public boolean isCombatTestLocation() {
+        return "combat_test".equals(currentLocationName);
+    }
+
+    /** F8 toggles a disposable combat laboratory without changing the regular save location. */
+    public void toggleCombatTestRoom() {
+        if (!isCombatTestLocation()) {
+            combatTestOriginLocation = currentLocationName;
+            combatTestOriginRoomId = currentRoomId;
+            combatTestOriginPosition.set(hero.getPosition());
+            resetCombatTestRoom();
+            return;
+        }
+
+        String targetLocation = combatTestOriginLocation == null ? "start" : combatTestOriginLocation;
+        int targetRoom = combatTestOriginLocation == null ? 0 : combatTestOriginRoomId;
+        Vector2 targetPosition = new Vector2(combatTestOriginPosition);
+        changeLocation(targetLocation, targetRoom);
+        if (combatTestOriginLocation != null && isRestoredPositionClear(targetPosition)) {
+            hero.getBody().setTransform(targetPosition, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            heroController.clearInput();
+        }
+        combatTestOriginLocation = null;
+    }
+
+    /** F9 restores health, enemies, projectiles and combat state for another clean pass. */
+    public void resetCombatTestRoom() {
+        runFlags.removeIf(flag -> flag.startsWith("defeated:combat_test:"));
+        changeLocation("combat_test", 0, "entry");
+        hero.resetForCombatTest();
+        hero.setFootContacts(0);
+        hero.setGrounded(false);
+        heroController.clearInput();
+        accumulator = 0f;
     }
 
     public Array<Enemy> getEnemies() {

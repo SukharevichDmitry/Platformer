@@ -84,6 +84,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
         checkAttackRhythm();
+        checkThreeHitFinisherRules();
         checkBreakthroughDash();
         checkArcherMemoryAndMirroredTurn();
         checkArrowCeilingAndSightLoss();
@@ -93,6 +94,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkEnemyAttackAndDamageCooldown();
         checkLocationTitleTiming();
         checkInteractionInput();
+        checkCombatTestRoom();
         checkAlleyPortalsAndChoices();
         checkSliceItemsAndGuard();
         checkArrowCover();
@@ -241,6 +243,62 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             }
         } finally {
             interactionWorld.dispose();
+        }
+    }
+
+    private void checkCombatTestRoom() {
+        GameWorld testWorld = new GameWorld(734L);
+        try {
+            Vector2 origin = new Vector2(testWorld.getHero().getPosition());
+            String originLocation = testWorld.getLocation().getLocation();
+            testWorld.toggleCombatTestRoom();
+            if (!testWorld.isCombatTestLocation() ||
+                !"combat_test".equals(testWorld.getLocation().getLocation()))
+                throw new AssertionError("F8 combat room entry did not change location");
+            closeTo(testWorld.getHero().getPosition().x, 6f, "combat room entry x");
+
+            boolean raider = false, archer = false, infiltrator = false;
+            boolean breaker = false, overseer = false;
+            for (Enemy enemy : testWorld.getEnemies()) {
+                raider |= "default".equals(enemy.getArchetypeId());
+                archer |= "scavenger".equals(enemy.getArchetypeId());
+                infiltrator |= "infiltrator".equals(enemy.getArchetypeId());
+                breaker |= "heavy_hunter".equals(enemy.getArchetypeId());
+                overseer |= "overseer".equals(enemy.getArchetypeId());
+            }
+            if (testWorld.getEnemies().size != 5 || !raider || !archer || !infiltrator ||
+                !breaker || !overseer)
+                throw new AssertionError("Combat room is missing one of the five test roles");
+
+            com.cursedarchie.platformer.levels.RoomInstance room = testWorld.getCurrentRoom();
+            if (room.getTiles()[34][3] != null || room.getTiles()[34][1] == null ||
+                room.getTiles()[0][8] == null || room.getTiles()[71][8] == null)
+                throw new AssertionError("Combat room pit, catch floor, or side walls are missing");
+
+            Enemy source = testWorld.getEnemies().first();
+            testWorld.fireArrows(source, new Vector2(-1f, 0f), RangedAttackConfig.NORMAL);
+            testWorld.getHero().setHealth(1f);
+            source.takeDamage(source.getHealth());
+            testWorld.update(GameWorld.FIXED_STEP);
+            testWorld.resetCombatTestRoom();
+            if (testWorld.getArrows().size != 0 || testWorld.getEnemies().size != 5 ||
+                testWorld.getHero().getHealth() != testWorld.getHero().getMaxHealth() ||
+                !testWorld.getHero().isAlive())
+                throw new AssertionError("F9 did not fully reset the combat room");
+
+            testWorld.spawnRoleShowcase();
+            if (testWorld.getEnemies().size != 5)
+                throw new AssertionError("F7 did not replace the lineup with the mixed-group test wave");
+            testWorld.spawnCombatTestPair();
+            if (testWorld.getEnemies().size != 2)
+                throw new AssertionError("F6 did not replace the wave with the Raider/Archer pair");
+
+            testWorld.toggleCombatTestRoom();
+            if (!originLocation.equals(testWorld.getLocation().getLocation()) ||
+                !testWorld.getHero().getPosition().epsilonEquals(origin, .01f))
+                throw new AssertionError("F8 did not return from the combat room to its origin");
+        } finally {
+            testWorld.dispose();
         }
     }
 
@@ -636,7 +694,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             float bossHealth = boss.getHealth();
 
             combatWorld.getHeroController().keyDown(Input.Keys.X);
-            for (int i = 0; i < 6; i++) combatWorld.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 4; i++) combatWorld.update(GameWorld.FIXED_STEP);
             if (regular.getHealth() != regularHealth)
                 throw new AssertionError("Hero dealt damage before the shown contact frame");
             for (int i = 0; i < 3; i++) combatWorld.update(GameWorld.FIXED_STEP);
@@ -664,9 +722,27 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
     private void checkUnifiedAttackModel() {
         Hero sampleHero = world.getHero();
         AttackDefinition first = sampleHero.attackDefinition(false, 1);
-        closeTo(first.startupDuration, .12f, "first attack startup setting");
-        closeTo(first.activeDuration, .12f, "first attack active setting");
-        closeTo(first.recoveryDuration, .12f, "first attack recovery setting");
+        closeTo(first.startupDuration, .10f, "balanced first attack startup");
+        closeTo(first.activeDuration, .09f, "balanced first attack active phase");
+        closeTo(first.recoveryDuration, .20f, "balanced first attack recovery");
+        closeTo(first.duration, .39f, "balanced first attack total duration");
+        closeTo(com.cursedarchie.platformer.combat.AttackRhythmConfig.get().comboWindowLength, .15f,
+            "combo window keeps its original absolute duration");
+        closeTo(com.cursedarchie.platformer.combat.AttackRhythmConfig.get().highlightIntensity(100), 1f,
+            "COMBO_READY highlight must not fade after successful combos");
+        AttackDefinition second = sampleHero.attackDefinition(false,
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_SECOND);
+        AttackDefinition finisher = sampleHero.attackDefinition(false,
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FINISHER);
+        closeTo(second.startupDuration, .07f, "balanced second attack startup");
+        closeTo(second.activeDuration, .12f, "balanced second attack active phase");
+        closeTo(second.recoveryDuration, .29f, "balanced second attack recovery");
+        closeTo(second.duration, .48f, "balanced second attack total duration");
+        closeTo(finisher.startupDuration, .10f, "balanced finisher startup");
+        closeTo(finisher.activeDuration, .15f, "balanced finisher active phase");
+        closeTo(finisher.recoveryDuration, .68f, "finisher mandatory recovery remains unchanged");
+        closeTo(first.duration + second.duration + finisher.duration, 1.80f,
+            "ideal three-hit combo duration");
         closeTo(first.hitboxWidth, .9f, "first attack hitbox width");
         closeTo(GameWorld.Arrow.WIDTH, .48f, "arrow width setting");
         AttackRuntime runtime = new AttackRuntime(first, false);
@@ -677,8 +753,20 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             throw new AssertionError("Attack did not enter its active phase at startup end");
         runtime.advance(first.activeDuration);
         runtime.advance(.01f);
-        if (runtime.phase() != AttackRuntime.Phase.RECOVERY || !runtime.acceptsNextInput())
-            throw new AssertionError("Attack recovery or combo input window is incorrect");
+        if (runtime.phase() != AttackRuntime.Phase.RECOVERY || runtime.acceptsNextInput())
+            throw new AssertionError("Combo window opened before its configured recovery time");
+        runtime.advance(first.nextInputTime - runtime.elapsed());
+        if (!runtime.acceptsNextInput())
+            throw new AssertionError("Attack combo window did not open at nextInputTime");
+        com.cursedarchie.platformer.actors.hero.states.combat.AttackState readyState =
+            new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(false,
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FIRST);
+        readyState.enter(sampleHero);
+        readyState.getRuntime().advance(readyState.getRuntime().comboWindowStart());
+        if (readyState.getPhase(sampleHero) !=
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState.Phase.COMBO_READY)
+            throw new AssertionError("The first strike did not expose its COMBO_READY phase");
+        readyState.exit(sampleHero);
 
         GameWorld fight = combatFixture();
         try {
@@ -784,8 +872,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             for (int i = 0; i < 10; i++) fight.update(GameWorld.FIXED_STEP);
             closeTo(target.getHealth(), 9f, "first strike damage");
             fight.getHeroController().keyUp(Input.Keys.X);
-            // The follow-up is accepted only during the recovery of strike one.
-            for (int i = 0; i < 5; i++) fight.update(GameWorld.FIXED_STEP);
+            // The follow-up is accepted only inside strike one's configured recovery window.
+            for (int i = 0; i < 11; i++) fight.update(GameWorld.FIXED_STEP);
             fight.getHeroController().keyDown(Input.Keys.X);
             target.getBody().setTransform(hero.getPosition().x + 1.55f, hero.getPosition().y, 0f);
             target.getBody().setLinearVelocity(0f, 0f);
@@ -803,7 +891,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 "two relics did not synergize on a heavy strike");
             target.getBody().setTransform(hero.getPosition().x + 1.2f, hero.getPosition().y, 0f);
             target.getBody().setLinearVelocity(0f, 0f);
-            for (int i = 0; i < 20; i++) fight.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 60 && heroAttack(hero) != null; i++) fight.update(GameWorld.FIXED_STEP);
+            if (heroAttack(hero) != null) throw new AssertionError("Second combo strike never finished");
             float before = target.getHealth();
             fight.getHeroController().keyDown(Input.Keys.Z);
             fight.update(GameWorld.FIXED_STEP);
@@ -935,9 +1024,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (hero.isCounterReady()) throw new AssertionError("Counter window never closed");
             hero.setBlockHeld(false);
             // Counter and jump-attack definitions: both are punishable when they miss.
-            if (hero.attackDefinition(false, 3).missRecovery <= 0f) throw new AssertionError("Counter has no miss penalty");
-            if (hero.attackDefinition(false, 4).missRecovery < .4f) throw new AssertionError("Jump attack landing recovery too short");
-            if (hero.attackDefinition(false, 3).staggerDuration <= hero.attackDefinition(false, 1).staggerDuration)
+            int counter = com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COUNTER_ATTACK;
+            int jumpAttack = com.cursedarchie.platformer.actors.hero.states.combat.AttackState.JUMP_ATTACK;
+            if (hero.attackDefinition(false, counter).missRecovery <= 0f)
+                throw new AssertionError("Counter has no miss penalty");
+            if (hero.attackDefinition(false, jumpAttack).missRecovery < .4f)
+                throw new AssertionError("Jump attack landing recovery too short");
+            if (hero.attackDefinition(false, counter).staggerDuration <= hero.attackDefinition(false, 1).staggerDuration)
                 throw new AssertionError("Counter must stagger more than a light strike");
         } finally {
             fight.dispose();
@@ -1150,6 +1243,43 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         } finally { w.dispose(); }
     }
 
+    /** Drives both recovery presses relative to the strike that owns each combo window. */
+    private java.util.List<String> threeHitRhythmRun(float secondAt, float finisherAt, int totalSteps) {
+        GameWorld w = combatFixture();
+        try {
+            for (Enemy e : w.getEnemies()) { e.setActive(false); e.getBody().setTransform(30f, 2.5f, 0f); }
+            Hero hero = w.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            w.update(GameWorld.FIXED_STEP);
+            java.util.List<String> started = new java.util.ArrayList<String>();
+            Object last = null;
+            boolean secondPressed = false, finisherPressed = false;
+            w.getHeroController().keyDown(Input.Keys.X);
+            w.getHeroController().keyUp(Input.Keys.X);
+            for (int i = 0; i < totalSteps; i++) {
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState current = heroAttack(hero);
+                if (current != null && current.getComboStep() ==
+                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FIRST &&
+                    !secondPressed && current.getRuntime().elapsed() >= secondAt) {
+                    w.getHeroController().keyDown(Input.Keys.X);
+                    w.getHeroController().keyUp(Input.Keys.X);
+                    secondPressed = true;
+                } else if (current != null && current.getComboStep() ==
+                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_SECOND &&
+                    !finisherPressed && current.getRuntime().elapsed() >= finisherAt) {
+                    w.getHeroController().keyDown(Input.Keys.X);
+                    w.getHeroController().keyUp(Input.Keys.X);
+                    finisherPressed = true;
+                }
+                w.update(GameWorld.FIXED_STEP);
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState after = heroAttack(hero);
+                if (after != null && after != last) { started.add(after.getDefinition().id); last = after; }
+            }
+            return started;
+        } finally { w.dispose(); }
+    }
+
     private void checkAttackRhythm() {
         // Defaults load from the config file shape.
         com.cursedarchie.platformer.combat.AttackRhythmConfig parsed =
@@ -1167,70 +1297,77 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         java.util.List<String> calm = rhythmRun(.27f, 60, 0, hurried);
         if (calm.size() < 2 || !"hero_light_2".equals(calm.get(1)) || hurried[0] != 0f)
             throw new AssertionError("A well-timed press did not chain into strike two: " + calm);
+        java.util.List<String> windowOpening = rhythmRun(.25f, 60, 0, hurried);
+        if (windowOpening.size() < 2 || !"hero_light_2".equals(windowOpening.get(1)))
+            throw new AssertionError("A press at COMBO_READY expired before strike two: " + windowOpening);
 
-        // A press that is too early makes the strike hurried, breaks the combo and does not cancel the strike.
+        // Strike two owns a real input window and a correctly timed third press starts the finisher.
+        AttackDefinition second = world.getHero().attackDefinition(false,
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_SECOND);
+        AttackRuntime secondRuntime = new AttackRuntime(second, false);
+        closeTo(secondRuntime.comboWindowEnd() - secondRuntime.comboWindowStart(), .20f,
+            "strike two finisher input window");
+        java.util.List<String> fullCombo = threeHitRhythmRun(.24f, .32f, 110);
+        if (fullCombo.size() != 3 || !"hero_light_1".equals(fullCombo.get(0)) ||
+            !"hero_light_2".equals(fullCombo.get(1)) || !"hero_light_3".equals(fullCombo.get(2)))
+            throw new AssertionError("A timed three-hit combo did not reach the finisher: " + fullCombo);
+
+        // Strike two deliberately has an early-input penalty: the finisher must be timed.
+        java.util.List<String> earlyFinisher = threeHitRhythmRun(.24f, .15f, 110);
+        if (earlyFinisher.contains("hero_light_3") || earlyFinisher.size() != 2)
+            throw new AssertionError("An early third press incorrectly reached the finisher: " + earlyFinisher);
+
+        // A press close to the end of strike two still means finisher, not a new first strike.
+        java.util.List<String> lateFinisher = threeHitRhythmRun(.24f, .38f, 130);
+        if (lateFinisher.size() != 3 || !"hero_light_3".equals(lateFinisher.get(2)))
+            throw new AssertionError("A late-but-valid third press restarted the combo: " + lateFinisher);
+        java.util.List<String> tooLateFinisher = threeHitRhythmRun(.24f, .47f, 130);
+        if (tooLateFinisher.contains("hero_light_3"))
+            throw new AssertionError("A press after strike two's window started the finisher: " + tooLateFinisher);
+
+        // An early follow-up is consumed, does not weaken strike one, and cannot start strike two later.
         hurried[0] = 0f;
-        java.util.List<String> early = rhythmRun(.17f, 60, 0, hurried);
-        if (hurried[0] != 1f) throw new AssertionError("An early press did not make the strike hurried");
-        if (early.contains("hero_light_2") || early.size() != 1)
-            throw new AssertionError("An early press must not continue or restart the combo: " + early);
+        java.util.List<String> early = rhythmRun(.1f, 60, 0, hurried);
+        if (hurried[0] != 0f || early.size() != 1)
+            throw new AssertionError("An early second-strike press was buffered or weakened strike one: " + early);
 
-        // Spamming right after the early press is not queued and cannot extend or restart anything.
-        java.util.List<String> spam = rhythmRun(.17f, 90, 6, hurried);
-        if (spam.contains("hero_light_2") || spam.size() != 1)
-            throw new AssertionError("Spam produced extra or chained strikes: " + spam);
+        // Repeated events after the first classified press cannot rescue or restart the combo.
+        java.util.List<String> spam = rhythmRun(.1f, 90, 6, hurried);
+        if (spam.size() != 1)
+            throw new AssertionError("Spam rescued an early input or produced another strike: " + spam);
 
-        // Hurried strikes are weaker and slower to recover; correct ones are untouched.
+        // EARLY, WINDOW and LATE are mutually exclusive and only WINDOW stores a follow-up.
         com.cursedarchie.platformer.combat.AttackRhythmConfig cfg =
             com.cursedarchie.platformer.combat.AttackRhythmConfig.get();
         GameWorld w = combatFixture();
         try {
             Hero hero = w.getHero();
-            com.cursedarchie.platformer.combat.AttackDefinition def = hero.attackDefinition(false, 1);
-            com.cursedarchie.platformer.combat.AttackRuntime normal =
+            com.cursedarchie.platformer.combat.AttackDefinition def = hero.attackDefinition(false,
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_SECOND);
+            com.cursedarchie.platformer.combat.AttackRuntime earlyRuntime =
                 new com.cursedarchie.platformer.combat.AttackRuntime(def, false);
-            com.cursedarchie.platformer.combat.AttackRuntime rushed =
+            earlyRuntime.advance(.1f);
+            if (earlyRuntime.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT ||
+                earlyRuntime.isHurried() || earlyRuntime.duration() != def.duration)
+                throw new AssertionError("EARLY changed or weakened the current strike");
+            if (earlyRuntime.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT)
+                throw new AssertionError("A second press of the same strike was classified twice");
+            com.cursedarchie.platformer.combat.AttackRuntime windowRuntime =
                 new com.cursedarchie.platformer.combat.AttackRuntime(def, false);
-            normal.advance(.01f);
-            rushed.advance(def.nextInputTime - .02f);
-            if (rushed.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT)
-                throw new AssertionError("Press just before the window was not classified as early");
-            if (rushed.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT)
-                throw new AssertionError("A second press of the same strike must be ignored");
-            if (normal.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT)
-                throw new AssertionError("A press while the swing has barely begun must be a hurried early press");
-            normal.advance(def.nextInputTime);   // later pressing, even in the window, never rescues the combo
-            if (normal.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.NO_INPUT || !normal.isHurried())
-                throw new AssertionError("Mashing before the window must not reach the combo");
-            com.cursedarchie.platformer.combat.AttackRuntime clean =
+            windowRuntime.advance(def.nextInputTime + .04f);
+            if (windowRuntime.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.COMBO_BUFFERED)
+                throw new AssertionError("A press inside the window was not buffered");
+            com.cursedarchie.platformer.combat.AttackRuntime lateRuntime =
                 new com.cursedarchie.platformer.combat.AttackRuntime(def, false);
-            float expectedExtra = def.recoveryDuration * (cfg.hurriedRecoveryMultiplier - 1f) + cfg.hurriedRecoveryExtra;
-            closeTo(rushed.duration() - clean.duration(), expectedExtra, "Hurried recovery must be longer by the configured amount");
-            if (!(rushed.duration() > clean.duration() + .15f))
-                throw new AssertionError("Hurried strike did not get a longer recovery");
-            if (cfg.hurriedDamageMultiplier > .85f || cfg.hurriedKnockbackMultiplier > .7f || cfg.hurriedStaggerMultiplier > .7f)
-                throw new AssertionError("Hurried strike is not weak enough");
-            com.badlogic.gdx.math.Rectangle a = new com.badlogic.gdx.math.Rectangle();
-            com.badlogic.gdx.math.Rectangle b = new com.badlogic.gdx.math.Rectangle();
-            com.badlogic.gdx.math.Vector2 origin = new com.badlogic.gdx.math.Vector2(10f, 2.5f);
-            clean.hitbox(origin, a);
-            rushed.hitbox(origin, b);
-            if (!(b.width < a.width)) throw new AssertionError("Hurried strike did not lose reach");
-            closeTo(rushed.definition().damageMultiplier, normal.definition().damageMultiplier,
-                "Hurried strike must keep the same base definition");
+            lateRuntime.advance(lateRuntime.comboWindowEnd() + .02f);
+            if (lateRuntime.registerAttackPress(true) != com.cursedarchie.platformer.combat.InputResult.LATE_INPUT)
+                throw new AssertionError("A press after the window was not classified as late");
         } finally { w.dispose(); }
 
-        // A late press (after a shortened window) starts a fresh first strike, not strike two.
-        com.cursedarchie.platformer.combat.AttackRhythmConfig saved = cfg;
-        com.cursedarchie.platformer.combat.AttackRhythmConfig tight =
-            new com.cursedarchie.platformer.combat.AttackRhythmConfig();
-        tight.comboWindowLength = .03f;
-        com.cursedarchie.platformer.combat.AttackRhythmConfig.set(tight);
-        try {
-            java.util.List<String> late = rhythmRun(.33f, 90, 0, hurried);
-            if (late.size() < 2 || !"hero_light_1".equals(late.get(1)))
-                throw new AssertionError("A late press did not begin a fresh first strike: " + late);
-        } finally { com.cursedarchie.platformer.combat.AttackRhythmConfig.set(saved); }
+        // Once the old strike has fully ended, a genuinely new press may start a fresh chain, never strike two.
+        java.util.List<String> late = rhythmRun(.49f, 90, 0, hurried);
+        if (late.size() != 2 || !"hero_light_1".equals(late.get(1)))
+            throw new AssertionError("A post-recovery press did not start a clean first strike: " + late);
 
         // Holding the button is one strike, not a stream of them.
         GameWorld held = combatFixture();
@@ -1250,6 +1387,140 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             held.getHeroController().keyUp(Input.Keys.X);
             if (strikes != 1) throw new AssertionError("Holding attack started " + strikes + " strikes");
         } finally { held.dispose(); }
+    }
+
+    private void checkThreeHitFinisherRules() {
+        com.cursedarchie.platformer.combat.AttackRhythmConfig cfg =
+            com.cursedarchie.platformer.combat.AttackRhythmConfig.get();
+        if (cfg.inputBufferTime < .12f || cfg.inputBufferTime > .18f)
+            throw new AssertionError("Combo buffer lifetime is outside 0.12-0.18 seconds");
+        if (cfg.finisherStaggerDuration < .45f || cfg.finisherShieldDamageMultiplier < 2f ||
+            cfg.finisherRecoveryDuration < .55f)
+            throw new AssertionError("Finisher stagger, shield damage, or recovery is below the design floor");
+
+        // Light one and two may damage an attacking enemy, but never cancel its attack state.
+        GameWorld interrupt = combatFixture();
+        try {
+            parkEnemies(interrupt);
+            Hero hero = interrupt.getHero();
+            Enemy target = staticFoe(interrupt, 11.2f);
+            target.setMaxHealth(20f);
+            target.setHealth(20f);
+            for (int step = 1; step <= 2; step++) {
+                target.getCombatStateMachine().changeState(new AttackState());
+                AttackDefinition def = hero.attackDefinition(false, step);
+                CombatHit light = new CombatHit(def.type, def.damageMultiplier, hero, target, 1f,
+                    def.stabilityDamage, def.knockback, def.staggerDuration, def.blockable);
+                if (!target.takeMeleeHit(light) || !(target.getCombatStateMachine().getCurrentState() instanceof AttackState))
+                    throw new AssertionError("LIGHT_" + step + " interrupted an enemy attack");
+            }
+            target.getCombatStateMachine().changeState(new AttackState());
+            AttackDefinition finisher = hero.attackDefinition(false,
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FINISHER);
+            CombatHit finalHit = new CombatHit(finisher.type, finisher.damageMultiplier, hero, target, 1f,
+                finisher.stabilityDamage, finisher.knockback, finisher.staggerDuration, finisher.blockable);
+            target.takeMeleeHit(finalHit);
+            if (target.getCombatStateMachine().getCurrentState() instanceof AttackState || !target.isStaggered())
+                throw new AssertionError("FINISHER_3 did not cancel the enemy attack and stagger it");
+        } finally { interrupt.dispose(); }
+
+        // The area finisher hits every visible target once and cannot reach through level geometry.
+        GameWorld area = combatFixture();
+        try {
+            parkEnemies(area);
+            Hero hero = area.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.setFacingLeft(false);
+            Enemy[] targets = {staticFoe(area, 10.9f), staticFoe(area, 11.6f), staticFoe(area, 12.15f)};
+            float[] before = new float[targets.length];
+            for (int i = 0; i < targets.length; i++) {
+                targets[i].setMaxHealth(20f);
+                targets[i].setHealth(20f);
+                before[i] = targets[i].getHealth();
+                hero.getAttackTargets().add(targets[i]);
+            }
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState finisherState =
+                new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(false,
+                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FINISHER);
+            hero.getCombatStateMachine().changeState(finisherState);
+            for (int i = 0; i < 30; i++) area.update(GameWorld.FIXED_STEP);
+            float expectedLoss = hero.getDamage() * cfg.finisherDamageMultiplier;
+            for (int i = 0; i < targets.length; i++)
+                closeTo(before[i] - targets[i].getHealth(), expectedLoss,
+                    "finisher area target " + i + " was missed or hit more than once");
+
+            if (heroAttack(hero) != finisherState || !finisherState.isInRecovery(hero))
+                throw new AssertionError("FINISHER_3 did not enter its mandatory recovery");
+            area.getHeroController().keyDown(Input.Keys.X);
+            area.getHeroController().keyUp(Input.Keys.X);
+            area.getHeroController().keyDown(Input.Keys.RIGHT);
+            for (int i = 0; i < 12; i++) area.update(GameWorld.FIXED_STEP);
+            area.getHeroController().keyUp(Input.Keys.RIGHT);
+            if (heroAttack(hero) != finisherState)
+                throw new AssertionError("Input cancelled FINISHER_RECOVERY");
+            for (int i = 0; i < 80 && heroAttack(hero) != null; i++) area.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 20; i++) area.update(GameWorld.FIXED_STEP);
+            if (heroAttack(hero) != null)
+                throw new AssertionError("Buffered input started an attack after FINISHER_RECOVERY");
+        } finally { area.dispose(); }
+
+        GameWorld cover = combatFixture();
+        try {
+            parkEnemies(cover);
+            Hero hero = cover.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.setFacingLeft(false);
+            Enemy blocked = staticFoe(cover, 11.8f);
+            blocked.setMaxHealth(20f);
+            blocked.setHealth(20f);
+            hero.getAttackTargets().add(blocked);
+            addLevelWall(cover, 11.15f, 2.5f, .08f, 1.4f);
+            hero.getCombatStateMachine().changeState(
+                new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(false,
+                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FINISHER));
+            for (int i = 0; i < 30; i++) cover.update(GameWorld.FIXED_STEP);
+            closeTo(blocked.getHealth(), 20f, "finisher passed through a wall");
+        } finally { cover.dispose(); }
+
+        // A frontal guard absorbs most damage but is broken and staggered by the finisher.
+        GameWorld guardWorld = combatFixture();
+        try {
+            parkEnemies(guardWorld);
+            Hero hero = guardWorld.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy guard = staticFoe(guardWorld, 11.2f);
+            guard.forceBlockForTest();
+            float health = guard.getHealth();
+            AttackDefinition finisher = hero.attackDefinition(false,
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FINISHER);
+            guard.takeMeleeHit(new CombatHit(finisher.type, hero.getDamage() * finisher.damageMultiplier,
+                hero, guard, 1f, finisher.stabilityDamage, finisher.knockback,
+                finisher.staggerDuration, finisher.blockable));
+            float loss = health - guard.getHealth();
+            if (guard.isBlocking() || !guard.isStaggered() || loss <= 0f || loss >= hero.getDamage() * finisher.damageMultiplier)
+                throw new AssertionError("Finisher did not break the guard with reduced guarded damage");
+        } finally { guardWorld.dispose(); }
+
+        // Damage during a chain clears a previously accepted follow-up.
+        GameWorld damaged = combatFixture();
+        try {
+            parkEnemies(damaged);
+            Hero hero = damaged.getHero();
+            damaged.update(GameWorld.FIXED_STEP);
+            damaged.getHeroController().keyDown(Input.Keys.X);
+            damaged.getHeroController().keyUp(Input.Keys.X);
+            for (int i = 0; i < 22; i++) damaged.update(GameWorld.FIXED_STEP);
+            damaged.getHeroController().keyDown(Input.Keys.X);
+            damaged.getHeroController().keyUp(Input.Keys.X);
+            Enemy source = damaged.getEnemies().first();
+            hero.receiveHit(new CombatHit(CombatHit.Type.MELEE_LIGHT, .25f, source, hero, -1f,
+                0f, 0f, .1f, true));
+            for (int i = 0; i < 60; i++) damaged.update(GameWorld.FIXED_STEP);
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState current = heroAttack(hero);
+            if (current != null && current.getComboStep() ==
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_SECOND)
+                throw new AssertionError("Damage left a buffered LIGHT_2 alive");
+        } finally { damaged.dispose(); }
     }
 
     private static void parkEnemies(GameWorld w) {
@@ -1658,7 +1929,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 throw new AssertionError("A dead hero kept charging or dashing");
         } finally { dead.dispose(); }
 
-        // 10) A rushed strike leaves a real recovery: no block, no queued strike, mashing does not shorten it.
+        // 10) A mistimed finisher press is discarded without weakening strike two or leaving stale input.
         GameWorld rush = combatFixture();
         try {
             parkEnemies(rush);
@@ -1666,13 +1937,16 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.getBody().setTransform(10f, 2.5f, 0f);
             hero.setFacingLeft(false);
             rush.update(GameWorld.FIXED_STEP);
-            rush.getHeroController().keyDown(Input.Keys.X);
-            rush.getHeroController().keyUp(Input.Keys.X);
+            hero.getCombatStateMachine().changeState(
+                new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(false,
+                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_SECOND));
             for (int i = 0; i < 4; i++) rush.update(GameWorld.FIXED_STEP);
-            rush.getHeroController().keyDown(Input.Keys.X);   // far too early
+            rush.getHeroController().keyDown(Input.Keys.X);   // far too early for the finisher
             rush.getHeroController().keyUp(Input.Keys.X);
             com.cursedarchie.platformer.actors.hero.states.combat.AttackState first = heroAttack(hero);
-            if (first == null || !first.getRuntime().isHurried()) throw new AssertionError("An early press did not hurry the strike");
+            if (first == null || first.getRuntime().inputResult() !=
+                com.cursedarchie.platformer.combat.InputResult.EARLY_INPUT || first.getRuntime().isHurried())
+                throw new AssertionError("An early finisher press was not discarded cleanly");
             float expected = first.getRuntime().duration();
             rush.getHeroController().keyDown(Input.Keys.B);   // guard held through the recovery
             boolean blockedInRecovery = false, otherStrike = false;
@@ -1687,10 +1961,10 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 if (a == first && a.isInRecovery(hero) && hero.isBlocking()) blockedInRecovery = true;
             }
             rush.getHeroController().keyUp(Input.Keys.B);
-            if (blockedInRecovery) throw new AssertionError("The hero could guard during a rushed recovery");
-            if (otherStrike) throw new AssertionError("Mashing during a rushed strike started another strike");
+            if (blockedInRecovery) throw new AssertionError("The hero could guard during an attack recovery");
+            if (otherStrike) throw new AssertionError("Early input or mashing started the finisher");
             if (steps * GameWorld.FIXED_STEP < expected - .05f)
-                throw new AssertionError("Mashing shortened a rushed recovery: " + steps * GameWorld.FIXED_STEP + " < " + expected);
+                throw new AssertionError("Mashing shortened strike two: " + steps * GameWorld.FIXED_STEP + " < " + expected);
         } finally { rush.dispose(); }
 
         // 11) No standard strike follows a heavy attack: pre-buffered, mashed and held attack input is discarded,

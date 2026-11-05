@@ -24,7 +24,7 @@ public final class AttackDefinition {
     public final float staggerDuration;
     public final float stabilityDamage;
     public final boolean blockable;
-    /** Time since the attack began after which a follow-up input is accepted (during recovery). */
+    /** Time since the attack began after which a follow-up input is accepted. */
     public final float nextInputTime;
     /** Total length of the attack; the state ends once this has elapsed. */
     public final float duration;

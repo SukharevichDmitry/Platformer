@@ -1519,12 +1519,27 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     time < attack.getStartup() ? .13f :
                     time < attack.getActiveEnd() ? .26f :
                     time < attack.getActiveEnd() + .3f ? .13f : 0f :
-                attack.getComboStep() == 2 ?
+                attack.getComboStep() == AttackState.COMBO_FINISHER ?
+                    time < attack.getStartup() ? .13f :
+                        time < attack.getActiveEnd() ? .26f : .13f :
+                attack.getComboStep() == AttackState.COMBO_SECOND ?
                     time < attack.getStartup() ? .26f :
-                        time < attack.getActiveEnd() ? .13f : 0f : time;
+                        time < attack.getActiveEnd() ? .13f : 0f :
+                    time < attack.getStartup() ? .13f * time / Math.max(.001f, attack.getStartup()) :
+                        time < attack.getActiveEnd() ? .26f :
+                        attack.getPhase(hero) == AttackState.Phase.COMBO_READY ? .13f : 0f;
             heroFrame = attack.isFacingLeft() ?
                 heroAttackLeftAnimation.getKeyFrame(pose, false) :
                 heroAttackRightAnimation.getKeyFrame(pose, false);
+            // Recovery and COMBO_READY use the neutral stance. Attack frame zero still contains a thin diagonal
+            // weapon stroke, which looked like a second cut and caused a one-frame extra animation after the swing.
+            if (!attack.isHeavy() && attack.getRuntime().phase() == AttackRuntime.Phase.RECOVERY)
+                heroFrame = attack.isFacingLeft() ? heroIdleLeft : heroIdleRight;
+            // A buffered continuation begins immediately as the previous recovery ends. Do not expose its
+            // diagonal weapon frame during startup; wait for ACTIVE so it cannot read as a stray extra slash.
+            if (!attack.isHeavy() && attack.getComboStep() >= AttackState.COMBO_SECOND &&
+                attack.getRuntime().phase() == AttackRuntime.Phase.STARTUP)
+                heroFrame = attack.isFacingLeft() ? heroIdleLeft : heroIdleRight;
             // After the dash only the plain stopped stance is shown: no swing frame, so it cannot read as a
             // standard attack and there is no deceleration pose.
             if (attack.isHeavy() && time >= attack.getActiveEnd())
@@ -1559,8 +1574,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             }
             if (!displayedHeroSwing && attack.getRuntime().phase() != AttackRuntime.Phase.STARTUP) {
                 displayedHeroSwing = true;
-                (attack.isHeavy() ? heavySlash : attack.getComboStep() == 2 ? secondSlash : firstSlash)
-                    .play(attack.isHeavy() ? .55f : .35f);
+                (attack.isHeavy() ? heavySlash :
+                    attack.getComboStep() >= AttackState.COMBO_SECOND ? secondSlash : firstSlash)
+                    .play(attack.isHeavy() ? .55f : attack.getComboStep() == AttackState.COMBO_FINISHER ? .5f : .35f);
             }
         } else if (this.hero.getMotionStateMachine().getCurrentState() instanceof MoveState) {
             displayedHeroAttack = null;
@@ -1713,18 +1729,25 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     hero.getPosition().y + hero.getSize() / 2f + .12f, .8f * (1f - p), .05f);
                 spriteBatch.setColor(Color.WHITE);
             }
-            if (attack.usesRhythm() && attack.getRuntime().isInComboWindow() && attack.chainsToNext()) {
+            if (attack.getPhase(hero) == AttackState.Phase.COMBO_READY &&
+                attack.getRuntime().inputResult() == com.cursedarchie.platformer.combat.InputResult.NO_INPUT) {
                 // Timing cue: a brief glint on the blade hand while a press would continue the combo.
                 // Strong for new players, subtle once the rhythm has been mastered.
                 float strength = com.cursedarchie.platformer.combat.AttackRhythmConfig.get()
                     .highlightIntensity(hero.getRhythmCombos());
                 float dirH = attack.isFacingLeft() ? -1f : 1f;
-                float pulse = .6f + .4f * (float) Math.sin(effectClock * 28f);
-                spriteBatch.setColor(1f, .9f, .45f, .5f * strength * pulse);
-                glow(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f, .28f + .22f * strength);
+                float finisherCue = attack.getComboStep() == AttackState.COMBO_SECOND ? 1.35f : 1f;
+                float pulse = .6f + .4f * (float) Math.sin(effectClock * (attack.getComboStep() ==
+                    AttackState.COMBO_SECOND ? 36f : 28f));
+                spriteBatch.setColor(1f, attack.getComboStep() == AttackState.COMBO_SECOND ? .68f : .9f,
+                    .35f, .5f * strength * pulse);
+                glow(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f,
+                    (.28f + .22f * strength) * finisherCue);
                 spriteBatch.setColor(1f, .97f, .75f, .8f * strength);
-                barCentered(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f, .22f, .04f, 0f);
-                barCentered(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f, .22f, .04f, 90f);
+                barCentered(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f,
+                    .22f * finisherCue, .04f, 0f);
+                barCentered(hero.getPosition().x + dirH * .85f, hero.getPosition().y + .12f,
+                    .22f * finisherCue, .04f, 90f);
             }
             if (attack.getRuntime().isHurried()) {
                 // Slip: scuffed dust at the feet and a grey flinch mark; no spark of a successful follow-up.
@@ -1742,9 +1765,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             if (attack.getPhase(hero) == AttackState.Phase.STARTUP) {
                 float direction = attack.isFacingLeft() ? -1f : 1f;
                 float windup = hero.getCombatStateTime() / attack.getStartup();
-                float y = attack.getComboStep() == 2 ? .46f : .18f;
-                spriteBatch.setColor(attack.isHeavy() ? 1f : attack.getComboStep() == 2 ? .38f : .76f,
-                    attack.isHeavy() ? .48f : .82f, 1f, .28f + .46f * windup);
+                float y = attack.getComboStep() == AttackState.COMBO_SECOND ? .46f : .18f;
+                spriteBatch.setColor(attack.isHeavy() || attack.getComboStep() == AttackState.COMBO_FINISHER ? 1f :
+                        attack.getComboStep() == AttackState.COMBO_SECOND ? .38f : .76f,
+                    attack.getComboStep() == AttackState.COMBO_FINISHER ? .58f : attack.isHeavy() ? .48f : .82f,
+                    attack.getComboStep() == AttackState.COMBO_FINISHER ? .3f : 1f, .28f + .46f * windup);
                 spriteBatch.draw(sceneryPixel, hero.getPosition().x - direction * .22f,
                     hero.getPosition().y + y, direction * .42f, .08f + .12f * windup);
             }
@@ -1761,25 +1786,21 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 spriteBatch.setColor(Color.WHITE);
                 return;
             }
-            spriteBatch.setColor(attack.isHeavy() ? .98f : attack.getComboStep() == 2 ? .38f : .76f,
-                attack.isHeavy() ? .55f : .86f, 1f, .8f);
-            float trailY = attack.getComboStep() == 2 ? .34f : .1f;
+            boolean finisher = attack.getComboStep() == AttackState.COMBO_FINISHER;
+            spriteBatch.setColor(attack.isHeavy() || finisher ? .98f :
+                    attack.getComboStep() == AttackState.COMBO_SECOND ? .38f : .76f,
+                finisher ? .5f : attack.isHeavy() ? .55f : .86f, finisher ? .22f : 1f, .8f);
+            float trailY = attack.getComboStep() == AttackState.COMBO_SECOND ? .34f : finisher ? .2f : .1f;
             spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .65f - .35f,
                 hero.getPosition().y + trailY, .7f, attack.isHeavy() ? .24f : .13f);
             // The bright leading edge exists only during the gameplay-active window.
             spriteBatch.setColor(1f, .96f, .78f, .95f);
             spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction *
-                (attack.getComboStep() == 2 ? 1.55f : 1.12f) - .05f,
+                attack.getDefinition().range - .05f,
                 hero.getPosition().y + trailY, .10f, .10f);
-            if (attack.getComboStep() == 2) {
+            if (attack.getComboStep() == AttackState.COMBO_SECOND || finisher) {
                 spriteBatch.draw(sceneryPixel, hero.getPosition().x + direction * .95f - .24f,
-                    hero.getPosition().y + .12f, .48f, .12f);
-                // Well-timed follow-up: gold crescent sparks fan out from the blade.
-                float burst = clamp01(1f - (hero.getCombatStateTime() - attack.getStartup()) / .2f);
-                spriteBatch.setColor(1f, .85f, .4f, .9f * burst);
-                for (int i = -1; i <= 1; i++)
-                    barFrom(hero.getPosition().x + direction * 1.45f, hero.getPosition().y + .16f,
-                        .3f + .25f * (1f - burst), .05f, (direction < 0f ? 180f : 0f) + direction * (i * 28f));
+                    hero.getPosition().y + .12f, finisher ? .7f : .48f, finisher ? .18f : .12f);
             }
         }
         spriteBatch.setColor(Color.WHITE);

@@ -1,6 +1,23 @@
 {
   "comboWindowLength": 0.15,
+  "finisherComboWindowLength": 0.20,
   "comboWindowBonus": 0.0,
+  "inputBufferTime": 0.18,
+  "light1WindowStart": 0.22,
+  "light2WindowStart": 0.27,
+  "finisher": {
+    "startupDuration": 0.10,
+    "activeDuration": 0.15,
+    "recoveryDuration": 0.68,
+    "range": 2.3,
+    "hitboxWidth": 1.65,
+    "hitboxHeight": 1.1,
+    "offsetY": 0.08,
+    "damageMultiplier": 1.45,
+    "knockback": 12.0,
+    "staggerDuration": 0.62,
+    "shieldDamageMultiplier": 2.5
+  },
   "hurriedDamageMultiplier": 0.8,
   "hurriedReachMultiplier": 0.85,
   "hurriedKnockbackMultiplier": 0.6,
@@ -8,6 +25,6 @@
   "hurriedRecoveryMultiplier": 1.3,
   "hurriedRecoveryExtra": 0.2,
   "secondStrikeKnockbackMultiplier": 1.15,
-  "highlightFadeCombos": 12,
-  "highlightMinIntensity": 0.3
+  "highlightFadeCombos": 0,
+  "highlightMinIntensity": 1.0
 }

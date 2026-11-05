@@ -78,6 +78,14 @@
                         gameWorld.spawnRoleShowcase();
                         return true;
                     }
+                    if (keycode == Input.Keys.F8) {
+                        gameWorld.toggleCombatTestRoom();
+                        return true;
+                    }
+                    if (keycode == Input.Keys.F9) {
+                        if (gameWorld.isCombatTestLocation()) gameWorld.resetCombatTestRoom();
+                        return true;
+                    }
                     if (enteringPortal != null) return true;
                     if (dialogue.isOpen()) {
                         if (game.getControls().matches(Action.INTERACT, keycode)) {
@@ -202,15 +210,17 @@
                 }
             } else if (!bagOpen && !dialogue.isOpen()) gameWorld.update(delta);
             autosaveSeconds += Math.max(0f, delta);
-            if (!gameWorld.getHero().isAlive()) {
-                if (!deathSaveCleared) {
+            if (!gameWorld.isCombatTestLocation()) {
+                if (!gameWorld.getHero().isAlive()) {
+                    if (!deathSaveCleared) {
+                        game.autosaveGame();
+                        deathSaveCleared = true;
+                    }
+                } else if (gameWorld.getPersistenceRevision() != lastSavedRevision || autosaveSeconds >= 5f) {
                     game.autosaveGame();
-                    deathSaveCleared = true;
+                    lastSavedRevision = gameWorld.getPersistenceRevision();
+                    autosaveSeconds = 0f;
                 }
-            } else if (gameWorld.getPersistenceRevision() != lastSavedRevision || autosaveSeconds >= 5f) {
-                game.autosaveGame();
-                lastSavedRevision = gameWorld.getPersistenceRevision();
-                autosaveSeconds = 0f;
             }
             locationTitle.update(delta);
             float updateMs = (System.nanoTime() - updateStartedNs) / 1_000_000f;
