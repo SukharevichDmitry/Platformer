@@ -44,11 +44,11 @@ public class AttackState implements HeroState {
         return comboStep == COMBO_FINISHER && runtime.phase() == AttackRuntime.Phase.RECOVERY;
     }
     public boolean canQueueFollowUp(Hero hero) {
-        return comboStep < COMBO_FINISHER && runtime.isInComboWindow();
+        return chainsToNext() && runtime.isInComboWindow();
     }
-    /** The first two light strikes open windows; the third is the finisher. */
+    /** The first two light strikes and the jump attack open windows; the third strike is the finisher. */
     public boolean chainsToNext() {
-        return (comboStep == COMBO_FIRST || comboStep == COMBO_SECOND);
+        return comboStep == COMBO_FIRST || comboStep == COMBO_SECOND || comboStep == JUMP_ATTACK;
     }
     /** Only chainable light strikes classify follow-up timing. */
     public boolean usesRhythm() { return chainsToNext(); }

@@ -35,8 +35,10 @@ public class EnemyPerception {
                     Math.toRadians(enemy.getViewAngle() / 2f)
                 );
 
-            // A nearby target remains noticeable even after jumping over the enemy.
-            if (dot < viewCosThreshold && enemyCenter.dst2(heroCenter) > 2.5f * 2.5f) {
+            // A nearby target remains noticeable even after jumping over the enemy; an enemy that is already
+            // aware of the hero turns round to a hero slipping behind it from a little further away.
+            float behindRange = enemy.getAwareness() == Enemy.Awareness.UNAWARE ? 2.5f : 3.6f;
+            if (dot < viewCosThreshold && enemyCenter.dst2(heroCenter) > behindRange * behindRange) {
                 continue;
             }
 

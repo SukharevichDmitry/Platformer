@@ -86,9 +86,11 @@ public class HeroController implements InputProcessor {
                 if (current == null) attackBufferRemaining = ATTACK_BUFFER_SECONDS;
                 else if (current.usesRhythm()) {
                     // Only the first press of a strike is classified; the rest are ignored, never queued.
-                    switch (current.getRuntime().registerAttackPress(current.chainsToNext() && hero.isGrounded())) {
+                    switch (current.getRuntime().registerAttackPress(current.chainsToNext())) {
                         case COMBO_BUFFERED:
-                            queuedComboStep = current.getComboStep() + 1;
+                            // Strike one -> two, two -> finisher; a jump attack opens the chain with strike two.
+                            queuedComboStep = current.getComboStep() == AttackState.JUMP_ATTACK ? AttackState.COMBO_SECOND :
+                                current.getComboStep() + 1;
                             // A press already accepted inside COMBO_READY must survive until this strike ends.
                             // The configurable lifetime remains the floor; one fixed step covers boundary rounding.
                             queuedComboRemaining = Math.max(
@@ -242,7 +244,17 @@ public class HeroController implements InputProcessor {
         }
         if (hero.isRolling()) {
             // Roll: direction was fixed when it began; steering and gravity-drop are ignored until it ends.
-            hero.getBody().setLinearVelocity(hero.getRollDirection() * Hero.ROLL_SPEED, hero.getBody().getLinearVelocity().y);
+            float rollVy = hero.getBody().getLinearVelocity().y;
+            hero.getBody().setLinearVelocity(hero.getRollDirection() * Hero.ROLL_SPEED, rollVy);
+            if (jumpBufferRemaining > 0f && hero.isGrounded() && rollVy <= .1f) {
+                // Jumping out of a roll keeps the roll's momentum.
+                if (hero.getMotionStateMachine().getCurrentState() instanceof JumpState)
+                    hero.getMotionStateMachine().changeState(new MotionIdleState());
+                hero.getBody().setLinearVelocity(hero.getRollDirection() * Hero.ROLL_SPEED, hero.getJumpForce());
+                hero.getBody().setGravityScale(1f);
+                jumpBufferRemaining = 0f;
+                hero.getMotionStateMachine().changeState(new JumpState());
+            } else jumpBufferRemaining = Math.max(0f, jumpBufferRemaining - delta);
             dashQueued = false;
             rollBufferRemaining = 0f;
             return;
@@ -271,6 +283,11 @@ public class HeroController implements InputProcessor {
             climbing = false;
         }
         dashQueued = false;
+        if (dashRemaining > 0f && jumpBufferRemaining > 0f && hero.isGrounded()) {
+            // Jump out of the dash: it ends here and the normal jump below takes over.
+            dashRemaining = 0f;
+            hero.getBody().setGravityScale(1f);
+        }
         if (dashRemaining > 0f) {
             dashRemaining = Math.max(0f, dashRemaining - delta);
             hero.getBody().setGravityScale(0f);
@@ -369,6 +386,9 @@ public class HeroController implements InputProcessor {
         comboStep = 0;
     }
     private void handleCombatInput(float delta) {
+        // A guard key that is already held comes up as soon as the hero is free to block (end of a roll, or
+        // the recovery of a strike), whatever the attack's cooldown.
+        if (blockHeld) hero.setBlockHeld(true);
         boolean tookDamage = hero.getHealth() < observedHealth;
         observedHealth = hero.getHealth();
         if (!hero.isAlive() || tookDamage || hero.isRolling() || dashRemaining > 0f) {
@@ -393,7 +413,6 @@ public class HeroController implements InputProcessor {
             return;
         }
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
-            if (queuedComboStep > 0 && !hero.isGrounded()) clearComboBuffer();   // combos are ground-only
             if (queuedComboStep > 0) {
                 comboStep = queuedComboStep;
                 hero.getCombatStateMachine().changeState(new AttackState(comboStep));
@@ -405,8 +424,6 @@ public class HeroController implements InputProcessor {
                 comboStep = 0;
                 hero.getCombatStateMachine().changeState(new AttackState(AttackState.JUMP_ATTACK));
                 attackBufferRemaining = 0f;
-            } else if (attackBufferRemaining > 0f && !hero.isGrounded()) {
-                attackBufferRemaining = 0f;   // airborne: only the single jump attack, never a combo strike
             } else if (attackBufferRemaining > 0f) {
                 comboStep = AttackState.COMBO_FIRST;
                 hero.getCombatStateMachine().changeState(new AttackState(comboStep));

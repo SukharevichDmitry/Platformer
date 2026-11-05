@@ -86,6 +86,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkAttackRhythm();
         checkThreeHitFinisherRules();
         checkDodgeRoll();
+        checkFlowTweaks();
         checkArcherMemoryAndMirroredTurn();
         checkArrowCeilingAndSightLoss();
         checkMeleeReachMatchesHitbox();
@@ -1579,28 +1580,124 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (starts != 1) throw new AssertionError("A held roll key repeated the roll: " + starts);
         } finally { w.dispose(); }
 
-        // Combos are ground-only: a strike chain cannot be continued once the hero is airborne.
+        // A jump is possible during a roll and keeps the roll's momentum.
+        GameWorld jr = combatFixture();
+        try {
+            parkEnemies(jr);
+            Hero hero = jr.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.setFacingLeft(false);
+            for (int settle = 0; settle < 20; settle++) jr.update(GameWorld.FIXED_STEP);
+            jr.getHeroController().keyDown(Input.Keys.Z);
+            jr.getHeroController().keyUp(Input.Keys.Z);
+            for (int i = 0; i < 3; i++) jr.update(GameWorld.FIXED_STEP);
+            if (!hero.isRolling()) throw new AssertionError("Roll did not start for the jump-out test");
+            jr.getHeroController().keyDown(Input.Keys.SPACE);
+            boolean jumped = false;
+            for (int i = 0; i < 6 && !jumped; i++) {
+                jr.update(GameWorld.FIXED_STEP);
+                jumped = hero.getBody().getLinearVelocity().y > 1f;
+            }
+            jr.getHeroController().keyUp(Input.Keys.SPACE);
+            if (!jumped) throw new AssertionError("The hero could not jump during a roll");
+        } finally { jr.dispose(); }
+
+        // Combos work in the air: a jump attack chains into strike two, and plain air strikes chain too.
         GameWorld air = combatFixture();
         try {
             parkEnemies(air);
             Hero hero = air.getHero();
-            hero.getBody().setTransform(10f, 2.5f, 0f);
             hero.setFacingLeft(false);
-            for (int settle = 0; settle < 20; settle++) air.update(GameWorld.FIXED_STEP);
-            air.getHeroController().keyDown(Input.Keys.X);
-            air.getHeroController().keyUp(Input.Keys.X);
-            for (int i = 0; i < 3; i++) air.update(GameWorld.FIXED_STEP);
-            hero.getBody().setTransform(hero.getPosition().x, 9f, 0f);   // knocked off the ground mid-chain
-            hero.getBody().setLinearVelocity(0f, 0f);
-            air.getHeroController().keyDown(Input.Keys.X);
-            air.getHeroController().keyUp(Input.Keys.X);
-            for (int i = 0; i < 40; i++) {
+            java.util.List<String> started = new java.util.ArrayList<String>();
+            Object last = null;
+            for (int i = 0; i < 90; i++) {
+                hero.getBody().setTransform(10f, 9f, 0f);   // keep the hero in the air
+                hero.getBody().setLinearVelocity(0f, 0f);
+                if (i == 3 || i == 27) {
+                    air.getHeroController().keyDown(Input.Keys.X);
+                    air.getHeroController().keyUp(Input.Keys.X);
+                }
                 air.update(GameWorld.FIXED_STEP);
                 com.cursedarchie.platformer.actors.hero.states.combat.AttackState a = heroAttack(hero);
-                if (a != null && a.getComboStep() >= 2 && a.getComboStep() <= 3 && !hero.isGrounded())
-                    throw new AssertionError("A combo strike was chained while airborne");
+                if (a != null && a != last) { started.add(a.getDefinition().id); last = a; }
             }
+            if (started.size() < 2 || !"hero_jump_attack".equals(started.get(0)) || !"hero_light_2".equals(started.get(1)))
+                throw new AssertionError("An air attack did not chain into the next combo strike: " + started);
         } finally { air.dispose(); }
+    }
+
+    /** Guard during attack recovery, arrow lifetime outside rooms, and enemies turning to a hero behind them. */
+    private void checkFlowTweaks() {
+        // Guard: raising it during a strike's recovery cuts the recovery short; holding it through the swing works too.
+        for (int variant = 0; variant < 2; variant++) {
+            GameWorld g = combatFixture();
+            try {
+                parkEnemies(g);
+                Hero hero = g.getHero();
+                hero.getBody().setTransform(10f, 2.5f, 0f);
+                hero.setFacingLeft(false);
+                for (int settle = 0; settle < 20; settle++) g.update(GameWorld.FIXED_STEP);
+                g.getHeroController().keyDown(Input.Keys.X);
+                g.getHeroController().keyUp(Input.Keys.X);
+                if (variant == 1) { g.update(GameWorld.FIXED_STEP); g.getHeroController().keyDown(Input.Keys.B); }
+                int guard = 0;
+                com.cursedarchie.platformer.actors.hero.states.combat.AttackState a = null;
+                while (guard++ < 80) {
+                    g.update(GameWorld.FIXED_STEP);
+                    a = heroAttack(hero);
+                    if (variant == 1 ? a == null : a != null && a.isInRecovery(hero)) break;
+                }
+                if (variant == 0) {
+                    if (a == null) throw new AssertionError("The strike never reached its recovery");
+                    g.getHeroController().keyDown(Input.Keys.B);
+                    g.update(GameWorld.FIXED_STEP);
+                }
+                if (heroAttack(hero) != null) throw new AssertionError("Guard did not cut the strike's recovery short (variant " + variant + ")");
+                if (!hero.isBlocking()) throw new AssertionError("Hero could not block after a strike (variant " + variant + ")");
+                g.getHeroController().keyUp(Input.Keys.B);
+            } finally { g.dispose(); }
+        }
+
+        // Arrows: an arrow inside a room is never removed by age; outside every room it lasts 3 s.
+        GameWorld a = combatFixture();
+        try {
+            parkEnemies(a);
+            Enemy shooter = EnemyFactory.createScavenger(a.getWorld(), new Vector2(15f, 2.6f));
+            shooter.setActive(false);
+            a.getHero().getBody().setTransform(30f, 2.5f, 0f);
+            a.fireArrows(shooter, new Vector2(0f, 1f), RangedAttackConfig.NORMAL);
+            if (a.getArrows().size != 1) throw new AssertionError("Test arrow was not fired");
+            a.getArrows().first().age = 100f;
+            a.update(GameWorld.FIXED_STEP);
+            if (a.getArrows().size != 1 && a.getArrowImpacts().size == 0)
+                throw new AssertionError("An arrow inside a room vanished from age alone");
+            a.getArrows().clear();
+            Enemy far = EnemyFactory.createScavenger(a.getWorld(), new Vector2(-500f, -500f));
+            far.setActive(false);
+            a.fireArrows(far, new Vector2(-1f, 0f), RangedAttackConfig.NORMAL);
+            for (int i = 0; i < 170; i++) a.update(GameWorld.FIXED_STEP);
+            if (a.getArrows().size != 1) throw new AssertionError("An arrow outside the rooms vanished before 3 s");
+            for (int i = 0; i < 30; i++) a.update(GameWorld.FIXED_STEP);
+            if (a.getArrows().size != 0) throw new AssertionError("An arrow outside the rooms outlived 3 s");
+        } finally { a.dispose(); }
+
+        // An enemy already aware of the hero turns round to a hero that slips behind it a few units away.
+        GameWorld t = new GameWorld();
+        try {
+            Hero hero = t.getHero();
+            hero.getBody().setTransform(18f, 2.5f, 0f);
+            Enemy foe = EnemyFactory.createDefaultEnemy(t.getWorld(), new Vector2(20f, 2.5f));
+            foe.setBrain(new SimpleEnemyBrain(t));
+            foe.setFacingLeft(true);
+            t.addEnemy(foe);
+            for (int i = 0; i < 20; i++) t.update(GameWorld.FIXED_STEP);
+            if (foe.getAwareness() == Enemy.Awareness.UNAWARE) throw new AssertionError("Enemy never noticed the hero");
+            hero.getBody().setTransform(foe.getPosition().x + 3.2f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            boolean turned = false;
+            for (int i = 0; i < 8 && !turned; i++) { t.update(GameWorld.FIXED_STEP); turned = !foe.isFacingLeft(); }
+            if (!turned) throw new AssertionError("An aware enemy did not turn round quickly to a hero behind it");
+        } finally { t.dispose(); }
     }
 
     private void checkArrowArcPhysics() {

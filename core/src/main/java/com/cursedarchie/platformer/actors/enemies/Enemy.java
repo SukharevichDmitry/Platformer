@@ -410,7 +410,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public void forceBlockForTest() { blockRemaining = RAIDER_BLOCK_DURATION; }
     /** What the enemy currently knows about the hero; drives the alert/lost/search presentation. */
     public enum Awareness { UNAWARE, ALERT, TRACKING, LOST, SEARCHING }
-    public static final float TURN_FLASH = .18f, TURN_ATTACK_GRACE = .2f;
+    public static final float TURN_FLASH = .18f, TURN_ATTACK_GRACE = .14f;
+    /** How long a searching enemy faces one way before looking the other way (shorter = turns round faster). */
+    public static final float SEARCH_LOOK_INTERVAL = .4f;
     private Awareness awareness = Awareness.UNAWARE;
     private float awarenessTime, turnFlashRemaining, turnGraceRemaining, searchLookRemaining;
     public Awareness getAwareness() { return awareness; }
@@ -421,7 +423,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         if (value == Awareness.ALERT) emitCue(Cue.ALERT);
         awareness = value;
         awarenessTime = 0f;
-        searchLookRemaining = .65f;
+        searchLookRemaining = SEARCH_LOOK_INTERVAL;
     }
     /**
      * Snap to face a world x without any patrol-style turn animation. A short grace period follows so a
@@ -534,7 +536,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             if (searchLookRemaining <= 0f) {
                 facingLeft = !facingLeft;
                 turnFlashRemaining = TURN_FLASH;
-                searchLookRemaining = .65f;
+                searchLookRemaining = SEARCH_LOOK_INTERVAL;
             }
         }
         stompFlashRemaining = Math.max(0f, stompFlashRemaining - delta);

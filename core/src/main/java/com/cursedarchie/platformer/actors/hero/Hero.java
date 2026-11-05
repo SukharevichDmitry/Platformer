@@ -85,6 +85,13 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
     /** Block cannot be raised while staggered or mid-swing; an already raised guard drops when staggered. */
     public void setBlockHeld(boolean value) {
         boolean wasHeld = blockHeld;
+        // Attack recovery (the "cooldown") never prevents blocking: raising the guard cuts the recovery short.
+        // Only a rushed strike's punishing recovery still leaves the hero open.
+        if (value && combatStateMachine.getCurrentState() instanceof AttackState) {
+            AttackState attack = (AttackState) combatStateMachine.getCurrentState();
+            if (attack.isInRecovery(this) && !attack.getRuntime().isHurried() && !isRolling() && !isStaggered())
+                combatStateMachine.changeState(new CombatIdleState());
+        }
         blockHeld = value && !isRolling() && !isStaggered() && !(combatStateMachine.getCurrentState() instanceof AttackState);
     }
     public boolean isBlocking() {

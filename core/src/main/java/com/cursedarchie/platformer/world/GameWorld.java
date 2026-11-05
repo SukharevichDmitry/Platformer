@@ -763,7 +763,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public static final class Arrow {
         public static final float WIDTH = .48f;
         public static final float HEIGHT = .14f;
+        /** Horizon of the aim preview only: a live arrow never expires inside a room. */
         public static final float LIFETIME = 2f;
+        /** Seconds an arrow survives after it has left every room. */
+        public static final float OUTSIDE_LIFETIME = 3f;
         public final Vector2 position = new Vector2();
         public final Vector2 origin = new Vector2();
         public final Vector2 direction = new Vector2();
@@ -775,6 +778,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         public final float stagger;
         public final float gravity;
         public float age;
+        /** Time spent outside every room of the location. */
+        public float outsideTime;
         /** 0 = standard, 1 = charged, 2 = volley; used by presentation for colours and sounds. */
         public int mode() { return type.ordinal(); }
         private Arrow(float x, float y, Vector2 direction, RangedAttackConfig config) {
@@ -848,6 +853,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         }
     }
 
+    private final Vector2 roomProbe = new Vector2();
+    private boolean isInsideAnyRoom(float x, float y) {
+        roomProbe.set(x, y);
+        for (RoomInstance room : location.getRooms()) if (room.contains(roomProbe)) return true;
+        return false;
+    }
+
     private void updateArrows(float delta) {
         Rectangle heroBounds = new Rectangle();
         for (int i = arrows.size - 1; i >= 0; i--) {
@@ -879,9 +891,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 toX, toY, heroBounds);
             boolean hitHero = heroFraction >= 0f && heroFraction <= closest[0];
             arrow.age += delta;
-            boolean outsideRange = arrow.position.dst2(arrow.origin) >
-                arrow.speed * arrow.speed * Arrow.LIFETIME * Arrow.LIFETIME;
-            if (hitHero || closest[0] < 1f || arrow.age > Arrow.LIFETIME || outsideRange) {
+            // An arrow in flight inside a room never simply vanishes; it only expires 3 s after leaving the rooms.
+            if (isInsideAnyRoom(toX, toY)) arrow.outsideTime = 0f; else arrow.outsideTime += delta;
+            if (hitHero || closest[0] < 1f || arrow.outsideTime >= Arrow.OUTSIDE_LIFETIME) {
                 float travel = (float) Math.toDegrees(Math.atan2(arrow.velocity.y, arrow.velocity.x));
                 if (hitHero) {
                     CombatHit hit = new CombatHit(CombatHit.Type.PROJECTILE,
