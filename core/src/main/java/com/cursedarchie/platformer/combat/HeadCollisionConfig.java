@@ -24,6 +24,16 @@ public final class HeadCollisionConfig {
     /** How far the enemy itself slides in the direction of the fall. */
     public float enemyShift = .20f;
 
+    /**
+     * Only a fall of at least this fraction of the hero's maximum jump height topples anybody. A plain jump onto an
+     * enemy (which never drops further than a jump is high) just pushes the hero back.
+     */
+    public float minFallHeightRatio = .9f;
+    /** The mild push-back for a jump onto a head: sideways speed, small hop, and how long steering is withheld. */
+    public float pushbackSpeed = 6f;
+    public float pushbackHop = 12f;
+    public float pushbackDuration = .25f;
+
     private static HeadCollisionConfig current;
 
     public static synchronized HeadCollisionConfig get() {
@@ -53,6 +63,10 @@ public final class HeadCollisionConfig {
         d.repeatCollisionLock = Math.max(0f, root.getFloat("repeatCollisionLock", d.repeatCollisionLock));
         d.smallGap = Math.max(.01f, root.getFloat("smallGap", d.smallGap));
         d.enemyShift = Math.max(0f, root.getFloat("enemyShift", d.enemyShift));
+        d.minFallHeightRatio = Math.max(.1f, root.getFloat("minFallHeightRatio", d.minFallHeightRatio));
+        d.pushbackSpeed = Math.max(0f, root.getFloat("pushbackSpeed", d.pushbackSpeed));
+        d.pushbackHop = Math.max(0f, root.getFloat("pushbackHop", d.pushbackHop));
+        d.pushbackDuration = Math.max(.05f, root.getFloat("pushbackDuration", d.pushbackDuration));
         return d;
     }
 }

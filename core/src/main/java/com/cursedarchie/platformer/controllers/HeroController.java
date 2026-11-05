@@ -254,6 +254,12 @@ public class HeroController implements InputProcessor {
     }
 
     private void handleMovementInput(float delta) {
+        if (hero.isPushedBack()) {
+            // Knocked away from a head by a plain jump: the shove carries the hero for a moment, steering is withheld.
+            climbing = false;
+            jumpBufferRemaining = Math.max(0f, jumpBufferRemaining - delta);
+            return;
+        }
         if (hero.isStaggered()) {
             climbing = false;
             hero.getBody().setLinearVelocity(approach(hero.getBody().getLinearVelocity().x,

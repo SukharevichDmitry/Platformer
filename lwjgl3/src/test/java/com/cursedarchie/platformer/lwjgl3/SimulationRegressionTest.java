@@ -70,6 +70,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkDropThroughPlatform();
         checkJumpBuffer();
         checkHeadLandingFall();
+        checkHeadJumpOnPushback();
         checkRenderRateConsistency();
         checkUnifiedAttackModel();
         checkHeroAttackTimingAndDirection();
@@ -620,7 +621,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             Hero hero = w.getHero();
             Enemy foe = headFoe(w, 10f, false);
             float foeHealth = foe.getHealth(), heroHealth = hero.getHealth();
-            placeHero(hero, 10.1f, 5.2f, 0f);
+            placeHero(hero, 10.1f, 10.5f, 0f);
             int started = -1, heroDown = 0, foeDown = 0;
             for (int i = 0; i < 170; i++) {
                 w.update(GameWorld.FIXED_STEP);
@@ -694,7 +695,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 throw new AssertionError("Hero walked through the enemy after recovery: collisions were not restored");
 
             // A new jump and a new landing triggers a new fall, this time to the other side.
-            placeHero(hero, foe.getPosition().x - .1f, 5.2f, 0f);
+            placeHero(hero, foe.getPosition().x - .1f, 10.5f, 0f);
             boolean second = false;
             for (int i = 0; i < 60 && !second; i++) {
                 w.update(GameWorld.FIXED_STEP);
@@ -712,7 +713,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             Hero hero = again.getHero();
             Enemy foe = headFoe(again, 10f, false);
             collisions.clear();
-            placeHero(hero, 10.1f, 5.2f, 0f);
+            placeHero(hero, 10.1f, 10.5f, 0f);
             boolean began = false, window = false;
             for (int i = 0; i < 200 && !window; i++) {
                 again.update(GameWorld.FIXED_STEP);
@@ -783,7 +784,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             heavy.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
             if (heavy.canBeKnockedDownFromAbove()) throw new AssertionError("The heavy hunter must not be topplable");
             float heavyHealth = heavy.getHealth(), heroHealth = hero.getHealth();
-            placeHero(hero, 10.2f, 5.6f, 0f);
+            placeHero(hero, 10.2f, 11f, 0f);
             boolean sawFall = false;
             for (int i = 0; i < 100; i++) {
                 heavyWorld.update(GameWorld.FIXED_STEP);
@@ -810,7 +811,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             Hero hero = walled.getHero();
             addLevelWall(walled, 12.2f, 3.5f, 1f, 2f);        // its left face is at x = 11.2
             Enemy foe = headFoe(walled, 10f, false);
-            placeHero(hero, 10.1f, 5.2f, 0f);
+            placeHero(hero, 10.1f, 10.5f, 0f);
             boolean fell = false;
             for (int i = 0; i < 80; i++) {
                 walled.update(GameWorld.FIXED_STEP);
@@ -834,7 +835,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             addLevelWall(corridor, 8.2f, 3.5f, 1f, 2f);       // right face at x = 9.2
             addLevelWall(corridor, 12.2f, 3.5f, 1f, 2f);      // left face at x = 11.2
             Enemy foe = headFoe(corridor, 10.2f, false);
-            placeHero(hero, 10.3f, 5.2f, 0f);
+            placeHero(hero, 10.3f, 10.5f, 0f);
             for (int i = 0; i < 80; i++) {
                 corridor.update(GameWorld.FIXED_STEP);
                 if (hero.getPosition().x - .5f < 9.2f - .06f || hero.getPosition().x + .5f > 11.2f + .06f)
@@ -849,7 +850,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             parkEnemies(brainy);
             Hero hero = brainy.getHero();
             Enemy foe = headFoe(brainy, 10f, true);
-            placeHero(hero, 10.1f, 5.2f, 0f);
+            placeHero(hero, 10.1f, 10.5f, 0f);
             boolean wasDown = false, resumed = false;
             for (int i = 0; i < 260; i++) {
                 brainy.update(GameWorld.FIXED_STEP);
@@ -868,6 +869,103 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (!wasDown) throw new AssertionError("The AI enemy was never knocked down");
             if (!resumed) throw new AssertionError("The enemy's AI did not resume after the recovery");
         } finally { brainy.dispose(); }
+    }
+
+
+    /**
+     * A jump onto a head (a short drop) only pushes the hero back mildly; only a fall of at least ~0.9 of the maximum
+     * jump height topples anybody. Landings are caught even right at an enemy's edge at full fall speed.
+     */
+    private void checkHeadJumpOnPushback() {
+        com.cursedarchie.platformer.combat.HeadCollisionConfig cfg =
+            com.cursedarchie.platformer.combat.HeadCollisionConfig.get();
+        float maxJump = Hero.JUMP_SPEED * Hero.JUMP_SPEED / (2f * GameWorld.GRAVITY);
+        float landingCenter = 3.5f;   // a standard enemy's head (top at 3.0) plus half the hero
+
+        // A plain jump (peak a full jump above the floor) onto a head: pushed away, nobody falls, nobody is hurt.
+        for (float dx : new float[]{-.6f, .0f, .5f}) {
+            GameWorld w = combatFixture();
+            try {
+                parkEnemies(w);
+                Hero hero = w.getHero();
+                Enemy foe = headFoe(w, 10f, false);
+                float heroHealth = hero.getHealth(), foeHealth = foe.getHealth();
+                placeHero(hero, 10f + dx, 2.5f + maxJump * .98f, 0f);
+                boolean pushed = false;
+                for (int i = 0; i < 90; i++) {
+                    w.update(GameWorld.FIXED_STEP);
+                    if (hero.isFalling() || foe.isKnockedDown())
+                        throw new AssertionError("A plain jump onto a head caused a fall (dx " + dx + ")");
+                    if (hero.isPushedBack()) {
+                        pushed = true;
+                        if (Math.abs(hero.getBody().getLinearVelocity().x) > cfg.pushbackSpeed * 1.2f)
+                            throw new AssertionError("The push-back is not mild: " + hero.getBody().getLinearVelocity().x);
+                    }
+                }
+                if (!pushed) throw new AssertionError("A jump onto a head did not push the hero back (dx " + dx + ")");
+                float away = dx < 0f ? foe.getPosition().x - hero.getPosition().x : hero.getPosition().x - foe.getPosition().x;
+                if (away < .9f) throw new AssertionError("The hero was not pushed clear of the enemy (dx " + dx + ", away " + away + ")");
+                if (hero.getPosition().y - .5f > 2.3f) throw new AssertionError("The hero is standing on the head after a jump onto it");
+                closeTo(hero.getHealth(), heroHealth, "A jump onto a head hurt the hero");
+                closeTo(foe.getHealth(), foeHealth, "A jump onto a head hurt the enemy");
+            } finally { w.dispose(); }
+        }
+
+        // The threshold: just under it only pushes, just over it topples both.
+        float threshold = maxJump * cfg.minFallHeightRatio;
+        float[] drops = {threshold - .3f, threshold + .3f};
+        for (int k = 0; k < 2; k++) {
+            GameWorld w = combatFixture();
+            try {
+                parkEnemies(w);
+                Hero hero = w.getHero();
+                Enemy foe = headFoe(w, 10f, false);
+                placeHero(hero, 10.1f, landingCenter + drops[k], 0f);
+                boolean fell = false;
+                for (int i = 0; i < 90; i++) {
+                    w.update(GameWorld.FIXED_STEP);
+                    if (hero.isFalling() && foe.isKnockedDown()) fell = true;
+                }
+                if (k == 0 && fell) throw new AssertionError("A drop just under the threshold toppled the enemy");
+                if (k == 1 && !fell) throw new AssertionError("A drop just over the threshold did not topple the enemy");
+            } finally { w.dispose(); }
+        }
+
+        // Landings at full fall speed are never missed, also when only a corner of the hero is over the head.
+        for (float dx : new float[]{-.85f, -.6f, -.3f, .0f, .3f, .6f, .85f}) {
+            GameWorld w = combatFixture();
+            try {
+                parkEnemies(w);
+                Hero hero = w.getHero();
+                Enemy foe = headFoe(w, 10f, false);
+                placeHero(hero, 10f + dx, 12f, 0f);
+                boolean fell = false;
+                for (int i = 0; i < 90; i++) {
+                    w.update(GameWorld.FIXED_STEP);
+                    if (hero.isFalling() && foe.isKnockedDown()) fell = true;
+                    if (hero.isFalling() && hero.getPosition().y - .5f > 2.3f)
+                        throw new AssertionError("The hero hovers above the enemy during the fall (dx " + dx + ")");
+                }
+                if (!fell) throw new AssertionError("A fast landing at dx " + dx + " did not start the fall");
+            } finally { w.dispose(); }
+        }
+
+        // Never standing on a head, even in the recovery after being deflected from one.
+        GameWorld heavyWorld = combatFixture();
+        try {
+            parkEnemies(heavyWorld);
+            Hero hero = heavyWorld.getHero();
+            Enemy heavy = EnemyFactory.createHeavyHunter(heavyWorld.getWorld(), new Vector2(10f, 2.85f));
+            heavy.setActive(false);
+            heavyWorld.addEnemy(heavy);
+            heavy.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+            placeHero(hero, 10.3f, 13f, 0f);
+            for (int i = 0; i < 120; i++) {
+                heavyWorld.update(GameWorld.FIXED_STEP);
+                if (hero.isFalling() && hero.getPosition().y - .5f > 3.7f - .1f)
+                    throw new AssertionError("The hero stood on the heavy enemy's head while recovering");
+            }
+        } finally { heavyWorld.dispose(); }
     }
 
     private void checkRenderRateConsistency() {

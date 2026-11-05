@@ -137,6 +137,14 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         fallPhase = partner != null ? FallPhase.FALL_COLLISION : FallPhase.FALL_RECOVERY;
         haltForFall();
     }
+    private float pushbackRemaining;
+    /** True while a jump onto an enemy's head is shoving the hero away: steering is withheld, nothing else changes. */
+    public boolean isPushedBack() { return pushbackRemaining > 0f; }
+    /** A mild knock-away: sideways speed plus a small hop, no damage, no stun. */
+    public void beginPushback(float direction, float speed, float hop, float seconds) {
+        pushbackRemaining = seconds;
+        if (body != null) body.setLinearVelocity(direction < 0f ? -speed : speed, hop);
+    }
     /** Cancels every action the hero could be in the middle of. */
     private void haltForFall() {
         rollRemaining = 0f;
@@ -295,6 +303,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         fallPhase = FallPhase.NONE;
         fallTimer = 0f;
         fallPartner = null;
+        pushbackRemaining = 0f;
         rollDirection = 0f;
         blockAge = 0f;
         counterWindowRemaining = 0f;
@@ -450,6 +459,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         motionStateMachine.update(delta);
         combatStateMachine.update(delta);
         updateFall(delta);
+        pushbackRemaining = Math.max(0f, pushbackRemaining - delta);
     }
 
     @Override

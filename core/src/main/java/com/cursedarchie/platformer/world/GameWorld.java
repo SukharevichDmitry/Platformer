@@ -157,6 +157,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         heroController.update(delta);
         updateBreakableAttack();
         rememberHeroBeforeStep();
+        detectHeadLanding(delta);
         world.step(delta, 6, 2);
         updateArrows(delta);
         // Contacts from this step affect input on the next step (including buffered jumps).
@@ -368,8 +369,15 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     /** Resting on a head for this long (no valid landing) slides the hero off: standing there is never allowed. */
     private static final float HEAD_REST_LIMIT = .12f;
 
+    /** The highest the hero's jump could take them (holding jump, no air control): v^2 / 2g. */
+    private static final float MAX_JUMP_HEIGHT = Hero.JUMP_SPEED * Hero.JUMP_SPEED / (2f * GRAVITY);
+    /** Horizontal overlap below which a pass over a head's edge is a graze, not a landing. */
+    private static final float HEAD_MIN_OVERLAP = .1f;
+    /** How far the hero's feet may already have sunk below a head's top when it is detected (fast falls). */
+    private static final float HEAD_ENTRY_DEPTH = .25f;
+
     private float heroVyBeforeStep;
-    private final Vector2 heroSafePosition = new Vector2();
+    private float heroAirPeakY;
     private boolean headFallArmed = true;
     private float headRestSeconds;
     private final Map<Enemy, Float> headFallLocks = new IdentityHashMap<>();
@@ -378,17 +386,73 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
 
     private void rememberHeroBeforeStep() {
         heroVyBeforeStep = hero.getBody().getLinearVelocity().y;
-        heroSafePosition.set(hero.getPosition());
+        // Highest point of the current time in the air: the fall height is measured from here.
+        if (hero.isGrounded() || hero.isFalling()) heroAirPeakY = hero.getPosition().y;
+        else heroAirPeakY = Math.max(heroAirPeakY, hero.getPosition().y);
+    }
+
+    /**
+     * Swept landing test, run before the physics step. A hero can fall nearly half a metre per step, so waiting for
+     * Box2D's contact is unreliable: near an enemy's edge the solver sees a sideways hit instead of a landing. Here the
+     * step's own motion is checked against each enemy's head.
+     */
+    private void detectHeadLanding(float delta) {
+        if (!hero.isAlive() || hero.isFalling() || hero.isRolling() || hero.isGrounded()) return;
+        float vy = heroVyBeforeStep;
+        if (vy >= -HEAD_FALL_MIN_SPEED) return;
+        float heroHalf = Hero.BODY_SIZE / 2f;
+        float heroBottom = hero.getPosition().y - heroHalf;
+        for (Enemy enemy : enemies) {
+            if (!enemy.isAlive() || enemy.isKnockedDown() || headFallLocks.containsKey(enemy)) continue;
+            float enemyHalf = enemy.getSize() / 2f;
+            float overlap = heroHalf + enemyHalf - Math.abs(hero.getPosition().x - enemy.getPosition().x);
+            if (overlap < HEAD_MIN_OVERLAP) continue;
+            float top = enemy.getPosition().y + enemyHalf;
+            if (heroBottom < top - HEAD_ENTRY_DEPTH || heroBottom + vy * delta > top + .02f) continue;
+            landOnHead(enemy);
+            return;
+        }
+    }
+
+    /** A real fall topples a standard enemy (or shifts the hero off a heavy one); a plain jump only shoves the hero. */
+    private void landOnHead(Enemy enemy) {
+        HeadCollisionConfig config = HeadCollisionConfig.get();
+        headFallArmed = false;
+        headRestSeconds = 0f;
+        float landingCenterY = enemy.getPosition().y + enemy.getSize() / 2f + Hero.BODY_SIZE / 2f;
+        float fallHeight = heroAirPeakY - landingCenterY;
+        if (fallHeight < MAX_JUMP_HEIGHT * config.minFallHeightRatio) pushHeroFromHead(enemy);
+        else if (enemy.canBeKnockedDownFromAbove()) startHeadFall(enemy);
+        else deflectHeroFromHead(enemy, true);
+    }
+
+    /** A jump onto a head: the enemy shrugs the hero off with a mild push, no damage, no stun, nobody falls. */
+    private void pushHeroFromHead(Enemy enemy) {
+        HeadCollisionConfig config = HeadCollisionConfig.get();
+        float direction = hero.getPosition().x < enemy.getPosition().x ? -1f : 1f;
+        headFallLocks.put(enemy, config.repeatCollisionLock);
+        hero.beginPushback(direction, config.pushbackSpeed, config.pushbackHop, config.pushbackDuration);
+        combatEvents.add(new CombatEvent(CombatEvent.Kind.HEAD_COLLISION, enemy.getPosition().x,
+            enemy.getPosition().y + enemy.getSize() / 2f, direction));
     }
 
     private void updateHeadCollisions(float delta) {
         tickHeadFallLocks(delta);
-        if (!hero.isAlive() || hero.isFalling()) {
+        if (!hero.isAlive()) return;
+        Enemy support = findHeadSupportEnemy();
+        if (hero.isFalling()) {
+            // Nobody stands on a head, not even during a recovery: a hero left resting on one is moved off at once.
+            if (support != null) {
+                float direction = hero.getPosition().x < support.getPosition().x ? -1f : 1f;
+                if (!placeBesideEnemy(support, direction, false)) {
+                    HeadCollisionConfig config = HeadCollisionConfig.get();
+                    hero.beginPushback(direction, config.pushbackSpeed, config.pushbackHop, config.pushbackDuration);
+                }
+            }
             headRestSeconds = 0f;
             headFallArmed = false;   // re-armed once the hero has been seen clear of every head
             return;
         }
-        Enemy support = findHeadSupportEnemy();
         if (support == null) {
             headRestSeconds = 0f;
             headFallArmed = true;
@@ -397,12 +461,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         boolean movingDown = Math.min(heroVyBeforeStep, hero.getBody().getLinearVelocity().y) < -HEAD_FALL_MIN_SPEED;
         boolean fresh = headFallArmed && !headFallLocks.containsKey(support) && !support.isKnockedDown();
         if (fresh && movingDown) {
-            headFallArmed = false;
-            headRestSeconds = 0f;
-            if (support.canBeKnockedDownFromAbove()) startHeadFall(support);
-            else deflectHeroFromHead(support, true);
+            landOnHead(support);
             return;
         }
+        if (hero.isPushedBack()) return;   // already being shoved off
         headRestSeconds += delta;
         if (headRestSeconds >= HEAD_REST_LIMIT) {
             headRestSeconds = 0f;
@@ -422,9 +484,8 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             combatEvents.add(new CombatEvent(CombatEvent.Kind.HEAD_COLLISION, enemy.getPosition().x,
                 enemy.getPosition().y + enemy.getSize() / 2f, direction));
         } else {
-            // No room for both (a wall on each side): the hero goes back to where they were and only recovers.
-            revertHeroToSafePosition();
-            hero.beginFall(null, direction, 0f, config.heroFallRecovery);
+            // No room for both (walls on each side): nobody falls, the hero is simply shoved off the head.
+            pushHeroFromHead(enemy);
         }
     }
 
@@ -436,17 +497,15 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         HeadCollisionConfig config = HeadCollisionConfig.get();
         float direction = hero.getPosition().x < enemy.getPosition().x ? -1f : 1f;
         headFallLocks.put(enemy, config.repeatCollisionLock);
-        if (!placeBesideEnemy(enemy, direction, false)) revertHeroToSafePosition();
+        if (!placeBesideEnemy(enemy, direction, false)) {
+            pushHeroFromHead(enemy);
+            return;
+        }
         hero.beginFall(null, direction, 0f, config.heroFallRecovery);
         hero.setFacingLeft(direction > 0f);
         if (showImpact)
             combatEvents.add(new CombatEvent(CombatEvent.Kind.HEAD_COLLISION, enemy.getPosition().x,
                 enemy.getPosition().y + enemy.getSize() / 2f, direction));
-    }
-
-    private void revertHeroToSafePosition() {
-        hero.getBody().setTransform(heroSafePosition, 0f);
-        hero.getBody().setLinearVelocity(0f, 0f);
     }
 
     /**
@@ -527,7 +586,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             Enemy enemy = entry.getKey();
             if (!enemy.isAlive()) { it.remove(); continue; }
             // The lock holds for the whole event, then runs out a moment after both are back on their feet.
-            if (hero.isFalling() || enemy.isKnockedDown()) entry.setValue(HeadCollisionConfig.get().repeatCollisionLock);
+            if (hero.isFalling() || hero.isPushedBack() || enemy.isKnockedDown()) entry.setValue(HeadCollisionConfig.get().repeatCollisionLock);
             else {
                 float left = entry.getValue() - delta;
                 if (left <= 0f) it.remove(); else entry.setValue(left);
