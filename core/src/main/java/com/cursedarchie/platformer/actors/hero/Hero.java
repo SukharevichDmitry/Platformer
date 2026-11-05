@@ -137,13 +137,26 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         fallPhase = partner != null ? FallPhase.FALL_COLLISION : FallPhase.FALL_RECOVERY;
         haltForFall();
     }
-    private float pushbackRemaining;
-    /** True while a jump onto an enemy's head is shoving the hero away: steering is withheld, nothing else changes. */
+    /** The enemy the light strikes are locked on to; kept for the following strikes while it stays in the strike zone. */
+    private Actor lightTarget;
+    public Actor getLightTarget() { return lightTarget; }
+    public void setLightTarget(Actor target) { lightTarget = target; }
+    private float pushbackRemaining, pushVelocityX, pushApplied;
+    /** True while a jump onto an enemy's head is shoving the hero away. The hero stays fully in control meanwhile. */
     public boolean isPushedBack() { return pushbackRemaining > 0f; }
-    /** A mild knock-away: sideways speed plus a small hop, no damage, no stun. */
+    /** The shove's sideways speed right now: added to whatever the player's own steering asks for. */
+    public float currentPushX() { return pushbackRemaining > 0f ? pushVelocityX : 0f; }
+    /** The part of the body's horizontal speed that came from the shove last step (the controller subtracts it). */
+    public float getPushApplied() { return pushApplied; }
+    public void setPushApplied(float value) { pushApplied = value; }
+    /** A mild knock-away: an added sideways speed plus a small hop. No damage, no stun, no loss of control. */
     public void beginPushback(float direction, float speed, float hop, float seconds) {
         pushbackRemaining = seconds;
-        if (body != null) body.setLinearVelocity(direction < 0f ? -speed : speed, hop);
+        pushVelocityX = direction < 0f ? -speed : speed;
+        if (body != null) {
+            body.setLinearVelocity(body.getLinearVelocity().x - pushApplied + pushVelocityX, hop);
+            pushApplied = pushVelocityX;
+        }
     }
     /** Cancels every action the hero could be in the middle of. */
     private void haltForFall() {
@@ -304,6 +317,7 @@ public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
         fallTimer = 0f;
         fallPartner = null;
         pushbackRemaining = 0f;
+        lightTarget = null;
         rollDirection = 0f;
         blockAge = 0f;
         counterWindowRemaining = 0f;

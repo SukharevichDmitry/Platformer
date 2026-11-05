@@ -71,6 +71,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkJumpBuffer();
         checkHeadLandingFall();
         checkHeadJumpOnPushback();
+        checkLightStrikeSingleTarget();
         checkRenderRateConsistency();
         checkUnifiedAttackModel();
         checkHeroAttackTimingAndDirection();
@@ -969,6 +970,45 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                     throw new AssertionError("The hero stood on the heavy enemy's head while recovering");
             }
         } finally { heavyWorld.dispose(); }
+    }
+
+    /** Light strikes 1 and 2 hit one opponent only, and keep hitting that one while it stays in the strike zone. */
+    private void checkLightStrikeSingleTarget() {
+        GameWorld w = combatFixture();
+        try {
+            parkEnemies(w);
+            Hero hero = w.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            hero.getBody().setLinearVelocity(0f, 0f);
+            hero.setFacingLeft(false);
+            Enemy near = staticFoe(w, 11.0f), far = staticFoe(w, 11.3f);
+            near.setMaxHealth(500f); near.setHealth(500f);
+            far.setMaxHealth(500f); far.setHealth(500f);
+            for (int i = 0; i < 20; i++) w.update(GameWorld.FIXED_STEP);
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState first =
+                new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(
+                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_FIRST);
+            hero.getCombatStateMachine().changeState(first);
+            for (int i = 0; i < 40; i++) w.update(GameWorld.FIXED_STEP);
+            if (near.getHealth() >= 500f)
+                throw new AssertionError("Light strike 1 did not hit the nearest enemy");
+            if (far.getHealth() < 500f)
+                throw new AssertionError("Light strike 1 dealt splash damage to a second enemy");
+            float nearAfterFirst = near.getHealth();
+            // The other enemy is now the nearer one; the second strike must stay on the locked opponent.
+            near.getBody().setTransform(11.3f, 2.5f, 0f);
+            far.getBody().setTransform(11.0f, 2.5f, 0f);
+            for (int i = 0; i < 3; i++) w.update(GameWorld.FIXED_STEP);
+            com.cursedarchie.platformer.actors.hero.states.combat.AttackState second =
+                new com.cursedarchie.platformer.actors.hero.states.combat.AttackState(
+                    com.cursedarchie.platformer.actors.hero.states.combat.AttackState.COMBO_SECOND);
+            hero.getCombatStateMachine().changeState(second);
+            for (int i = 0; i < 40; i++) w.update(GameWorld.FIXED_STEP);
+            if (near.getHealth() >= nearAfterFirst)
+                throw new AssertionError("Light strike 2 did not stay on the locked enemy");
+            if (far.getHealth() < 500f)
+                throw new AssertionError("Light strike 2 hit a different enemy than the locked one");
+        } finally { w.dispose(); }
     }
 
     private void checkRenderRateConsistency() {

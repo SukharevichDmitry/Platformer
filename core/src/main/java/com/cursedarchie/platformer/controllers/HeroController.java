@@ -254,12 +254,10 @@ public class HeroController implements InputProcessor {
     }
 
     private void handleMovementInput(float delta) {
-        if (hero.isPushedBack()) {
-            // Knocked away from a head by a plain jump: the shove carries the hero for a moment, steering is withheld.
-            climbing = false;
-            jumpBufferRemaining = Math.max(0f, jumpBufferRemaining - delta);
-            return;
-        }
+        // A shove off an enemy's head rides on top of the player's own steering; branches that set the speed
+        // outright (stagger, roll, dash, ladder) simply drop it.
+        float shoveApplied = hero.getPushApplied();
+        hero.setPushApplied(0f);
         if (hero.isStaggered()) {
             climbing = false;
             hero.getBody().setLinearVelocity(approach(hero.getBody().getLinearVelocity().x,
@@ -331,7 +329,7 @@ public class HeroController implements InputProcessor {
             if (!facingLocked) hero.setFacingLeft(false);
         }
 
-        float currentX = hero.getBody().getLinearVelocity().x;
+        float currentX = hero.getBody().getLinearVelocity().x - shoveApplied;
         float currentY = hero.getBody().getLinearVelocity().y;
         VerticalConnection shaft = gameWorld.getLocation().climbConnectionAt(
             hero.getPosition().x, hero.getPosition().y, Hero.BODY_SIZE);
@@ -372,6 +370,9 @@ public class HeroController implements InputProcessor {
         float acceleration = direction == 0f ? Hero.AIR_BRAKING : Hero.AIR_ACCELERATION;
         float moveX = hero.isGrounded() ? targetX : approach(currentX, targetX, acceleration * delta);
         float moveY = Math.max(currentY, -Hero.MAX_FALL_SPEED);
+        float shove = hero.currentPushX();
+        hero.setPushApplied(shove);
+        moveX += shove;
         hero.getBody().setLinearVelocity(moveX, moveY);
 
         if (jumpBufferRemaining > 0f && hero.isGrounded() && moveY <= 0.1f) {

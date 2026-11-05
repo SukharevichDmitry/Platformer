@@ -55,6 +55,7 @@ public class AttackState implements HeroState {
 
     @Override public void enter(Hero hero) {
         lunged = false;
+        if (comboStep == COMBO_FIRST) hero.setLightTarget(null); // a new chain picks its opponent afresh
         hero.setLeftAttackActive(false);
         hero.setRightAttackActive(false);
         runtime = new AttackRuntime(hero.attackDefinition(comboStep), hero.isFacingLeft());
@@ -74,7 +75,7 @@ public class AttackState implements HeroState {
                 hero.getBody().getLinearVelocity().y);
             lunged = true;
         }
-        if (active) for (Actor target : hero.getAttackTargets()) {
+        if (active) for (Actor target : strikeTargets(hero)) {
             if (!runtime.canHit(hero, target, attackBounds, hurtBounds)) continue;
             if (comboStep == COMBO_FINISHER && target instanceof Enemy &&
                 blockedByLevel(hero, target.getPosition().x, target.getPosition().y)) continue;
@@ -99,6 +100,37 @@ public class AttackState implements HeroState {
         }
         if (runtime.isComplete() && !runtime.hitAnyTarget()) hero.markWhiff();
         if (runtime.isComplete()) hero.getCombatStateMachine().changeState(new CombatIdleState());
+    }
+
+    private final java.util.List<Actor> strikeList = new java.util.ArrayList<>();
+
+    /**
+     * Light strikes 1 and 2 hit exactly one opponent, no splash: the enemy already locked on to by the previous
+     * strike if it is still in the zone, otherwise the nearest one in the zone (which then becomes the lock). The
+     * finisher and the jump attack keep hitting everything in their zone.
+     */
+    private Iterable<Actor> strikeTargets(Hero hero) {
+        if (comboStep != COMBO_FIRST && comboStep != COMBO_SECOND) return hero.getAttackTargets();
+        strikeList.clear();
+        if (runtime.hitAnyTarget()) return strikeList;   // this swing has already struck its one target
+        Actor locked = hero.getLightTarget();
+        if (locked != null && locked.isAlive() && hero.getAttackTargets().contains(locked) &&
+            runtime.canHit(hero, locked, attackBounds, hurtBounds)) {
+            strikeList.add(locked);
+            return strikeList;
+        }
+        Actor nearest = null;
+        float best = Float.MAX_VALUE;
+        for (Actor candidate : hero.getAttackTargets()) {
+            if (!candidate.isAlive() || !runtime.canHit(hero, candidate, attackBounds, hurtBounds)) continue;
+            float distance = Math.abs(candidate.getPosition().x - hero.getPosition().x);
+            if (distance < best) { best = distance; nearest = candidate; }
+        }
+        if (nearest != null) {
+            hero.setLightTarget(nearest);
+            strikeList.add(nearest);
+        }
+        return strikeList;
     }
 
     private boolean blockedByLevel(Hero hero, float tx, float ty) {

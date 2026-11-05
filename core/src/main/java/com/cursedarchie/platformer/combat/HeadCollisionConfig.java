@@ -29,7 +29,7 @@ public final class HeadCollisionConfig {
      * enemy (which never drops further than a jump is high) just pushes the hero back.
      */
     public float minFallHeightRatio = .9f;
-    /** The mild push-back for a jump onto a head: sideways speed, small hop, and how long steering is withheld. */
+    /** The mild push-back for a jump onto a head: an added sideways speed (for this long) and a small hop. Control stays. */
     public float pushbackSpeed = 6f;
     public float pushbackHop = 12f;
     public float pushbackDuration = .25f;
