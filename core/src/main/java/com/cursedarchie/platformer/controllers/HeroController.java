@@ -412,6 +412,19 @@ public class HeroController implements InputProcessor {
             clearComboBuffer();
             return;
         }
+        if (queuedComboStep > 0 && hero.getCombatStateMachine().getCurrentState() instanceof AttackState) {
+            // A jump attack's long miss recovery must not hold the chain back until the hero has landed: once its
+            // combo window is open the buffered follow-up starts at once, in the air.
+            AttackState running = (AttackState) hero.getCombatStateMachine().getCurrentState();
+            if (running.getComboStep() == AttackState.JUMP_ATTACK &&
+                running.getRuntime().elapsed() + GameWorld.FIXED_STEP * .5f >= running.getRuntime().comboWindowStart()) {
+                comboStep = queuedComboStep;
+                hero.getCombatStateMachine().changeState(new AttackState(comboStep));
+                queuedComboStep = 0;
+                queuedComboRemaining = 0f;
+                attackBufferRemaining = 0f;
+            }
+        }
         if (!(hero.getCombatStateMachine().getCurrentState() instanceof AttackState)) {
             if (queuedComboStep > 0) {
                 comboStep = queuedComboStep;

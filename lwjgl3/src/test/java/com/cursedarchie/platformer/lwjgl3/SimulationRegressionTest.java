@@ -1610,19 +1610,27 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             hero.setFacingLeft(false);
             java.util.List<String> started = new java.util.ArrayList<String>();
             Object last = null;
-            for (int i = 0; i < 90; i++) {
+            int secondStart = -1;
+            for (int i = 0; i < 140; i++) {
                 hero.getBody().setTransform(10f, 9f, 0f);   // keep the hero in the air
                 hero.getBody().setLinearVelocity(0f, 0f);
-                if (i == 3 || i == 27) {
+                if (i == 3 || i == 27 || i == 50) {
                     air.getHeroController().keyDown(Input.Keys.X);
                     air.getHeroController().keyUp(Input.Keys.X);
                 }
                 air.update(GameWorld.FIXED_STEP);
                 com.cursedarchie.platformer.actors.hero.states.combat.AttackState a = heroAttack(hero);
-                if (a != null && a != last) { started.add(a.getDefinition().id); last = a; }
+                if (a != null && a != last) {
+                    started.add(a.getDefinition().id);
+                    last = a;
+                    if (started.size() == 2) secondStart = i;
+                }
             }
-            if (started.size() < 2 || !"hero_jump_attack".equals(started.get(0)) || !"hero_light_2".equals(started.get(1)))
-                throw new AssertionError("An air attack did not chain into the next combo strike: " + started);
+            if (started.size() < 3 || !"hero_jump_attack".equals(started.get(0)) || !"hero_light_2".equals(started.get(1)) ||
+                !"hero_light_3".equals(started.get(2)))
+                throw new AssertionError("The full combo was not possible in the air: " + started);
+            if (secondStart > 40)
+                throw new AssertionError("The second air strike waited for the jump attack's recovery: step " + secondStart);
         } finally { air.dispose(); }
     }
 
