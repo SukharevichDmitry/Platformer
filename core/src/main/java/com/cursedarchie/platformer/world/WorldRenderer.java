@@ -1540,6 +1540,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             if (!attack.isHeavy() && attack.getComboStep() >= AttackState.COMBO_SECOND &&
                 attack.getRuntime().phase() == AttackRuntime.Phase.STARTUP)
                 heroFrame = attack.isFacingLeft() ? heroIdleLeft : heroIdleRight;
+            // Attack frame zero carries a thin diagonal weapon stroke from the head to the floor. It must never be
+            // shown, whatever the strike (first wind-up, hurried, heavy charge, any recovery): use the idle stance.
+            if (pose < ATTACK_FRAME_DURATION)
+                heroFrame = attack.isFacingLeft() ? heroIdleLeft : heroIdleRight;
             // After the dash only the plain stopped stance is shown: no swing frame, so it cannot read as a
             // standard attack and there is no deceleration pose.
             if (attack.isHeavy() && time >= attack.getActiveEnd())
