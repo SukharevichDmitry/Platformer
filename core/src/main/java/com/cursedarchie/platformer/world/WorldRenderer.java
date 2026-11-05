@@ -3,6 +3,9 @@ package com.cursedarchie.platformer.world;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
+import com.cursedarchie.platformer.actors.enemies.group.CombatRole;
+import com.cursedarchie.platformer.actors.enemies.group.CombatSlot;
+import com.cursedarchie.platformer.actors.enemies.group.CombatSlotManager;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.Animation;
@@ -153,6 +156,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final BitmapFont damageFont;
     /** Small world-space font for the group-positioning debug labels. */
     private final BitmapFont slotFont;
+    /** Normal-size screen-space font for the formation panel. */
+    private final BitmapFont panelFont = new BitmapFont();
     /** Slot cells closer than this horizontally are stacked into one column; the step is the height between cells. */
     private static final float SLOT_COLUMN_GAP = .5f, SLOT_COLUMN_STEP = .72f;
     private final GlyphLayout damageLayout = new GlyphLayout();
@@ -2380,29 +2385,82 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         drawSlotLabels();
     }
 
+    private static final Color SLOT_MELEE = new Color(.35f, 1f, .4f, 1f), SLOT_RESERVE = new Color(.4f, .75f, 1f, 1f),
+        SLOT_RANGED = new Color(1f, .65f, .2f, 1f), SLOT_SUPPORT = new Color(.8f, .55f, 1f, 1f);
+    private final Color slotTint = new Color();
+    private final GlyphLayout slotLayout = new GlyphLayout();
+
+    private static Color slotColor(CombatSlot.Type type) {
+        switch (type) {
+            case MELEE: return SLOT_MELEE;
+            case RESERVE: return SLOT_RESERVE;
+            case RANGED: return SLOT_RANGED;
+            default: return SLOT_SUPPORT;
+        }
+    }
+
+    /** Short slot code: F-L / S-R / R-L for the melee tiers, Rsv L1 / Rng R2 / Sup L1 for the outer positions. */
+    private static String slotCode(CombatSlot slot) {
+        String n = slot.name;
+        int cut = n.indexOf('_');
+        String rest = n.substring(cut + 1);
+        switch (slot.type) {
+            case MELEE: return n.charAt(0) + "-" + rest.charAt(0);
+            case RESERVE: return "Rsv " + rest;
+            case RANGED: return "Rng " + rest;
+            default: return "Sup " + rest;
+        }
+    }
+
+    /** The enemy's number in the overlay (its place among the living enemies), shared by tags, cells and the panel. */
+    private int enemyNumber(Enemy enemy) {
+        int number = 1;
+        for (Enemy other : gameWorld.getAliveEnemies()) {
+            if (other == enemy) return number;
+            number++;
+        }
+        return number;
+    }
+
+    /** A cell is labelled when it is a melee slot (always) or any other slot that somebody occupies. */
+    private static boolean slotLabelled(CombatSlot slot) {
+        return slot.type == CombatSlot.Type.MELEE || slot.isOccupied();
+    }
+
     /**
-     * Group positioning overlay: every combat slot (grey = unusable, green = vacant, red = occupied, yellow frame =
-     * a slot from which an enemy can strike), a line from each occupied slot to its enemy, and each archer's
-     * line of sight to the hero (green clear, red blocked by an ally or a wall).
+     * Group positioning overlay. Each cell is coloured by kind (green melee, blue reserve, orange ranged, purple
+     * support); an empty cell is a plain frame, an occupied one is crossed out; a yellow frame means an enemy standing
+     * there can strike. Unused outer cells are faint and unlabelled. An orange line joins an occupied cell to its
+     * enemy, and each archer's line of sight to the hero is green when clear and red when blocked.
      */
     private void drawSlotDebug() {
-        com.cursedarchie.platformer.actors.enemies.group.CombatSlotManager manager =
-            gameWorld.getEnemyController().getSlotManager();
+        CombatSlotManager manager = gameWorld.getEnemyController().getSlotManager();
         boolean any = false;
         for (Enemy enemy : gameWorld.getAliveEnemies()) any |= enemy.isSlotManaged();
         if (!any) return;
-        List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slotList = manager.getSlots();
+        Gdx.gl.glEnable(com.badlogic.gdx.graphics.GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(com.badlogic.gdx.graphics.GL20.GL_SRC_ALPHA,
+            com.badlogic.gdx.graphics.GL20.GL_ONE_MINUS_SRC_ALPHA);
+        List<CombatSlot> slotList = manager.getSlots();
         int[] rank = slotLabelRanks(slotList);
         float[] cellY = new float[slotList.size()];
         int[] stack = slotColumns(slotList, cellY);
         for (int i = 0; i < slotList.size(); i++) {
-            com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot = slotList.get(i);
-            float r = slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.MELEE ? .28f :
-                slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.RESERVE ? .2f : .14f;
-            if (!slot.valid) debugRenderer.setColor(.35f, .35f, .35f, 1f);
-            else debugRenderer.setColor(slot.isOccupied() ? Color.RED : Color.GREEN);
+            CombatSlot slot = slotList.get(i);
+            float r = slot.type == CombatSlot.Type.MELEE ? .28f : slot.type == CombatSlot.Type.RESERVE ? .2f : .14f;
+            float alpha = !slot.valid ? .25f : slotLabelled(slot) ? 1f : .4f;
+            if (!slot.valid) debugRenderer.setColor(.5f, .5f, .5f, alpha);
+            else {
+                slotTint.set(slotColor(slot.type));
+                slotTint.a = alpha;
+                debugRenderer.setColor(slotTint);
+            }
             float cy = cellY[i];
             debugRenderer.rect(slot.x - r, cy - r, r * 2f, r * 2f);
+            if (slot.isOccupied()) {
+                debugRenderer.line(slot.x - r, cy - r, slot.x + r, cy + r);
+                debugRenderer.line(slot.x - r, cy + r, slot.x + r, cy - r);
+            }
             if (slot.isAttackCapable()) {
                 debugRenderer.setColor(Color.YELLOW);
                 debugRenderer.rect(slot.x - r - .06f, cy - r - .06f, r * 2f + .12f, r * 2f + .12f);
@@ -2411,15 +2469,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 debugRenderer.setColor(Color.ORANGE);
                 debugRenderer.line(slot.x, cy, slot.getOwner().getPosition().x, slot.getOwner().getPosition().y);
             }
-            if (stack[i] == 1) {   // a lone cell links to its label row; a column's labels sit beside the cells
+            if (rank[i] >= 0 && stack[i] == 1) {   // a lone cell links to its label row; a column's labels sit beside it
                 debugRenderer.setColor(.7f, .7f, .7f, .6f);
                 debugRenderer.line(slot.x, cy + (rank[i] % 2 == 0 ? r : -r), slot.x,
-                    slotLabelY(slot, rank[i]) - (rank[i] % 2 == 0 ? .4f : 0f));
+                    slotLabelY(slot, rank[i]) - (rank[i] % 2 == 0 ? .15f : 0f));
             }
         }
         Vector2 heroPos = hero.getPosition();
         for (Enemy enemy : gameWorld.getAliveEnemies()) {
-            if (enemy.getCombatRole() != com.cursedarchie.platformer.actors.enemies.group.CombatRole.RANGED) continue;
+            if (enemy.getCombatRole() != CombatRole.RANGED) continue;
             debugRenderer.setColor(enemy.isLineBlockedByAlly(heroPos) || !enemy.isCanSeeHero() ? Color.RED : Color.GREEN);
             debugRenderer.line(enemy.getPosition().x, enemy.getPosition().y, heroPos.x, heroPos.y);
         }
@@ -2430,7 +2488,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
      * column instead: the lowest id stays on the ground line and the rest stack upwards. Fills {@code cellY} with the
      * drawn height of every cell and returns the size of the column each cell belongs to (1 = alone).
      */
-    private int[] slotColumns(List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slots, float[] cellY) {
+    private int[] slotColumns(List<CombatSlot> slots, float[] cellY) {
         int n = slots.size();
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
@@ -2452,60 +2510,122 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     }
 
     /**
-     * Ranks the slots left to right. Labels are spread over four rows (two above the squares, two below) by that
-     * rank, so neighbouring labels never share a row and stay readable.
+     * Ranks the labelled slots left to right (-1 for an unlabelled one). Labels are spread over four rows (two above
+     * the cells, two below) by that rank, so neighbouring labels never share a row and stay readable.
      */
-    private int[] slotLabelRanks(List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slots) {
-        Integer[] order = new Integer[slots.size()];
-        for (int i = 0; i < order.length; i++) order[i] = i;
-        java.util.Arrays.sort(order, (x, y) -> Float.compare(slots.get(x).x, slots.get(y).x));
-        int[] rank = new int[order.length];
-        for (int r = 0; r < order.length; r++) rank[order[r]] = r;
+    private int[] slotLabelRanks(List<CombatSlot> slots) {
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < slots.size(); i++) if (slotLabelled(slots.get(i))) order.add(i);
+        order.sort((x, y) -> Float.compare(slots.get(x).x, slots.get(y).x));
+        int[] rank = new int[slots.size()];
+        java.util.Arrays.fill(rank, -1);
+        for (int r = 0; r < order.size(); r++) rank[order.get(r)] = r;
         return rank;
     }
 
-    /** Baseline of a slot's label: even ranks above the square, odd ranks below it, two levels each. */
-    private float slotLabelY(com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot, int rank) {
+    /** Top of a slot's label: even ranks above the cell, odd ranks below it, two levels each. */
+    private float slotLabelY(CombatSlot slot, int rank) {
         int level = (rank / 2) % 2;
-        return rank % 2 == 0 ? slot.y + .8f + level * .55f : slot.y - .4f - level * .55f;
+        return rank % 2 == 0 ? slot.y + .65f + level * .4f : slot.y - .4f - level * .4f;
     }
 
     /**
-     * Small labels next to every slot square: the slot's name and role, and for an occupied slot the occupant's
-     * name (archetype and number), its combat role and its slot state.
+     * World labels (small font) and the screen-space formation panel. In the world each labelled cell carries its
+     * short code, plus the occupant's number when taken, and each enemy in the formation carries its number above its
+     * head. The panel spells out every number: archetype, role, slot and slot state.
      */
     private void drawSlotLabels() {
-        boolean any = false;
-        for (Enemy enemy : gameWorld.getAliveEnemies()) any |= enemy.isSlotManaged();
-        if (!any) return;
-        List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slots =
-            gameWorld.getEnemyController().getSlotManager().getSlots();
+        List<Enemy> members = new ArrayList<>();
+        for (Enemy enemy : gameWorld.getAliveEnemies()) if (enemy.isSlotManaged()) members.add(enemy);
+        if (members.isEmpty()) return;
+        List<CombatSlot> slots = gameWorld.getEnemyController().getSlotManager().getSlots();
         int[] rank = slotLabelRanks(slots);
         float[] cellY = new float[slots.size()];
         int[] stack = slotColumns(slots, cellY);
         spriteBatch.setProjectionMatrix(cam.combined);
         spriteBatch.begin();
         for (int i = 0; i < slots.size(); i++) {
-            com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot = slots.get(i);
+            if (rank[i] < 0) continue;
+            CombatSlot slot = slots.get(i);
+            String text = slotCode(slot) + (slot.isOccupied() ? " #" + enemyNumber(slot.getOwner()) : "");
+            slotLayout.setText(slotFont, text);
             boolean column = stack[i] > 1;
-            float x = column ? slot.x + .38f : slot.x - .3f;                   // column: beside the cell
-            float y = column ? cellY[i] + .2f : slotLabelY(slot, rank[i]);
-            slotFont.setColor(!slot.valid ? Color.GRAY : slot.isOccupied() ? Color.SALMON : Color.LIME);
-            slotFont.draw(spriteBatch, slot.name + " (" + slot.type + ")", x, y);
-            if (slot.isOccupied()) {
-                Enemy owner = slot.getOwner();
-                int number = 1;
-                for (Enemy other : gameWorld.getAliveEnemies()) {
-                    if (other == owner) break;
-                    number++;
-                }
-                slotFont.setColor(Color.WHITE);
-                slotFont.draw(spriteBatch, "#" + number + " " + owner.getArchetypeId() + " " +
-                    owner.getCombatRole() + " " + owner.getSlotState(), x, y - .22f);
-            }
+            float x = column ? slot.x + .38f : slot.x - slotLayout.width / 2f;   // column: beside the cell
+            float y = column ? cellY[i] + slotLayout.height / 2f : slotLabelY(slot, rank[i]);
+            slotTint.set(!slot.valid ? Color.GRAY : slotColor(slot.type));
+            slotFont.setColor(slotTint);
+            slotFont.draw(spriteBatch, text, x, y);
+        }
+        for (Enemy enemy : members) {
+            String tag = "#" + enemyNumber(enemy);
+            slotLayout.setText(slotFont, tag);
+            float x = enemy.getPosition().x - slotLayout.width / 2f;
+            float y = enemy.getPosition().y + enemy.getSize() / 2f + .3f;
+            slotFont.setColor(0f, 0f, 0f, .8f);
+            slotFont.draw(spriteBatch, tag, x + .015f, y - .015f);
+            slotFont.setColor(Color.WHITE);
+            slotFont.draw(spriteBatch, tag, x, y);
         }
         slotFont.setColor(Color.WHITE);
         spriteBatch.end();
+        drawSlotPanel(members);
+    }
+
+    /** Screen-space table of the formation: one row per enemy, plus a colour key. */
+    private void drawSlotPanel(List<Enemy> members) {
+        float width = Gdx.graphics.getWidth(), height = Gdx.graphics.getHeight();
+        final float left = 12f, row = 18f, pad = 8f;
+        final float[] col = {0f, 34f, 140f, 222f, 290f};
+        float panelW = 480f;
+        float panelH = pad * 2f + row * (members.size() + 4);
+        float top = height - 112f;
+        com.badlogic.gdx.math.Matrix4 screen = new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0f, 0f, width, height);
+        Gdx.gl.glEnable(com.badlogic.gdx.graphics.GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(com.badlogic.gdx.graphics.GL20.GL_SRC_ALPHA,
+            com.badlogic.gdx.graphics.GL20.GL_ONE_MINUS_SRC_ALPHA);
+        debugRenderer.setProjectionMatrix(screen);
+        debugRenderer.begin(ShapeType.Filled);
+        debugRenderer.setColor(0f, 0f, 0f, .6f);
+        debugRenderer.rect(left - pad, top - panelH + pad, panelW, panelH);
+        debugRenderer.end();
+        spriteBatch.setProjectionMatrix(screen);
+        spriteBatch.begin();
+        float y = top;
+        panelFont.setColor(Color.WHITE);
+        panelFont.draw(spriteBatch, "GROUP POSITIONING", left, y);
+        y -= row;
+        panelFont.setColor(.65f, .65f, .7f, 1f);
+        String[] heads = {"#", "TYPE", "ROLE", "SLOT", "STATE"};
+        for (int c = 0; c < heads.length; c++) panelFont.draw(spriteBatch, heads[c], left + col[c], y);
+        y -= row;
+        for (Enemy enemy : members) {
+            CombatSlot slot = enemy.getCurrentSlot();
+            slotTint.set(slot == null ? Color.GRAY : slotColor(slot.type));
+            panelFont.setColor(slotTint);
+            panelFont.draw(spriteBatch, "#" + enemyNumber(enemy), left + col[0], y);
+            panelFont.draw(spriteBatch, enemy.getArchetypeId(), left + col[1], y);
+            panelFont.draw(spriteBatch, String.valueOf(enemy.getCombatRole()), left + col[2], y);
+            panelFont.draw(spriteBatch, slot == null ? "-" : slotCode(slot), left + col[3], y);
+            panelFont.draw(spriteBatch, String.valueOf(enemy.getSlotState()), left + col[4], y);
+            y -= row;
+        }
+        float x = left;
+        String[] keyNames = {"MELEE", "RESERVE", "RANGED", "SUPPORT"};
+        CombatSlot.Type[] keyTypes = {CombatSlot.Type.MELEE, CombatSlot.Type.RESERVE, CombatSlot.Type.RANGED,
+            CombatSlot.Type.SUPPORT};
+        for (int k = 0; k < keyNames.length; k++) {
+            panelFont.setColor(slotColor(keyTypes[k]));
+            panelFont.draw(spriteBatch, keyNames[k], x, y);
+            slotLayout.setText(panelFont, keyNames[k] + "   ");
+            x += slotLayout.width;
+        }
+        y -= row;
+        panelFont.setColor(.65f, .65f, .7f, 1f);
+        panelFont.draw(spriteBatch, "X = taken   yellow frame = can strike   line = cell to enemy", left, y);
+        panelFont.setColor(Color.WHITE);
+        spriteBatch.end();
+        spriteBatch.setProjectionMatrix(cam.combined);
+        debugRenderer.setProjectionMatrix(cam.combined);
     }
 
     private void drawAttackRuntime(Vector2 origin, Object state, Rectangle box) {
@@ -2683,6 +2803,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         ringTexture.dispose();
         damageFont.dispose();
         slotFont.dispose();
+        panelFont.dispose();
         itemLabelFont.dispose();
         bandageSprite.dispose();
         noteSprite.dispose();
