@@ -151,6 +151,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     private final SpriteBatch spriteBatch;
     private final BitmapFont damageFont;
+    /** Small world-space font for the group-positioning debug labels. */
+    private final BitmapFont slotFont;
     private final GlyphLayout damageLayout = new GlyphLayout();
     private final boolean debug;
     private boolean combatDebug;
@@ -186,6 +188,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         // World-space glyphs are much smaller than one world unit. Integer vertex
         // snapping can collapse them into zero-sized quads at this scale.
         damageFont.setUseIntegerPositions(false);
+        slotFont = new BitmapFont();
+        slotFont.getData().setScale(0.014f);
+        slotFont.setUseIntegerPositions(false);
         atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
         ruinsAtlas = new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas"));
         for (int i = 0; i < wallFaces.length; i++) {
@@ -2384,7 +2389,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         boolean any = false;
         for (Enemy enemy : gameWorld.getAliveEnemies()) any |= enemy.isSlotManaged();
         if (!any) return;
-        for (com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot : manager.getSlots()) {
+        List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slotList = manager.getSlots();
+        int[] rank = slotLabelRanks(slotList);
+        for (int i = 0; i < slotList.size(); i++) {
+            com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot = slotList.get(i);
             float r = slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.MELEE ? .28f :
                 slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.RESERVE ? .2f : .14f;
             if (!slot.valid) debugRenderer.setColor(.35f, .35f, .35f, 1f);
@@ -2398,6 +2406,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 debugRenderer.setColor(Color.ORANGE);
                 debugRenderer.line(slot.x, slot.y, slot.getOwner().getPosition().x, slot.getOwner().getPosition().y);
             }
+            debugRenderer.setColor(.7f, .7f, .7f, .6f);
+            debugRenderer.line(slot.x, slot.y + (rank[i] % 2 == 0 ? r : -r), slot.x, slotLabelY(slot, rank[i]) - (rank[i] % 2 == 0 ? .4f : 0f));
         }
         Vector2 heroPos = hero.getPosition();
         for (Enemy enemy : gameWorld.getAliveEnemies()) {
@@ -2407,20 +2417,57 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         }
     }
 
-    /** Role, slot state and slot name above every enemy that takes part in the formation. */
+    /**
+     * Ranks the slots left to right. Labels are spread over four rows (two above the squares, two below) by that
+     * rank, so neighbouring labels never share a row and stay readable.
+     */
+    private int[] slotLabelRanks(List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slots) {
+        Integer[] order = new Integer[slots.size()];
+        for (int i = 0; i < order.length; i++) order[i] = i;
+        java.util.Arrays.sort(order, (x, y) -> Float.compare(slots.get(x).x, slots.get(y).x));
+        int[] rank = new int[order.length];
+        for (int r = 0; r < order.length; r++) rank[order[r]] = r;
+        return rank;
+    }
+
+    /** Baseline of a slot's label: even ranks above the square, odd ranks below it, two levels each. */
+    private float slotLabelY(com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot, int rank) {
+        int level = (rank / 2) % 2;
+        return rank % 2 == 0 ? slot.y + .8f + level * .55f : slot.y - .4f - level * .55f;
+    }
+
+    /**
+     * Small labels next to every slot square: the slot's name and role, and for an occupied slot the occupant's
+     * name (archetype and number), its combat role and its slot state.
+     */
     private void drawSlotLabels() {
         boolean any = false;
         for (Enemy enemy : gameWorld.getAliveEnemies()) any |= enemy.isSlotManaged();
         if (!any) return;
+        List<com.cursedarchie.platformer.actors.enemies.group.CombatSlot> slots =
+            gameWorld.getEnemyController().getSlotManager().getSlots();
+        int[] rank = slotLabelRanks(slots);
         spriteBatch.setProjectionMatrix(cam.combined);
         spriteBatch.begin();
-        damageFont.setColor(Color.WHITE);
-        for (Enemy enemy : gameWorld.getAliveEnemies()) {
-            if (!enemy.isSlotManaged()) continue;
-            String slotName = enemy.getCurrentSlot() == null ? "-" : enemy.getCurrentSlot().name;
-            damageFont.draw(spriteBatch, enemy.getCombatRole() + " " + enemy.getSlotState() + " @" + slotName,
-                enemy.getPosition().x - 1.1f, enemy.getPosition().y + enemy.getSize() / 2f + .55f);
+        for (int i = 0; i < slots.size(); i++) {
+            com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot = slots.get(i);
+            float x = slot.x - .3f;
+            float y = slotLabelY(slot, rank[i]);
+            slotFont.setColor(!slot.valid ? Color.GRAY : slot.isOccupied() ? Color.SALMON : Color.LIME);
+            slotFont.draw(spriteBatch, slot.name + " (" + slot.type + ")", x, y);
+            if (slot.isOccupied()) {
+                Enemy owner = slot.getOwner();
+                int number = 1;
+                for (Enemy other : gameWorld.getAliveEnemies()) {
+                    if (other == owner) break;
+                    number++;
+                }
+                slotFont.setColor(Color.WHITE);
+                slotFont.draw(spriteBatch, "#" + number + " " + owner.getArchetypeId() + " " +
+                    owner.getCombatRole() + " " + owner.getSlotState(), x, y - .22f);
+            }
         }
+        slotFont.setColor(Color.WHITE);
         spriteBatch.end();
     }
 
@@ -2598,6 +2645,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         glowTexture.dispose();
         ringTexture.dispose();
         damageFont.dispose();
+        slotFont.dispose();
         itemLabelFont.dispose();
         bandageSprite.dispose();
         noteSprite.dispose();
