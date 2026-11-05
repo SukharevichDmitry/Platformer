@@ -136,6 +136,36 @@ The ruins profile is version 10, with 11–14 rooms per run. Old run checkpoints
 are reset when their world layout version differs; incompatible generated
 layouts are rejected instead of being loaded into the new geometry.
 
+### Group positioning and soft pushing
+
+Enemies that can see the hero form a combat formation instead of queuing behind each other. The
+`CombatSlotManager` (`actors/enemies/group`, tuned in `assets/config/group_positioning.json`) owns
+slots that hang off the hero and move with it. In this side-scroller the six close-range slots of the
+design become three tiers per side: FRONT, SIDE and REAR, left and right. Whether an enemy can strike
+from a tier depends on its own reach, so a short-armed infiltrator only fits FRONT while a collector or
+a heavy also fits SIDE. Further out there are RESERVE (surrounding), RANGED and SUPPORT slots.
+
+* An enemy attacks only if it stands in a melee slot, has the hero in reach and in sight, its cooldown
+  is over and it is not staggered, retreating or repositioning. The slot count is the only limit: there
+  is no separate cap on attackers. The slot is re-checked when the attack starts and stays reserved
+  until the attack (including recovery) has ended.
+* With no free melee slot an enemy takes a RESERVE position on its own side, stays combat-ready, and
+  takes a freed slot when one opens (nearest enemy first). Light enemies jump over the hero to a free
+  slot on the other side; heavies and the boss cannot.
+* Roles: standard (nearest slot, steps away after an attack when others wait), fast (never head-on,
+  prefers the hero's back, steps away quickly), heavy (needs more room, never shares a slot with
+  another heavy), ranged (RANGED slots only, keeps its firing distance, never shoots through an ally,
+  changes side when blocked) and support (stays behind the front line, assists enemies in combat).
+* Allies do not collide with each other (hero, walls and ground still do). Instead overlapping allies
+  steer apart: `direction * overlap * separationStrength`, capped, shared by how settled each one is,
+  with separate minimum distances for standard, heavy, ranged and support pairs. Arrows only ever
+  hit the hero or the level.
+* Slots are released when the enemy dies, is staggered, begins a retreat, can no longer reach the hero
+  or has finished an attack and steps away; all slots are cleared on a room or location change.
+* F3 (combat debug) also draws every slot (grey unusable, green vacant, red occupied, yellow frame =
+  can strike from here), a line to each occupant, the role/state/slot name above each enemy, and each
+  archer's line of sight (green clear, red blocked).
+
 ### Map and world coordinates
 
 Each character in `tileRows` occupies exactly one tile and one world unit.

@@ -5,6 +5,10 @@ import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.actors.enemies.group.CombatRole;
+import com.cursedarchie.platformer.actors.enemies.group.CombatSlot;
+import com.cursedarchie.platformer.actors.enemies.group.GroupPositioningConfig;
+import com.cursedarchie.platformer.actors.enemies.group.SlotState;
 import com.cursedarchie.platformer.actors.enemies.logic.EnemyBrain;
 import com.cursedarchie.platformer.actors.enemies.machines.MotionStateMachine;
 import com.cursedarchie.platformer.actors.enemies.states.combat.AttackState;
@@ -136,8 +140,16 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     public static final float CAST_TIME = 1f, CAST_COOLDOWN = 9f, CAST_INTERRUPTED_COOLDOWN = 3f,
         BUFF_DURATION = 7f, CAST_RANGE = 6f;
     private float castRemaining, buffRemaining;
-    // Group coordination (set by EnemyController): attack slots, spawn anchor and nearby allies.
-    private boolean attackPermit = true;
+    // Group coordination (set by CombatSlotManager): the slot this enemy holds, where it is heading, and its leap.
+    private CombatSlot currentSlot, desiredSlot;
+    private SlotState slotState = SlotState.NONE;
+    private float slotTargetX = Float.NaN;
+    private boolean slotManaged, slotCrossing, slotWasAttacking;
+    private float slotLeaveRemaining, slotHoldTime;
+    public enum LeapPhase { NONE, AIRBORNE, SETTLING }
+    private static final float WALK_DAMPING = 8f;
+    private LeapPhase leapPhase = LeapPhase.NONE;
+    private float leapTime, leapCooldownRemaining;
     private float anchorX = Float.NaN;
     private Array<Enemy> groupAllies;
     private float lineBlockedRemaining;
@@ -226,7 +238,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         Fixture bodyFixture = body.getFixtureList().first();
         bodyFixture.setDensity(2000f);
         body.resetMassData();
-        body.setLinearDamping(8f);
+        body.setLinearDamping(WALK_DAMPING);
 
         //FOOT_SENSOR============================================================
 
@@ -509,8 +521,84 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         blockRemaining = 0f;
         cancelRangedAttack();
     }
-    public void setAttackPermit(boolean permit) { attackPermit = permit; }
-    public boolean hasAttackPermit() { return attackPermit; }
+    /*=====================================GROUP POSITIONING (slots)=================================================*/
+    public CombatRole getCombatRole() { return CombatRole.of(this); }
+    public CombatSlot getCurrentSlot() { return currentSlot; }
+    public void setCurrentSlot(CombatSlot slot) { currentSlot = slot; }
+    public CombatSlot getDesiredSlot() { return desiredSlot; }
+    public void setDesiredSlot(CombatSlot slot) { desiredSlot = slot; }
+    public SlotState getSlotState() { return slotState; }
+    public void setSlotState(SlotState state) { slotState = state == null ? SlotState.NONE : state; }
+    public boolean hasSlotTarget() { return !Float.isNaN(slotTargetX); }
+    public float getSlotTargetX() { return slotTargetX; }
+    public void setSlotTargetX(float x) { slotTargetX = x; }
+    /** True once the slot manager has taken this enemy into the formation: from then on attacks need a slot. */
+    public boolean isSlotManaged() { return slotManaged; }
+    public void setSlotManaged(boolean managed) { slotManaged = managed; }
+    public boolean isSlotCrossing() { return slotCrossing; }
+    public void setSlotCrossing(boolean crossing) { slotCrossing = crossing; }
+    public boolean wasSlotAttacking() { return slotWasAttacking; }
+    public void setSlotWasAttacking(boolean value) { slotWasAttacking = value; }
+    public float getSlotLeaveRemaining() { return slotLeaveRemaining; }
+    public void setSlotLeaveRemaining(float seconds) { slotLeaveRemaining = Math.max(0f, seconds); }
+    public float getSlotHoldTime() { return slotHoldTime; }
+    public void setSlotHoldTime(float seconds) { slotHoldTime = seconds; }
+    /** The enemy owns a melee attack slot: the first of the conditions for starting a melee attack. */
+    public boolean hasAttackSlot() {
+        return currentSlot != null && currentSlot.type == CombatSlot.Type.MELEE && currentSlot.getOwner() == this;
+    }
+    /** In the formation and engaged with the hero (used by the support caster to pick whom to assist). */
+    public boolean isInActiveCombat() {
+        return slotManaged && slotState != SlotState.NONE && getCombatRole() != CombatRole.SUPPORT;
+    }
+    /** Forgets everything the slot system told this enemy (slot ownership is cleared by the manager). */
+    public void clearSlotAssignment() {
+        currentSlot = null;
+        desiredSlot = null;
+        slotState = SlotState.NONE;
+        slotTargetX = Float.NaN;
+        slotCrossing = false;
+        slotManaged = false;
+        slotWasAttacking = false;
+        slotLeaveRemaining = 0f;
+        slotHoldTime = 0f;
+    }
+
+    public LeapPhase getLeapPhase() { return leapPhase; }
+    /** While leaping over the hero the enemy passes through them, so it can never get wedged on the way. */
+    public boolean isLeaping() { return leapPhase != LeapPhase.NONE; }
+    public boolean isLeapAirborne() { return leapPhase == LeapPhase.AIRBORNE; }
+    public float getLeapTime() { return leapTime; }
+    public float getLeapCooldownRemaining() { return leapCooldownRemaining; }
+    public void endLeap() {
+        leapPhase = LeapPhase.NONE;
+        leapTime = 0f;
+        if (body != null) body.setLinearDamping(WALK_DAMPING);
+    }
+    /** An arc over the hero (and over allies): sideways speed vx, upward speed vy. Only from solid ground. */
+    public boolean beginLeap(float vx, float vy) {
+        if (!alive || !active || !grounded || isLeaping() || isKnockedDown() || isStaggered() ||
+            isAttacking() || isDashPhase() || isDodging() || leapCooldownRemaining > 0f) return false;
+        leapPhase = LeapPhase.AIRBORNE;
+        leapTime = 0f;
+        leapCooldownRemaining = GroupPositioningConfig.get().leapCooldown;
+        attackRequested = false;
+        currentIntent = Intent.IDLE;
+        facingLeft = vx < 0f;
+        body.setLinearDamping(0f);                 // the arc must keep its speed (walking damping would stop it)
+        body.setLinearVelocity(vx, vy);
+        return true;
+    }
+    private void updateLeap(float delta) {
+        leapCooldownRemaining = Math.max(0f, leapCooldownRemaining - delta);
+        if (leapPhase == LeapPhase.NONE) return;
+        leapTime += delta;
+        if (leapPhase == LeapPhase.AIRBORNE && ((leapTime > .2f && grounded) || leapTime > .9f)) {
+            leapPhase = LeapPhase.SETTLING;
+            leapTime = 0f;
+            body.setLinearDamping(WALK_DAMPING);   // landing brakes the sideways speed again
+        }
+    }
     public boolean isLineBlocked() { return lineBlockedRemaining > 0f; }
     /** Breaker holds its ground: it will not chase far past where it first stood. */
     public boolean isBeyondLeash(float limit) { return !Float.isNaN(anchorX) && Math.abs(getPosition().x - anchorX) > limit; }
@@ -626,6 +714,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         retreatCooldownRemaining = Math.max(0f, retreatCooldownRemaining - delta);
         supportCooldownRemaining = Math.max(0f, supportCooldownRemaining - delta);
         supportFlashRemaining = Math.max(0f, supportFlashRemaining - delta);
+        if (isLeapAirborne()) return;
         if ("default".equals(archetypeId)) updateRaider(hero);
         if ("infiltrator".equals(archetypeId)) updateInfiltrator(hero);
         if ("overseer".equals(archetypeId)) updateOverseer(allies, delta);
@@ -742,6 +831,7 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             Enemy ally = allies.get(i);
             if (ally == this || !ally.isAlive() || !ally.isActive() || ally.isBuffed() ||
                 "overseer".equals(ally.getArchetypeId()) ||
+                (slotManaged && !ally.isInActiveCombat()) ||
                 ally.getPosition().dst2(getPosition()) > CAST_RANGE * CAST_RANGE) continue;
             if (best == null || ally.getPosition().dst2(getPosition()) < best.getPosition().dst2(getPosition()))
                 best = ally;
@@ -1070,7 +1160,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             isStaggered() || isDodging() || isRetreating() || isActionRecovering() ||
             isRangedWindingUp() || combatStateMachine.getCurrentState() instanceof AttackState) return;
 
-        if (isCasting() || !attackPermit || turnGraceRemaining > 0f) return;
+        if (isCasting() || turnGraceRemaining > 0f || isLeapAirborne()) return;
+        // In a group fight a melee attack needs a melee slot (an archer's point-blank strike is self-defence).
+        if (slotManaged && getCombatRole() != CombatRole.RANGED && !hasAttackSlot()) return;
         lungeRequested = "default".equals(archetypeId) && nextAttackLunge ||
             "infiltrator".equals(archetypeId) && flankRemaining > 0f;
         slamRequested = "heavy_hunter".equals(archetypeId) && nextSlam;
@@ -1094,6 +1186,9 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         }
 
         attackRequested = false;
+        // Re-verify just before the attack starts: slot, line of sight and reach may have changed since the request.
+        if (slotManaged && getCombatRole() != CombatRole.RANGED &&
+            (!hasAttackSlot() || !canSeeHero || (!lungeRequested && !canAttackHero))) return;
         if ("scavenger".equals(archetypeId)) {
             // Melee clearly breaks the ranged stance: drop any bow-lowering pose and lost-draw effect.
             rangedRecoveryRemaining = 0f;
@@ -1159,6 +1254,14 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         if (retreatTrailRemaining > 0f) {
             retreatTrailRemaining = Math.max(0f, retreatTrailRemaining - delta);
             if (Math.abs(body.getLinearVelocity().x) > .5f) retreatTrailToX = getPosition().x;
+        }
+
+        updateLeap(delta);
+        if (isLeapAirborne()) {
+            // In the air nothing but the arc matters: no thinking, no attack, no steering.
+            attackRequested = false;
+            currentIntent = Intent.IDLE;
+            return;
         }
 
         // Reactions and evasive movement own the actor until they finish. This keeps

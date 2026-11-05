@@ -10,6 +10,7 @@ import com.cursedarchie.platformer.actors.enemies.RangedAttackConfig;
 import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
 import com.cursedarchie.platformer.actors.enemies.logic.SimpleEnemyBrain;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.Array;
 import com.cursedarchie.platformer.actors.Actor;
 import com.cursedarchie.platformer.actors.enemies.states.combat.AttackState;
 import com.cursedarchie.platformer.actors.enemies.states.motion.MotionIdleState;
@@ -83,6 +84,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkHeroBlockRules();
         checkNewEnemyRoles();
         checkGroupAttackSlots();
+        checkGroupPositioning();
         checkRollCounterAndJumpAttack();
         checkArrowArcPhysics();
         checkAttackRhythm();
@@ -380,7 +382,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             attacker.getBody().setTransform(16f, boss ? 3.5f : 2.5f, 0f);
             attacker.getBody().setLinearVelocity(0f, 0f);
 
-            for (int i = 0; i < 100 && !attacker.isCanAttackHero(); i++)
+            // The enemy walks to its combat slot (just inside its reach) and stops there.
+            for (int i = 0; i < 200 && !(attacker.isCanAttackHero() &&
+                Math.abs(attacker.getBody().getLinearVelocity().x) < .01f); i++)
                 chaseWorld.update(GameWorld.FIXED_STEP);
             if (!attacker.isCanAttackHero())
                 throw new AssertionError("Enemy never reached its attack range: boss=" + boss);
@@ -2130,18 +2134,23 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         GameWorld fight = new GameWorld();
         try {
             Hero hero = fight.getHero();
+            hero.setMaxHealth(1000f);
+            hero.setHealth(1000f);
             hero.getBody().setTransform(10f, 2.5f, 0f);
             for (int i = 0; i < 4; i++) {
-                Enemy e = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(12f + i * 1.5f, 2.5f));
-                e.setBrain(null);
-                e.setIntent(Enemy.Intent.IDLE);
+                Enemy e = EnemyFactory.createDefaultEnemy(fight.getWorld(), new Vector2(13f + i * 1.5f, 2.5f));
+                e.setBrain(new SimpleEnemyBrain(fight));
                 fight.addEnemy(e);
             }
-            fight.update(GameWorld.FIXED_STEP);
-            int permitted = 0;
-            for (Enemy e : fight.getAliveEnemies()) if (e.hasAttackPermit()) permitted++;
-            if (permitted > 2) throw new AssertionError("More than two melee enemies hold attack slots: " + permitted);
-            if (permitted < 1) throw new AssertionError("No melee enemy received an attack slot");
+            for (int i = 0; i < 90; i++) fight.update(GameWorld.FIXED_STEP);
+            // There is no global attacker cap any more: the slots themselves are the limit.
+            com.cursedarchie.platformer.actors.enemies.group.CombatSlotManager slots =
+                fight.getEnemyController().getSlotManager();
+            int holders = 0;
+            for (Enemy e : fight.getAliveEnemies()) if (e.hasAttackSlot()) holders++;
+            if (holders != slots.countOccupied(com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.MELEE))
+                throw new AssertionError("Melee slot ownership and enemy slots disagree");
+            if (holders < 2) throw new AssertionError("Fewer than two melee enemies hold an attack slot: " + holders);
             // An archer standing behind an ally may not shoot through it.
             Enemy archer = EnemyFactory.createScavenger(fight.getWorld(), new Vector2(20f, 2.5f));
             archer.setBrain(null);
@@ -2153,6 +2162,437 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         } finally {
             fight.dispose();
         }
+    }
+
+    /*=====================================GROUP POSITIONING AND SOFT PUSHING=========================================*/
+
+    /** Watches a fight step by step and enforces the rules that must hold at every moment, not just at the end. */
+    private static final class GroupWatch {
+        final GameWorld world;
+        boolean heroMoves;
+        int maxAttackers;
+        float maxStep;
+        private final java.util.IdentityHashMap<Enemy, float[]> last = new java.util.IdentityHashMap<>();
+
+        GroupWatch(GameWorld world) { this.world = world; }
+
+        void run(int steps) { for (int i = 0; i < steps; i++) step(); }
+
+        void step() {
+            world.update(GameWorld.FIXED_STEP);
+            Hero hero = world.getHero();
+            float hx = hero.getPosition().x;
+            int attackers = 0;
+            for (Enemy e : world.getAliveEnemies()) {
+                if (!e.isActive()) continue;
+                boolean melee = e.getCombatRole().isMelee();
+                boolean attacking = e.isAttacking();
+                if (attacking && melee) attackers++;
+                if (attacking && melee && e.isSlotManaged() && !e.hasAttackSlot())
+                    throw new AssertionError("A melee enemy attacked without holding an attack slot");
+                if (e.getCurrentSlot() != null && e.getCurrentSlot().getOwner() != e)
+                    throw new AssertionError("Slot " + e.getCurrentSlot() + " is listed on an enemy that does not own it");
+                float x = e.getPosition().x;
+                float side = Math.signum(x - hx);
+                float[] before = last.get(e);
+                if (before != null) {
+                    if (!e.isStaggered() && !e.isKnockedDown()) maxStep = Math.max(maxStep, Math.abs(x - before[0]));
+                    // Allies never pass through the hero: changing sides needs a leap (which starts its cooldown).
+                    if (!heroMoves && before[1] != 0f && side != 0f && before[1] != side &&
+                        e.getLeapCooldownRemaining() <= 0f && !e.isLeaping())
+                        throw new AssertionError("An enemy passed through the hero without leaping");
+                    // A melee attack may only start from within the weapon's reach of the hero.
+                    if (attacking && melee && before[2] == 0f && e.isSlotManaged() &&
+                        Math.abs(x - hx) > e.getAttackApproachDistance(hero) + .25f)
+                        throw new AssertionError("An enemy started an attack from outside its reach");
+                }
+                last.put(e, new float[]{x, side, attacking ? 1f : 0f});
+            }
+            maxAttackers = Math.max(maxAttackers, attackers);
+            for (com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot :
+                world.getEnemyController().getSlotManager().getSlots())
+                if (slot.getOwner() != null && slot.getOwner().getCurrentSlot() != slot)
+                    throw new AssertionError("Slot " + slot + " names an owner that does not hold it");
+        }
+    }
+
+    /** An open arena: the hero stands still (static) on the open floor at X0, with plenty of health. */
+    private static GameWorld groupArena() {
+        GameWorld w = new GameWorld();
+        parkEnemies(w);
+        Hero hero = w.getHero();
+        hero.setMaxHealth(1000f);
+        hero.setHealth(1000f);
+        hero.getBody().setTransform(X0, 2.5f, 0f);
+        hero.getBody().setLinearVelocity(0f, 0f);
+        hero.setFacingLeft(false);
+        hero.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+        return w;
+    }
+
+    private static Enemy groupFoe(GameWorld w, String type, float x) {
+        Vector2 at = new Vector2(x, 2.5f);
+        Enemy e;
+        switch (type) {
+            case "scavenger": e = EnemyFactory.createScavenger(w.getWorld(), at); break;
+            case "infiltrator": e = EnemyFactory.createInfiltrator(w.getWorld(), at); break;
+            case "overseer": e = EnemyFactory.createOverseer(w.getWorld(), at); break;
+            case "red_collector": e = EnemyFactory.createRedCollector(w.getWorld(), at); break;
+            case "heavy_hunter": e = EnemyFactory.createHeavyHunter(w.getWorld(), at); break;
+            default: e = EnemyFactory.createDefaultEnemy(w.getWorld(), at);
+        }
+        e.getBody().setTransform(x, 2f + e.getSize() / 2f + .05f, 0f);
+        e.setBrain(new SimpleEnemyBrain(w));
+        e.setFacingLeft(x > X0);
+        w.addEnemy(e);
+        return e;
+    }
+
+    /** The enemies that really take part (parked or static fixtures are inactive). */
+    private static Array<Enemy> activeFoes(GameWorld w) {
+        Array<Enemy> result = new Array<>();
+        for (Enemy e : w.getAliveEnemies()) if (e.isActive()) result.add(e);
+        return result;
+    }
+
+    private static com.cursedarchie.platformer.actors.enemies.group.CombatSlotManager slotsOf(GameWorld w) {
+        return w.getEnemyController().getSlotManager();
+    }
+
+    private static final com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type MELEE_SLOT =
+        com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.MELEE;
+
+    private void checkGroupPositioning() {
+        checkGroupDistribution();
+        checkGroupSlotRelease();
+        checkGroupRoles();
+        checkGroupMovement();
+        checkSoftPushing();
+    }
+
+    private void checkGroupDistribution() {
+        GameWorld w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            float[] xs = {2.6f, 3.4f, 4f, 4.5f, 5f};
+            for (float x : xs) groupFoe(w, "default", X0 + x);
+            int maxOccupied = 0;
+            boolean sawWaiting = false;
+            for (int i = 0; i < 480; i++) {
+                watch.step();
+                if (i >= 240) {
+                    maxOccupied = Math.max(maxOccupied, slotsOf(w).countOccupied(MELEE_SLOT));
+                    for (Enemy e : activeFoes(w))
+                        if (e.getSlotState() == com.cursedarchie.platformer.actors.enemies.group.SlotState.SURROUNDING)
+                            sawWaiting = true;
+                }
+            }
+            float hx = w.getHero().getPosition().x;
+            int left = 0, right = 0;
+            for (Enemy e : activeFoes(w)) {
+                if (e.getPosition().x < hx - .5f) left++;
+                else if (e.getPosition().x > hx + .5f) right++;
+            }
+            if (left < 1 || right < 1)
+                throw new AssertionError("Five enemies from one side did not spread around the hero: left=" + left + " right=" + right);
+            if (maxOccupied < 3)
+                throw new AssertionError("Fewer than three melee slots were filled at once: " + maxOccupied);
+            if (!sawWaiting)
+                throw new AssertionError("With more enemies than attack slots, one must wait on a surrounding position");
+            if (watch.maxAttackers < 2)
+                throw new AssertionError("Enemies never attacked simultaneously from different slots");
+            if (watch.maxStep > .35f)
+                throw new AssertionError("An enemy moved " + watch.maxStep + " m in one step (teleport-like)");
+            // No total overlap: allies keep a distance even though they are not solid.
+            Array<Enemy> all = activeFoes(w);
+            for (int i = 0; i < all.size; i++)
+                for (int j = i + 1; j < all.size; j++)
+                    if (Math.abs(all.get(i).getPosition().x - all.get(j).getPosition().x) < .35f &&
+                        Math.abs(all.get(i).getPosition().y - all.get(j).getPosition().y) < .9f)
+                        throw new AssertionError("Two enemies stand on top of each other");
+        } finally { w.dispose(); }
+    }
+
+    private void checkGroupSlotRelease() {
+        GameWorld w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            for (float x : new float[]{2.6f, 3.4f, 4f, 4.5f, 5f}) groupFoe(w, "default", X0 + x);
+            watch.run(420);
+            com.cursedarchie.platformer.actors.enemies.group.CombatSlot front = slotsOf(w).findSlot("FRONT_RIGHT");
+            Enemy first = front.getOwner();
+            if (first == null) throw new AssertionError("Nobody holds the front-right slot after the approach");
+            // A dying attacker frees its slot and the nearest suitable waiting enemy takes it.
+            first.setAlive(false);
+            watch.run(240);
+            if (front.getOwner() == null || front.getOwner() == first || !front.getOwner().isAlive())
+                throw new AssertionError("The freed slot was not taken by another enemy");
+            // A staggered enemy gives its slot up at once.
+            Enemy holder = null;
+            for (Enemy e : activeFoes(w))
+                if (e.getSlotState() == com.cursedarchie.platformer.actors.enemies.group.SlotState.ATTACK_POSITION &&
+                    !e.isAttacking()) { holder = e; break; }
+            if (holder == null) throw new AssertionError("No enemy standing in an attack position to stagger");
+            holder.applyStagger(.8f);
+            watch.run(2);
+            if (holder.getCurrentSlot() != null)
+                throw new AssertionError("A staggered enemy kept its slot");
+        } finally { w.dispose(); }
+    }
+
+    private void checkGroupRoles() {
+        com.cursedarchie.platformer.actors.enemies.group.GroupPositioningConfig cfg =
+            com.cursedarchie.platformer.actors.enemies.group.GroupPositioningConfig.get();
+        // Ranged: keeps its distance, never takes a melee slot.
+        GameWorld w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            Enemy archer = groupFoe(w, "scavenger", X0 + 7f);
+            groupFoe(w, "default", X0 + 3.5f);
+            groupFoe(w, "default", X0 + 4.5f);
+            for (int i = 0; i < 480; i++) {
+                watch.step();
+                if (archer.hasAttackSlot()) throw new AssertionError("An archer took a melee slot");
+            }
+            float d = Math.abs(archer.getPosition().x - X0);
+            if (d < cfg.rangedMinDistance - .6f || d > cfg.rangedMaxDistance + .8f)
+                throw new AssertionError("Archer stands " + d + " m from the hero, outside its firing band");
+            if (archer.getSlotState() != com.cursedarchie.platformer.actors.enemies.group.SlotState.RANGED_POSITION)
+                throw new AssertionError("Archer is not in its ranged position: " + archer.getSlotState());
+            if (archer.isLineBlockedByAlly(w.getHero().getPosition()))
+                throw new AssertionError("Archer still has an ally in its line of fire");
+        } finally { w.dispose(); }
+
+        // Ranged repositions when an ally blocks the line of fire.
+        w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            watch.heroMoves = false;
+            Enemy blocker = EnemyFactory.createDefaultEnemy(w.getWorld(), new Vector2(X0 + 3f, 2.5f));
+            blocker.setActive(false);
+            w.addEnemy(blocker);
+            blocker.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+            Enemy archer = groupFoe(w, "scavenger", X0 + 7f);
+            watch.run(540);
+            if (archer.getPosition().x >= X0 || archer.isLineBlockedByAlly(w.getHero().getPosition()))
+                throw new AssertionError("Archer did not move to a side with a clear line of fire (x=" +
+                    archer.getPosition().x + ")");
+        } finally { w.dispose(); }
+
+        // Support: behind the front line, no melee slot, safe distance.
+        w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            Enemy support = groupFoe(w, "overseer", X0 + 5.5f);
+            groupFoe(w, "default", X0 + 3f);
+            groupFoe(w, "default", X0 + 3.8f);
+            groupFoe(w, "default", X0 + 4.5f);
+            for (int i = 0; i < 480; i++) {
+                watch.step();
+                if (support.hasAttackSlot() || support.isAttacking())
+                    throw new AssertionError("The support caster joined the melee");
+            }
+            float sd = Math.abs(support.getPosition().x - X0);
+            float side = Math.signum(support.getPosition().x - X0);
+            if (sd < cfg.supportMinDistance - .7f) throw new AssertionError("Support stands too close: " + sd);
+            for (Enemy e : activeFoes(w)) {
+                if (e == support || !e.getCombatRole().isMelee() || Math.signum(e.getPosition().x - X0) != side) continue;
+                if (Math.abs(e.getPosition().x - X0) > sd + .2f)
+                    throw new AssertionError("Support stands in front of a fighting ally");
+            }
+            if (support.getSlotState() != com.cursedarchie.platformer.actors.enemies.group.SlotState.SUPPORT_POSITION)
+                throw new AssertionError("Support is not in its support position: " + support.getSlotState());
+        } finally { w.dispose(); }
+
+        // Fast: flanks (never the head-on slot on the side the hero faces) and ends on the far side.
+        w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            Enemy fox = groupFoe(w, "infiltrator", X0 + 6f);
+            groupFoe(w, "default", X0 + 3.5f);
+            groupFoe(w, "default", X0 + 4.5f);
+            boolean flanked = false;
+            for (int i = 0; i < 480; i++) {
+                watch.step();
+                if (fox.getCurrentSlot() != null && fox.getCurrentSlot().name.equals("FRONT_RIGHT"))
+                    throw new AssertionError("A fast enemy took the head-on slot in front of the hero");
+                if (fox.getCurrentSlot() != null && fox.getCurrentSlot().side == -1 &&
+                    fox.getPosition().x < X0) flanked = true;
+            }
+            if (!flanked) throw new AssertionError("The fast enemy did not flank to the hero's back");
+        } finally { w.dispose(); }
+
+        // Heavy: takes more room than a standard enemy, and two heavies never share a slot.
+        w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            Enemy heavy = groupFoe(w, "heavy_hunter", X0 + 3.6f);
+            Enemy other = groupFoe(w, "heavy_hunter", X0 + 4.6f);
+            Enemy s1 = groupFoe(w, "default", X0 + 2.8f);
+            Enemy s2 = groupFoe(w, "default", X0 + 4f);
+            watch.run(900);
+            for (Enemy e : activeFoes(w)) {
+                if (e == heavy || Math.signum(e.getPosition().x - X0) != Math.signum(heavy.getPosition().x - X0)) continue;
+                float gap = Math.abs(e.getPosition().x - heavy.getPosition().x);
+                float need = e == other ? cfg.heavyHeavyMinDistance : cfg.heavyStandardMinDistance;
+                if (gap < need * .6f)
+                    throw new AssertionError("A heavy enemy shares its space with " + e.getArchetypeId() + ": gap " + gap);
+            }
+            com.cursedarchie.platformer.actors.enemies.group.CombatSlotManager m = slotsOf(w);
+            if (m.minDistance(heavy, other) <= m.minDistance(heavy, s1) ||
+                m.minDistance(heavy, s1) <= m.minDistance(s1, s2))
+                throw new AssertionError("Minimum distances must grow: standard < heavy-standard < heavy-heavy");
+        } finally { w.dispose(); }
+    }
+
+    private void checkGroupMovement() {
+        // The formation follows a hero who walks away: slots move with the hero and no one teleports.
+        GameWorld w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            for (float x : new float[]{2.6f, 3.4f, 4f, 4.5f}) groupFoe(w, "default", X0 + x);
+            watch.run(240);
+            watch.heroMoves = true;
+            for (int i = 1; i <= 80; i++) {
+                w.getHero().getBody().setTransform(X0 - i * .05f, 2.5f, 0f);
+                watch.step();
+            }
+            watch.run(420);
+            float hx = w.getHero().getPosition().x;
+            int holders = 0;
+            for (Enemy e : activeFoes(w)) {
+                if (Math.abs(e.getPosition().x - hx) > 6.2f)
+                    throw new AssertionError("An enemy stayed behind when the hero moved away");
+                if (e.hasAttackSlot()) holders++;
+            }
+            if (holders < 2) throw new AssertionError("The formation did not re-form around the moved hero");
+            if (watch.maxStep > .35f) throw new AssertionError("An enemy teleported while the formation re-formed");
+        } finally { w.dispose(); }
+
+        // The hero leaps over the group: enemies turn round and re-form on the new side.
+        w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            watch.heroMoves = true;
+            for (float x : new float[]{2f, 3f, 4f}) groupFoe(w, "default", X0 + x);
+            watch.run(240);
+            for (int i = 1; i <= 40; i++) {
+                float arc = (float) Math.sin(Math.PI * i / 40f) * 2.5f;
+                w.getHero().getBody().setTransform(X0 + i * .1375f, 2.5f + arc, 0f);
+                watch.step();
+            }
+            w.getHero().getBody().setTransform(X0 + 5.5f, 2.5f, 0f);
+            watch.run(420);
+            float hx = w.getHero().getPosition().x;
+            int holders = 0;
+            for (Enemy e : activeFoes(w)) {
+                if (Math.abs(e.getPosition().x - hx) > 6.5f)
+                    throw new AssertionError("An enemy did not follow the hero who jumped over the group");
+                if (e.getSlotState() == com.cursedarchie.platformer.actors.enemies.group.SlotState.ATTACK_POSITION) {
+                    holders++;
+                    if (e.getPosition().x < hx != !e.isFacingLeft())
+                        throw new AssertionError("An enemy in position faces away from the hero");
+                }
+            }
+            if (holders < 2) throw new AssertionError("The group did not re-form after the hero leapt over it");
+        } finally { w.dispose(); }
+
+        // Walls: a waiting spot behind a wall is never used, so nobody presses against it.
+        w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            addLevelWall(w, X0 + 5.5f, 3.5f, .5f, 2f);        // left face at X0 + 5
+            for (float x : new float[]{2f, 2.8f, 3.4f, 4f, 4.5f}) groupFoe(w, "default", X0 + x);
+            watch.run(480);
+            for (Enemy e : activeFoes(w)) {
+                if (e.getPosition().x > X0 + 4.6f)
+                    throw new AssertionError("An enemy is jammed against the wall at x=" + e.getPosition().x);
+                if (e.getSlotState() == com.cursedarchie.platformer.actors.enemies.group.SlotState.NONE)
+                    throw new AssertionError("An enemy beside the wall lost the formation");
+            }
+        } finally { w.dispose(); }
+
+        // Leaving the room (or the location) clears every slot and every occupant.
+        w = groupArena();
+        try {
+            GroupWatch watch = new GroupWatch(w);
+            for (float x : new float[]{3f, 3.8f, 4.4f}) groupFoe(w, "default", X0 + x);
+            watch.run(200);
+            if (slotsOf(w).countOccupied(MELEE_SLOT) == 0)
+                throw new AssertionError("No slots were filled before the room change");
+            w.changeLocation("start", 0);
+            for (com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot : slotsOf(w).getSlots())
+                if (slot.isOccupied()) throw new AssertionError("Slot " + slot + " survived a room change");
+            for (Enemy e : w.getEnemies())
+                if (e.getCurrentSlot() != null) throw new AssertionError("An enemy kept its slot across a room change");
+        } finally { w.dispose(); }
+    }
+
+    private void checkSoftPushing() {
+        // Collision categories: allies are not solid to each other; the hero and the level still are.
+        GameWorld w = groupArena();
+        try {
+            Enemy a = groupFoe(w, "default", X0 + 8f);
+            a.setBrain(null);
+            a.setIntent(Enemy.Intent.IDLE);
+            Enemy b = groupFoe(w, "default", X0 + 8.2f);
+            b.setBrain(null);
+            b.setIntent(Enemy.Intent.IDLE);
+            for (com.badlogic.gdx.physics.box2d.Fixture f : a.getBody().getFixtureList()) {
+                if (f.isSensor()) continue;
+                short mask = f.getFilterData().maskBits;
+                if ((mask & com.cursedarchie.platformer.physics.PhysicsCategories.ENEMY) != 0)
+                    throw new AssertionError("Enemy bodies still collide with each other");
+                if ((mask & com.cursedarchie.platformer.physics.PhysicsCategories.HERO) == 0 ||
+                    (mask & com.cursedarchie.platformer.physics.PhysicsCategories.WALL) == 0 ||
+                    (mask & com.cursedarchie.platformer.physics.PhysicsCategories.GROUND) == 0)
+                    throw new AssertionError("Enemies must still collide with the hero, walls and ground");
+            }
+            boolean heroSolidToEnemies = false;
+            for (com.badlogic.gdx.physics.box2d.Fixture f : w.getHero().getBody().getFixtureList())
+                if (!f.isSensor() && (f.getFilterData().maskBits & com.cursedarchie.platformer.physics.PhysicsCategories.ENEMY) != 0)
+                    heroSolidToEnemies = true;
+            if (!heroSolidToEnemies) throw new AssertionError("The hero must remain solid to enemies");
+            // Soft pushing: two enemies on the same spot drift apart gently, they are not thrown apart.
+            float peak = 0f;
+            for (int i = 0; i < 90; i++) {
+                w.update(GameWorld.FIXED_STEP);
+                peak = Math.max(peak, Math.max(Math.abs(a.getBody().getLinearVelocity().x),
+                    Math.abs(b.getBody().getLinearVelocity().x)));
+            }
+            float gap = Math.abs(a.getPosition().x - b.getPosition().x);
+            if (gap < .5f) throw new AssertionError("Overlapping allies did not steer apart: gap " + gap);
+            if (peak > slotsOf(w).getConfig().maxSeparationSpeed + .3f)
+                throw new AssertionError("Soft pushing scattered the enemies (speed " + peak + ")");
+        } finally { w.dispose(); }
+
+        // An arrow flies through the shooter's allies and only ever hits the hero or the level.
+        w = groupArena();
+        try {
+            Enemy ally = groupFoe(w, "default", X0 + 3f);
+            ally.setBrain(null);
+            ally.setIntent(Enemy.Intent.IDLE);
+            ally.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+            Enemy archer = groupFoe(w, "scavenger", X0 + 6f);
+            archer.setBrain(null);
+            archer.setIntent(Enemy.Intent.IDLE);
+            archer.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
+            float allyHealth = ally.getHealth();
+            Vector2 aim = RangedAttackConfig.NORMAL.launchDirection(archer.getPosition().x, archer.getPosition().y,
+                ally.getPosition().x, ally.getPosition().y);
+            w.fireArrows(archer, aim, RangedAttackConfig.NORMAL);
+            com.badlogic.gdx.math.Rectangle box = new com.badlogic.gdx.math.Rectangle();
+            boolean crossed = false;
+            for (int i = 0; i < 120 && w.getArrows().size > 0; i++) {
+                w.update(GameWorld.FIXED_STEP);
+                for (GameWorld.Arrow arrow : w.getArrows()) {
+                    ally.getHurtboxBounds(box);
+                    if (box.contains(arrow.position)) crossed = true;
+                }
+            }
+            if (!crossed) throw new AssertionError("The test arrow never crossed the ally");
+            if (ally.getHealth() != allyHealth) throw new AssertionError("An arrow hurt the shooter's ally");
+        } finally { w.dispose(); }
     }
 
     private void checkNewEnemyRoles() {

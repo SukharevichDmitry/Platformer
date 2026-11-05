@@ -18,8 +18,11 @@ public class ChaseState implements EnemyState {
             return;
         }
 
-        float dx = target.x - enemy.getPosition().x;
-        if (Math.abs(dx) < .55f) enemy.moveStop();
+        // In a group fight the enemy walks to its own combat slot; otherwise it closes on the hero's last position.
+        boolean toSlot = enemy.isCanSeeHero() && enemy.hasSlotTarget();
+        float goal = toSlot ? enemy.getSlotTargetX() : target.x;
+        float dx = goal - enemy.getPosition().x;
+        if (Math.abs(dx) < (toSlot ? .1f : .55f)) enemy.moveStop();
         else if (dx < 0f) enemy.moveLeft();
         else enemy.moveRight();
         if (Math.abs(dx) < 3f) enemy.pursueElevatedTarget(target.y);

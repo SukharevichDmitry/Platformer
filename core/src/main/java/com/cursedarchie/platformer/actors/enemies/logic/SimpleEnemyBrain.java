@@ -1,6 +1,9 @@
 package com.cursedarchie.platformer.actors.enemies.logic;
 
 import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.actors.enemies.group.CombatRole;
+import com.cursedarchie.platformer.actors.enemies.group.GroupPositioningConfig;
+import com.cursedarchie.platformer.actors.enemies.group.SlotState;
 import com.cursedarchie.platformer.actors.enemies.physics.EnemyPerception;
 import com.cursedarchie.platformer.world.GameWorld;
 
@@ -47,9 +50,15 @@ public class SimpleEnemyBrain implements EnemyBrain {
         } else {
             enemy.setAwareness(Enemy.Awareness.UNAWARE);
         }
-        float retreatDirection = enemy.getHeroLastKnownPos().x < enemy.getPosition().x ? 1f : -1f;
-
+        // Priority: stagger / recovery, then the attack already under way, then retreat and defence, then
+        // positioning (attack slot, surrounding spot, firing spot, support spot), then search and patrol.
         if (enemy.isStaggered() || enemy.isDodging() || enemy.isActionRecovering()) {
+            enemy.setIntent(IDLE);
+            return;
+        }
+        // An attack that has begun is never abandoned for a new position: stand and finish it.
+        if (enemy.isAttacking() || enemy.isRangedBusy() || enemy.isBlocking() || enemy.isCasting() ||
+            enemy.isDashPhase()) {
             enemy.setIntent(IDLE);
             return;
         }
@@ -58,51 +67,89 @@ public class SimpleEnemyBrain implements EnemyBrain {
             return;
         }
         // Hero jumped over or slipped past: swing to face the last known position at once.
-        if ((enemy.isCanSeeHero() || searchRemaining > 0f) && !enemy.isAttacking() && !enemy.isRangedBusy() &&
-            !enemy.isBlocking() && !enemy.isCasting() && !enemy.isDashPhase())
-            enemy.turnToward(enemy.getHeroLastKnownPos().x);
+        if (enemy.isCanSeeHero() || searchRemaining > 0f) enemy.turnToward(enemy.getHeroLastKnownPos().x);
+
         String id = enemy.getArchetypeId();
-        boolean overseer = "overseer".equals(id);
-        // Support stays in the rear: back away when the hero closes in, hang back otherwise.
-        if (overseer && enemy.isCanSeeHero() && !enemy.isAttacking()) {
-            if (distance < 3.2f && enemy.canBeginRetreat(retreatDirection)) { enemy.setIntent(RETREAT); return; }
-            if (distance < 5.2f && !enemy.isCanAttackHero()) { enemy.setIntent(IDLE); return; }
-        }
-        // Archer whose shot is blocked by an ally repositions instead of shooting through it.
-        if (scavenger && enemy.isLineBlocked() && enemy.canBeginRetreat(retreatDirection)) {
-            enemy.setIntent(RETREAT);
-            return;
-        }
-        // Breaker plugs its passage: it will not follow the hero far from where it stood.
-        if ("heavy_hunter".equals(id) && enemy.isBeyondLeash(5f) && !enemy.isAttacking() && !enemy.isCanAttackHero()) {
-            enemy.setIntent(IDLE);
-            return;
-        }
-        // No free attack slot: keep a little distance and wait instead of crowding the hero.
-        if (!scavenger && !enemy.hasAttackPermit() && enemy.isCanSeeHero() && !enemy.isAttacking() && distance < 2.6f) {
-            enemy.setIntent(IDLE);
-            return;
-        }
-        if (noticeRemaining == 0f && enemy.isCanAttackHero() && !enemy.isRangedWindingUp() &&
-            !enemy.isBlocking() && (!scavenger || distance < 1.6f)) {
-            enemy.requestAttack();
-            enemy.setIntent(IDLE);
-            return;
+        CombatRole role = enemy.getCombatRole();
+        GroupPositioningConfig cfg = GroupPositioningConfig.get();
+        boolean slotted = enemy.isCanSeeHero() && enemy.isSlotManaged() && enemy.hasSlotTarget();
+        float retreatDirection = enemy.getHeroLastKnownPos().x < enemy.getPosition().x ? 1f : -1f;
+
+        if (role == CombatRole.SUPPORT) {
+            // Support stays in the rear: back away when the hero closes in, otherwise hold its support spot.
+            if (enemy.isCanSeeHero()) {
+                if (distance < cfg.supportMinDistance - .4f && !enemy.isSlotCrossing() &&
+                    enemy.canBeginRetreat(retreatDirection)) { enemy.setIntent(RETREAT); return; }
+                if (slotted) { moveToSlot(enemy, cfg); return; }
+                if (distance < 5.2f && !enemy.isCanAttackHero()) { enemy.setIntent(IDLE); return; }
+            }
+        } else if (role == CombatRole.RANGED) {
+            // Archer whose shot is blocked by an ally repositions instead of shooting through it.
+            if (enemy.isLineBlocked() && !enemy.isSlotCrossing() && enemy.canBeginRetreat(retreatDirection)) {
+                enemy.setIntent(RETREAT);
+                return;
+            }
+            // Too close to the hero: open the distance (never join the melee).
+            if (enemy.isCanSeeHero() && distance < cfg.rangedMinDistance - .3f && !enemy.isSlotCrossing() &&
+                enemy.canBeginRetreat(retreatDirection)) {
+                enemy.setIntent(RETREAT);
+                return;
+            }
+            // Point-blank strike only as self-defence.
+            if (noticeRemaining == 0f && enemy.isCanAttackHero() && distance < 1.6f) {
+                enemy.requestAttack();
+                enemy.setIntent(IDLE);
+                return;
+            }
+            if (slotted) {
+                if (noticeRemaining > 0f) { enemy.setIntent(IDLE); return; }
+                moveToSlot(enemy, cfg);
+                return;
+            }
+            if (enemy.isCanSeeHero() && distance < 2.7f && enemy.canBeginRetreat(retreatDirection)) {
+                enemy.setIntent(RETREAT);
+                return;
+            }
+            if (enemy.isCanSeeHero() && distance < 5.5f) { enemy.setIntent(IDLE); return; }
+        } else {
+            // Breaker plugs its passage: it will not follow the hero far from where it stood.
+            if ("heavy_hunter".equals(id) && enemy.isBeyondLeash(5f) && !enemy.isCanAttackHero()) {
+                enemy.setIntent(IDLE);
+                return;
+            }
+            if (slotted) {
+                if (noticeRemaining > 0f) { enemy.setIntent(IDLE); return; }
+                // Attack only from an attack slot, standing in it, with the hero in reach and in sight.
+                if (enemy.hasAttackSlot() && enemy.getSlotState() == SlotState.ATTACK_POSITION &&
+                    enemy.isCanAttackHero() && !enemy.isRangedWindingUp()) {
+                    enemy.requestAttack();
+                    enemy.setIntent(IDLE);
+                    return;
+                }
+                moveToSlot(enemy, cfg);
+                return;
+            }
+            if (noticeRemaining == 0f && enemy.isCanAttackHero() && enemy.hasAttackSlot() == enemy.isSlotManaged()) {
+                // Not (yet) part of a formation: the plain rule applies.
+                enemy.requestAttack();
+                enemy.setIntent(IDLE);
+                return;
+            }
+            if (noticeRemaining > 0f && enemy.isCanSeeHero()) { enemy.setIntent(IDLE); return; }
+            if (enemy.isCanAttackHero() && !enemy.isSlotManaged()) { enemy.setIntent(IDLE); return; }
         }
 
-        if (enemy.isAttacking() || enemy.isRangedBusy() || enemy.isBlocking() ||
-            (noticeRemaining > 0f && enemy.isCanSeeHero()) ||
-            (!scavenger && enemy.isCanAttackHero())) {
-            enemy.setIntent(IDLE);
-        } else if (scavenger && enemy.isCanSeeHero() && distance < 2.7f &&
-            enemy.canBeginRetreat(retreatDirection)) {
-            enemy.setIntent(RETREAT);
-        } else if (scavenger && enemy.isCanSeeHero() && distance < 5.5f) {
-            enemy.setIntent(IDLE);
-        } else if (enemy.isCanSeeHero() || searchRemaining > 0f) {
+        if (enemy.isCanSeeHero() || searchRemaining > 0f) {
             enemy.setIntent(CHASE);
         } else {
             enemy.setIntent(PATROL);
         }
+    }
+
+    /** Walk to the slot target; stand still once there (with hysteresis, so a small push does not restart it). */
+    private static void moveToSlot(Enemy enemy, GroupPositioningConfig cfg) {
+        float off = Math.abs(enemy.getSlotTargetX() - enemy.getPosition().x);
+        float tolerance = enemy.getCurrentIntent() == CHASE ? cfg.arriveTolerance : cfg.restartTolerance;
+        enemy.setIntent(off <= tolerance ? IDLE : CHASE);
     }
 }

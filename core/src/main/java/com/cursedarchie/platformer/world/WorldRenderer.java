@@ -2368,7 +2368,60 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             debugRenderer.rect(arrow.position.x - GameWorld.Arrow.WIDTH / 2f,
                 arrow.position.y - GameWorld.Arrow.HEIGHT / 2f,
                 GameWorld.Arrow.WIDTH, GameWorld.Arrow.HEIGHT);
+        drawSlotDebug();
         debugRenderer.end();
+        drawSlotLabels();
+    }
+
+    /**
+     * Group positioning overlay: every combat slot (grey = unusable, green = vacant, red = occupied, yellow frame =
+     * a slot from which an enemy can strike), a line from each occupied slot to its enemy, and each archer's
+     * line of sight to the hero (green clear, red blocked by an ally or a wall).
+     */
+    private void drawSlotDebug() {
+        com.cursedarchie.platformer.actors.enemies.group.CombatSlotManager manager =
+            gameWorld.getEnemyController().getSlotManager();
+        boolean any = false;
+        for (Enemy enemy : gameWorld.getAliveEnemies()) any |= enemy.isSlotManaged();
+        if (!any) return;
+        for (com.cursedarchie.platformer.actors.enemies.group.CombatSlot slot : manager.getSlots()) {
+            float r = slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.MELEE ? .28f :
+                slot.type == com.cursedarchie.platformer.actors.enemies.group.CombatSlot.Type.RESERVE ? .2f : .14f;
+            if (!slot.valid) debugRenderer.setColor(.35f, .35f, .35f, 1f);
+            else debugRenderer.setColor(slot.isOccupied() ? Color.RED : Color.GREEN);
+            debugRenderer.rect(slot.x - r, slot.y - r, r * 2f, r * 2f);
+            if (slot.isAttackCapable()) {
+                debugRenderer.setColor(Color.YELLOW);
+                debugRenderer.rect(slot.x - r - .06f, slot.y - r - .06f, r * 2f + .12f, r * 2f + .12f);
+            }
+            if (slot.isOccupied()) {
+                debugRenderer.setColor(Color.ORANGE);
+                debugRenderer.line(slot.x, slot.y, slot.getOwner().getPosition().x, slot.getOwner().getPosition().y);
+            }
+        }
+        Vector2 heroPos = hero.getPosition();
+        for (Enemy enemy : gameWorld.getAliveEnemies()) {
+            if (enemy.getCombatRole() != com.cursedarchie.platformer.actors.enemies.group.CombatRole.RANGED) continue;
+            debugRenderer.setColor(enemy.isLineBlockedByAlly(heroPos) || !enemy.isCanSeeHero() ? Color.RED : Color.GREEN);
+            debugRenderer.line(enemy.getPosition().x, enemy.getPosition().y, heroPos.x, heroPos.y);
+        }
+    }
+
+    /** Role, slot state and slot name above every enemy that takes part in the formation. */
+    private void drawSlotLabels() {
+        boolean any = false;
+        for (Enemy enemy : gameWorld.getAliveEnemies()) any |= enemy.isSlotManaged();
+        if (!any) return;
+        spriteBatch.setProjectionMatrix(cam.combined);
+        spriteBatch.begin();
+        damageFont.setColor(Color.WHITE);
+        for (Enemy enemy : gameWorld.getAliveEnemies()) {
+            if (!enemy.isSlotManaged()) continue;
+            String slotName = enemy.getCurrentSlot() == null ? "-" : enemy.getCurrentSlot().name;
+            damageFont.draw(spriteBatch, enemy.getCombatRole() + " " + enemy.getSlotState() + " @" + slotName,
+                enemy.getPosition().x - 1.1f, enemy.getPosition().y + enemy.getSize() / 2f + .55f);
+        }
+        spriteBatch.end();
     }
 
     private void drawAttackRuntime(Vector2 origin, Object state, Rectangle box) {

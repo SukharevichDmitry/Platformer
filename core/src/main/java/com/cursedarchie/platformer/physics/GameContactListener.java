@@ -138,7 +138,7 @@ public class GameContactListener implements ContactListener {
         }
         // Hero and the enemy that fell with them pass through each other until both have recovered, so the physics
         // cannot shove the pair apart (or back onto a head) while they are down.
-        if (!a.isSensor() && !b.isSensor() && isFallPair(ownerA, ownerB)) {
+        if (!a.isSensor() && !b.isSensor() && (isFallPair(ownerA, ownerB) || isLeapPair(ownerA, ownerB))) {
             contact.setEnabled(false);
             return;
         }
@@ -160,6 +160,13 @@ public class GameContactListener implements ContactListener {
         // Keep an already-supported body on top, but never snag a rising body or its side.
         if (feet < top - 0.06f || actor.getBody().getLinearVelocity().y > 0.05f)
             contact.setEnabled(false);
+    }
+
+    /** An enemy leaping over the hero passes through them until it is clear again. */
+    private static boolean isLeapPair(Object a, Object b) {
+        Enemy leaper = a instanceof Enemy ? (Enemy) a : b instanceof Enemy ? (Enemy) b : null;
+        Object other = leaper == a ? b : a;
+        return leaper != null && other instanceof Hero && leaper.isLeaping();
     }
 
     private static boolean isFallPair(Object a, Object b) {

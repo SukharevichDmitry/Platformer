@@ -758,6 +758,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void forgetEnemy(Enemy enemy) {
+        if (enemyController != null) enemyController.getSlotManager().forget(enemy);
         observedHealth.remove(enemy);
         headFallLocks.remove(enemy);
         previousKnockdownPhases.remove(enemy);
@@ -777,6 +778,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void unloadLocation() {
+        if (enemyController != null) enemyController.getSlotManager().clear();   // no slot outlives its room
         arrows.clear();
         arrowImpacts.clear();
         heroArrowReactionRemaining = 0f;
@@ -1258,6 +1260,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 return true;
         return false;
     }
+    public int getCurrentRoomId() { return currentRoomId; }
     public Array<Enemy> getAliveEnemies() {
         Array<Enemy> alive = new Array<>();
         for (Enemy e : enemies) {
