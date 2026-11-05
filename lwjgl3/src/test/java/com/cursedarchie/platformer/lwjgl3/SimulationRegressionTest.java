@@ -608,6 +608,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
      * Landing on a head: hero and a standard enemy lose their balance, fall side by side, recover and carry on. No
      * damage, no standing on heads, no repeat triggers, heavy enemies stay up.
      */
+    /** The test room has a one-way platform over x 6..18, so the fall tests use the open floor to its right. */
+    private static final float X0 = 24f;
+
     private void checkHeadLandingFall() {
         com.cursedarchie.platformer.combat.HeadCollisionConfig cfg =
             com.cursedarchie.platformer.combat.HeadCollisionConfig.get();
@@ -619,9 +622,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(w);
             Hero hero = w.getHero();
-            Enemy foe = headFoe(w, 10f, false);
+            Enemy foe = headFoe(w, X0, false);
             float foeHealth = foe.getHealth(), heroHealth = hero.getHealth();
-            placeHero(hero, 10.1f, 10.5f, 0f);
+            placeHero(hero, (X0 + .1f), 10.5f, 0f);
             int started = -1, heroDown = 0, foeDown = 0;
             for (int i = 0; i < 170; i++) {
                 w.update(GameWorld.FIXED_STEP);
@@ -634,7 +637,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                         throw new AssertionError("The enemy did not enter KNOCKDOWN_FROM_ABOVE with the hero");
                     if (hero.getPosition().x <= foe.getPosition().x)
                         throw new AssertionError("Hero landed right of the head but fell left");
-                    if (foe.getPosition().x - 10f < cfg.enemyShift * .75f)
+                    if (foe.getPosition().x - X0 < cfg.enemyShift * .75f)
                         throw new AssertionError("The enemy did not shift the way the hero fell");
                 }
                 if (hero.isFalling()) {
@@ -686,7 +689,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
 
             // Collisions are solid again: walking into the (immovable) enemy stops the hero at its side.
             w.getHeroController().keyUp(Input.Keys.RIGHT);
-            placeHero(hero, 8.5f, 2.5f, 0f);
+            placeHero(hero, (X0 - 1.5f), 2.5f, 0f);
             for (int i = 0; i < 20; i++) w.update(GameWorld.FIXED_STEP);
             w.getHeroController().keyDown(Input.Keys.RIGHT);
             for (int i = 0; i < 50; i++) w.update(GameWorld.FIXED_STEP);
@@ -711,9 +714,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(again);
             Hero hero = again.getHero();
-            Enemy foe = headFoe(again, 10f, false);
+            Enemy foe = headFoe(again, X0, false);
             collisions.clear();
-            placeHero(hero, 10.1f, 10.5f, 0f);
+            placeHero(hero, (X0 + .1f), 10.5f, 0f);
             boolean began = false, window = false;
             for (int i = 0; i < 200 && !window; i++) {
                 again.update(GameWorld.FIXED_STEP);
@@ -741,11 +744,11 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(rest);
             Hero hero = rest.getHero();
-            Enemy foe = headFoe(rest, 10f, false);
-            placeHero(hero, 10f, 3.45f, 6f);
+            Enemy foe = headFoe(rest, X0, false);
+            placeHero(hero, X0, 3.45f, 6f);
             for (int i = 0; i < 4; i++) rest.update(GameWorld.FIXED_STEP);
             if (hero.isFalling() || foe.isKnockedDown()) throw new AssertionError("A rising hero triggered a head fall");
-            placeHero(hero, 10f, 3.5f, 0f);
+            placeHero(hero, X0, 3.5f, 0f);
             for (int i = 0; i < 3; i++) rest.update(GameWorld.FIXED_STEP);
             if (hero.isFalling() || foe.isKnockedDown()) throw new AssertionError("Touching a head without moving down triggered a fall");
             boolean slid = false;
@@ -762,8 +765,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(flank);
             Hero hero = flank.getHero();
-            Enemy foe = headFoe(flank, 10f, false);
-            placeHero(hero, 7.5f, 2.5f, 0f);
+            Enemy foe = headFoe(flank, X0, false);
+            placeHero(hero, (X0 - 2.5f), 2.5f, 0f);
             for (int i = 0; i < 20; i++) flank.update(GameWorld.FIXED_STEP);
             flank.getHeroController().keyDown(Input.Keys.RIGHT);
             for (int i = 0; i < 70; i++) {
@@ -778,13 +781,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(heavyWorld);
             Hero hero = heavyWorld.getHero();
-            Enemy heavy = EnemyFactory.createHeavyHunter(heavyWorld.getWorld(), new Vector2(10f, 2.85f));
+            Enemy heavy = EnemyFactory.createHeavyHunter(heavyWorld.getWorld(), new Vector2(X0, 2.85f));
             heavy.setActive(false);
             heavyWorld.addEnemy(heavy);
             heavy.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
             if (heavy.canBeKnockedDownFromAbove()) throw new AssertionError("The heavy hunter must not be topplable");
             float heavyHealth = heavy.getHealth(), heroHealth = hero.getHealth();
-            placeHero(hero, 10.2f, 11f, 0f);
+            placeHero(hero, (X0 + .2f), 11f, 0f);
             boolean sawFall = false;
             for (int i = 0; i < 100; i++) {
                 heavyWorld.update(GameWorld.FIXED_STEP);
@@ -798,7 +801,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 }
             }
             if (!sawFall) throw new AssertionError("Landing on a heavy enemy did nothing: the hero can stand on it");
-            closeTo(heavy.getPosition().x, 10f, "The heavy enemy was pushed");
+            closeTo(heavy.getPosition().x, X0, "The heavy enemy was pushed");
             closeTo(heavy.getHealth(), heavyHealth, "The head landing damaged the heavy enemy");
             closeTo(hero.getHealth(), heroHealth, "The head landing damaged the hero");
             if (hero.getPosition().y - .5f > 2f + .3f) throw new AssertionError("Hero is standing on the heavy enemy");
@@ -809,15 +812,15 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(walled);
             Hero hero = walled.getHero();
-            addLevelWall(walled, 12.2f, 3.5f, 1f, 2f);        // its left face is at x = 11.2
-            Enemy foe = headFoe(walled, 10f, false);
-            placeHero(hero, 10.1f, 10.5f, 0f);
+            addLevelWall(walled, (X0 + 2.2f), 3.5f, 1f, 2f);        // its left face is at x = 11.2
+            Enemy foe = headFoe(walled, X0, false);
+            placeHero(hero, (X0 + .1f), 10.5f, 0f);
             boolean fell = false;
             for (int i = 0; i < 80; i++) {
                 walled.update(GameWorld.FIXED_STEP);
                 if (hero.isFalling() && foe.isKnockedDown()) {
                     fell = true;
-                    if (hero.getPosition().x + .5f > 11.2f + .02f || foe.getPosition().x + .5f > 11.2f + .02f)
+                    if (hero.getPosition().x + .5f > (X0 + 1.2f) + .02f || foe.getPosition().x + .5f > (X0 + 1.2f) + .02f)
                         throw new AssertionError("The fallen pair were pushed into the wall");
                     if (hero.getPosition().x >= foe.getPosition().x)
                         throw new AssertionError("The hero should have fallen to the open side");
@@ -832,13 +835,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(corridor);
             Hero hero = corridor.getHero();
-            addLevelWall(corridor, 8.2f, 3.5f, 1f, 2f);       // right face at x = 9.2
-            addLevelWall(corridor, 12.2f, 3.5f, 1f, 2f);      // left face at x = 11.2
-            Enemy foe = headFoe(corridor, 10.2f, false);
-            placeHero(hero, 10.3f, 10.5f, 0f);
+            addLevelWall(corridor, (X0 - 1.8f), 3.5f, 1f, 2f);       // right face at x = 9.2
+            addLevelWall(corridor, (X0 + 2.2f), 3.5f, 1f, 2f);      // left face at x = 11.2
+            Enemy foe = headFoe(corridor, (X0 + .2f), false);
+            placeHero(hero, (X0 + .3f), 10.5f, 0f);
             for (int i = 0; i < 80; i++) {
                 corridor.update(GameWorld.FIXED_STEP);
-                if (hero.getPosition().x - .5f < 9.2f - .06f || hero.getPosition().x + .5f > 11.2f + .06f)
+                if (hero.getPosition().x - .5f < (X0 - .8f) - .06f || hero.getPosition().x + .5f > (X0 + 1.2f) + .06f)
                     throw new AssertionError("Hero was pushed into a wall with no room for the pair");
                 if (foe.isKnockedDown()) throw new AssertionError("The pair fell although there was no room");
             }
@@ -849,8 +852,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(brainy);
             Hero hero = brainy.getHero();
-            Enemy foe = headFoe(brainy, 10f, true);
-            placeHero(hero, 10.1f, 10.5f, 0f);
+            Enemy foe = headFoe(brainy, X0, true);
+            placeHero(hero, (X0 + .1f), 10.5f, 0f);
             boolean wasDown = false, resumed = false;
             for (int i = 0; i < 260; i++) {
                 brainy.update(GameWorld.FIXED_STEP);
@@ -888,9 +891,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             try {
                 parkEnemies(w);
                 Hero hero = w.getHero();
-                Enemy foe = headFoe(w, 10f, false);
+                Enemy foe = headFoe(w, X0, false);
                 float heroHealth = hero.getHealth(), foeHealth = foe.getHealth();
-                placeHero(hero, 10f + dx, 2.5f + maxJump * .98f, 0f);
+                placeHero(hero, X0 + dx, 2.5f + maxJump * .98f, 0f);
                 boolean pushed = false;
                 for (int i = 0; i < 90; i++) {
                     w.update(GameWorld.FIXED_STEP);
@@ -919,8 +922,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             try {
                 parkEnemies(w);
                 Hero hero = w.getHero();
-                Enemy foe = headFoe(w, 10f, false);
-                placeHero(hero, 10.1f, landingCenter + drops[k], 0f);
+                Enemy foe = headFoe(w, X0, false);
+                placeHero(hero, (X0 + .1f), landingCenter + drops[k], 0f);
                 boolean fell = false;
                 for (int i = 0; i < 90; i++) {
                     w.update(GameWorld.FIXED_STEP);
@@ -937,8 +940,8 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             try {
                 parkEnemies(w);
                 Hero hero = w.getHero();
-                Enemy foe = headFoe(w, 10f, false);
-                placeHero(hero, 10f + dx, 12f, 0f);
+                Enemy foe = headFoe(w, X0, false);
+                placeHero(hero, X0 + dx, 12f, 0f);
                 boolean fell = false;
                 for (int i = 0; i < 90; i++) {
                     w.update(GameWorld.FIXED_STEP);
@@ -955,11 +958,11 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         try {
             parkEnemies(heavyWorld);
             Hero hero = heavyWorld.getHero();
-            Enemy heavy = EnemyFactory.createHeavyHunter(heavyWorld.getWorld(), new Vector2(10f, 2.85f));
+            Enemy heavy = EnemyFactory.createHeavyHunter(heavyWorld.getWorld(), new Vector2(X0, 2.85f));
             heavy.setActive(false);
             heavyWorld.addEnemy(heavy);
             heavy.getBody().setType(com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody);
-            placeHero(hero, 10.3f, 13f, 0f);
+            placeHero(hero, (X0 + .3f), 13f, 0f);
             for (int i = 0; i < 120; i++) {
                 heavyWorld.update(GameWorld.FIXED_STEP);
                 if (hero.isFalling() && hero.getPosition().y - .5f > 3.7f - .1f)
