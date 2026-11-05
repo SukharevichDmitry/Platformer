@@ -57,8 +57,8 @@ public class SimpleEnemyBrain implements EnemyBrain {
             return;
         }
         // An attack that has begun is never abandoned for a new position: stand and finish it.
-        if (enemy.isAttacking() || enemy.isRangedBusy() || enemy.isBlocking() || enemy.isCasting() ||
-            enemy.isDashPhase()) {
+        if (enemy.isAttacking() || (enemy.isRangedBusy() && enemy.getCombatRole() != CombatRole.RANGED) ||
+            enemy.isBlocking() || enemy.isCasting() || enemy.isDashPhase()) {
             enemy.setIntent(IDLE);
             return;
         }
@@ -89,16 +89,18 @@ public class SimpleEnemyBrain implements EnemyBrain {
                 enemy.setIntent(RETREAT);
                 return;
             }
+            // Point-blank strike only as self-defence (it also breaks a draw the hero has rushed).
+            if (noticeRemaining == 0f && enemy.isCanAttackHero() && distance < 1.6f) {
+                enemy.requestAttack();
+                enemy.setIntent(IDLE);
+                return;
+            }
+            // A draw or a bow-lowering recovery in progress is not abandoned for a new position.
+            if (enemy.isRangedBusy()) { enemy.setIntent(IDLE); return; }
             // Too close to the hero: open the distance (never join the melee).
             if (enemy.isCanSeeHero() && distance < cfg.rangedMinDistance - .3f && !enemy.isSlotCrossing() &&
                 enemy.canBeginRetreat(retreatDirection)) {
                 enemy.setIntent(RETREAT);
-                return;
-            }
-            // Point-blank strike only as self-defence.
-            if (noticeRemaining == 0f && enemy.isCanAttackHero() && distance < 1.6f) {
-                enemy.requestAttack();
-                enemy.setIntent(IDLE);
                 return;
             }
             if (slotted) {
