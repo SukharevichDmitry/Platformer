@@ -1306,6 +1306,17 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         return nearest;
     }
 
+    /** Walk-in portal whose doorway the hero is standing in, or null. Its transition must use trigger "touch". */
+    public InteractionData getTouchedPortal() {
+        InteractionData nearby = getNearbyInteraction();
+        if (nearby == null || !"portal".equals(nearby.kind)) return null;
+        TransitionProfile profile = TransitionProfile.get(nearby.transition);
+        if (profile == null || !profile.touchTrigger) return null;
+        float dx = currentRoom.getWorldX() + nearby.position.x - hero.getPosition().x;
+        float dy = currentRoom.getWorldY() + nearby.position.y - hero.getPosition().y;
+        return Math.abs(dx) <= profile.triggerHalfWidth && Math.abs(dy) < 1f ? nearby : null;
+    }
+
     public boolean interact() {
         InteractionData interaction = getNearbyInteraction();
         if (interaction == null) return false;

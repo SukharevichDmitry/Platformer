@@ -1,7 +1,9 @@
 {
-  "note": "Location transition profiles. A portal names one in its \"transition\" field. Times are seconds; fractions are of the turn (0..1) or of the screen width. Physics never rotates: the turn is drawn from captured 2D frames.",
+  "note": "Location transition profiles. trigger: touch = starts when the hero walks into the doorway (|dx| <= triggerHalfWidth), interact = on the interact key; touch portals also accept the key. A portal names one in its \"transition\" field. Times are seconds; fractions are of the turn (0..1) or of the screen width. Physics never rotates: the turn is drawn from captured 2D frames.",
   "alley_enter": {
     "kind": "alley_turn",
+    "trigger": "touch",
+    "triggerHalfWidth": 0.4,
     "direction": "counterclockwise",
     "turnDuration": 0.9,
     "settleDuration": 0.35,
@@ -20,6 +22,8 @@
   },
   "alley_exit": {
     "kind": "alley_turn",
+    "trigger": "touch",
+    "triggerHalfWidth": 0.4,
     "direction": "clockwise",
     "turnDuration": 0.9,
     "settleDuration": 0.3,

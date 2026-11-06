@@ -25,6 +25,8 @@
         private boolean bagOpen;
         private boolean npcInteractHeld;
         private InteractionData enteringPortal;
+        /** Doorway the hero stood in last frame; arriving inside one (a return spawn) does not trigger it. */
+        private InteractionData lastTouchedPortal;
         private float portalProgress;
         private final boolean[] pocketTransferHeld = new boolean[2];
         private final Main game;
@@ -103,12 +105,7 @@
                         InteractionData nearby = gameWorld.getNearbyInteraction();
                         if (nearby != null && "portal".equals(nearby.kind)) {
                             npcInteractHeld = true;
-                            enteringPortal = nearby;
-                            portalProgress = 0f;
-                            // Control stays locked (the world is not updated) until the transition ends.
-                            alleyTurn.begin(AlleyTurnTransition.profileFor(
-                                gameWorld.getLocation().getLocation(), nearby), renderer);
-                            gameWorld.getHeroController().clearInput();
+                            startPortal(nearby);
                             return true;
                         }
                         if (nearby != null && "npc".equals(nearby.kind)) {
@@ -206,10 +203,14 @@
                     if (portalProgress >= 1f) {
                         gameWorld.enterPortal(enteringPortal);
                         enteringPortal = null;
+                        lastTouchedPortal = gameWorld.getTouchedPortal();
                         renderer.setPortalTransition(null, 0f);
                     }
                 }
-            } else if (!bagOpen && !dialogue.isOpen()) gameWorld.update(delta);
+            } else if (!bagOpen && !dialogue.isOpen()) {
+                gameWorld.update(delta);
+                checkWalkInPortal();
+            }
             autosaveSeconds += Math.max(0f, delta);
             if (!gameWorld.isCombatTestLocation()) {
                 if (!gameWorld.getHero().isAlive()) {
@@ -231,6 +232,7 @@
                 if (alleyTurn.isComplete()) {
                     alleyTurn.finish();
                     enteringPortal = null;
+                    lastTouchedPortal = gameWorld.getTouchedPortal();
                 }
             } else {
                 renderer.render(delta);
@@ -315,6 +317,21 @@
 
         public boolean isDisposed() { return disposed; }
         public GameWorld getGameWorld() { return gameWorld; }
+
+        private void startPortal(InteractionData portal) {
+            enteringPortal = portal;
+            portalProgress = 0f;
+            // Control stays locked (the world is not updated) until the transition ends.
+            alleyTurn.begin(AlleyTurnTransition.profileFor(gameWorld.getLocation().getLocation(), portal), renderer);
+            gameWorld.getHeroController().clearInput();
+        }
+
+        /** A walk-in doorway starts its transition when the hero steps into it, not while already standing in it. */
+        private void checkWalkInPortal() {
+            InteractionData touched = gameWorld.getTouchedPortal();
+            if (touched != null && touched != lastTouchedPortal) startPortal(touched);
+            lastTouchedPortal = touched;
+        }
         /** A portal transition is playing; input and the simulation are locked until it ends. */
         public boolean isTransitionActive() { return enteringPortal != null; }
 

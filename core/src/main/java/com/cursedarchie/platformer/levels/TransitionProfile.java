@@ -16,6 +16,10 @@ public final class TransitionProfile {
 
     public final String id;
     public final String kind;
+    /** "touch": starts when the hero walks into the doorway; "interact": only on the interact key. */
+    public final boolean touchTrigger;
+    /** Half width of the doorway zone in world units, measured from the portal's centre. */
+    public final float triggerHalfWidth;
     /** +1 counter-clockwise around the vertical axis (entering an alley), -1 clockwise (leaving it). */
     public final int direction;
     public final float turnDuration, settleDuration, switchAt, heroTurnUntil;
@@ -33,6 +37,13 @@ public final class TransitionProfile {
     private TransitionProfile(String id, JsonValue v) {
         this.id = id;
         kind = v.getString("kind", "alley_turn");
+        String trigger = v.getString("trigger", "interact");
+        if (!"touch".equals(trigger) && !"interact".equals(trigger))
+            throw new IllegalArgumentException("Transition " + id + " has an unknown trigger: " + trigger);
+        touchTrigger = "touch".equals(trigger);
+        triggerHalfWidth = v.getFloat("triggerHalfWidth", .4f);
+        if (!(triggerHalfWidth > 0f && triggerHalfWidth < 1.7f))
+            throw new IllegalArgumentException("Transition " + id + " needs a doorway narrower than the interact range");
         String turn = v.getString("direction", "counterclockwise");
         if (!"counterclockwise".equals(turn) && !"clockwise".equals(turn))
             throw new IllegalArgumentException("Transition " + id + " has an unknown direction: " + turn);

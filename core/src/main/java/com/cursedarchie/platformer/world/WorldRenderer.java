@@ -116,6 +116,13 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     /** Dark interior stone used for foreground columns. */
     public TextureRegion foregroundStone() { return wallFaces[0]; }
 
+    /** Walk-in doorways need no key, so their label names only the destination. */
+    private String keyPrefix(InteractionData portal) {
+        com.cursedarchie.platformer.levels.TransitionProfile profile =
+            com.cursedarchie.platformer.levels.TransitionProfile.get(portal.transition);
+        return profile != null && profile.touchTrigger ? "" : interactKey() + ": ";
+    }
+
     private String interactKey() { return controlBindings == null ? "E" : controlBindings.keyName(Action.INTERACT); }
 
     private final OrthographicCamera cam;
@@ -580,7 +587,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 if (locked && gameWorld.getHero().getPosition().dst(x, y) < 3f)
                     itemLabelFont.drawCentered(spriteBatch, "LOCKED: FIND THE KEY", x, y + 2.3f, NOTE_LABEL);
                 else if (gameWorld.getNearbyInteraction() == portal)
-                    itemLabelFont.drawCentered(spriteBatch, interactKey() + ": " +
+                    itemLabelFont.drawCentered(spriteBatch, keyPrefix(portal) +
                         ("alley_door".equals(portal.visualId) ? "ENTER ALLEY" :
                             "street_exit".equals(portal.visualId) ? "RETURN" : "ENTER"),
                         x, y + 2.3f, NOTE_LABEL);
