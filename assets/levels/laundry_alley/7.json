@@ -1,0 +1,79 @@
+{
+  "location": "laundry_alley",
+  "id": 7,
+  "sceneryTheme": "shelter",
+  "width": 32,
+  "height": 14,
+  "tileRows": [
+    "################################",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#               ======         #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#        __  __                #",
+    "################################",
+    "################################"
+  ],
+  "enemySpawns": [
+    {
+      "type": "red_collector",
+      "position": {
+        "x": 24,
+        "y": 3.0
+      }
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "alley_entry",
+      "position": {
+        "x": 4.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {},
+  "interactions": [
+    {
+      "id": "alley_return",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "laundry_left",
+      "position": {
+        "x": 3.5,
+        "y": 3.0
+      },
+      "targetRole": "laundry",
+      "targetSpawnId": "laundry_return",
+      "transition": "climb_stairs"
+    },
+    {
+      "id": "red_bracer",
+      "kind": "pickup",
+      "visualId": "red_bracer",
+      "itemId": "red_bracer",
+      "eventId": "red_bracer_taken",
+      "position": {
+        "x": 25.5,
+        "y": 3
+      },
+      "requiresFlag": "defeated:{room:laundry_house}:0"
+    },
+    {
+      "id": "key_mold_workbench",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "cellar_key_mold",
+      "position": {
+        "x": 27.5,
+        "y": 3.0
+      }
+    }
+  ]
+}

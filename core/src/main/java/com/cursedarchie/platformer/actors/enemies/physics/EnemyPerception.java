@@ -1,0 +1,110 @@
+package com.cursedarchie.platformer.actors.enemies.physics;
+
+import com.badlogic.gdx.math.Vector2;
+import com.cursedarchie.platformer.actors.Actor;
+import com.cursedarchie.platformer.actors.hero.Hero;
+import com.cursedarchie.platformer.actors.enemies.Enemy;
+import com.cursedarchie.platformer.physics.PhysicsCategories;
+import com.cursedarchie.platformer.world.GameWorld;
+
+public class EnemyPerception {
+    GameWorld gameWorld;
+    private final Vector2 hitPoint = new Vector2();
+    private boolean lineBlocked;
+    private final Vector2 tmp = new Vector2();
+    private final Vector2 dir = new Vector2();
+
+    public EnemyPerception(GameWorld gameWorld) {
+        this.gameWorld = gameWorld;
+    }
+
+    public void lookForHero(Enemy enemy) {
+        boolean canSeeHero = false;
+
+        Vector2 enemyCenter = enemy.getBody().getPosition();
+        for (Actor actor : enemy.getVisibleActors()) {
+            Vector2 heroCenter = actor.getBody().getPosition();
+
+            tmp.set(heroCenter).sub(enemyCenter).nor();
+            dir.set(enemy.isFacingLeft() ? -1f : 1f, 0f);
+
+            float dot = tmp.dot(dir);
+
+            float viewCosThreshold =
+                (float)Math.cos(
+                    Math.toRadians(enemy.getViewAngle() / 2f)
+                );
+
+            // A nearby target remains noticeable even after jumping over the enemy; an enemy that is already
+            // aware of the hero turns round to a hero slipping behind it from a little further away.
+            float behindRange = enemy.getAwareness() == Enemy.Awareness.UNAWARE ? 2.5f : 3.6f;
+            if (dot < viewCosThreshold && enemyCenter.dst2(heroCenter) > behindRange * behindRange) {
+                continue;
+            }
+
+            boolean blocked =
+                isLineBlocked(enemyCenter, heroCenter);
+
+            if (!blocked && actor instanceof Hero &&
+                !("scavenger".equals(enemy.getArchetypeId()) && gameWorld.isHeroInSmoke())) {
+                canSeeHero = true;
+                updateHeroLastKnownPos(enemy, actor);
+                break;
+            }
+        }
+
+        enemy.setCanSeeHero(canSeeHero);
+    }
+
+    private boolean isLineBlocked(Vector2 from, Vector2 to) {
+        lineBlocked = false;
+
+        gameWorld.getWorld().rayCast((fixture, point, normal, fraction) -> {
+
+            if (fixture.isSensor()) {
+                return -1;
+            }
+
+            Object userData = fixture.getBody().getUserData();
+
+            if (userData instanceof Hero) {
+                return -1;
+            }
+
+            if (fixture.getFilterData().categoryBits == PhysicsCategories.WALL) {
+                lineBlocked = true;
+                hitPoint.set(point);
+                return 0;
+            }
+
+            return -1;
+        }, from, to);
+
+        return lineBlocked;
+    }
+
+    private void updateHeroLastKnownPos(Enemy enemy, Actor hero) {
+        enemy.setHeroLastKnownPos(hero.getPosition());
+    }
+
+    /**
+     * The enemy may start its standard attack only when the hero is on the side it faces, visible with no wall
+     * between them, and already inside the real attack hitbox. Stopping distance therefore equals attack reach.
+     */
+    public void prepareToAttack(Enemy enemy) {
+        boolean canAttack = false;
+        if (enemy.isCanSeeHero()) {
+            float enemyX = enemy.getPosition().x;
+            for (Actor target : enemy.getVisibleActors()) {
+                if (!(target instanceof Hero) || !target.isAlive()) continue;
+                float dx = target.getPosition().x - enemyX;
+                boolean facingTarget = enemy.isFacingLeft() ? dx < 0f : dx > 0f;
+                if (facingTarget && enemy.isTargetInStandardReach(target)) {
+                    canAttack = true;
+                    break;
+                }
+            }
+        }
+        enemy.setCanAttackHero(canAttack);
+    }
+}

@@ -1,0 +1,22 @@
+{
+  "note": "Regular melee hunter's jump attack. Times in seconds, distances in world units. Crouch (jumpStartup) -> jump at the hero (an arc jumpHeight high, at most jumpDistance across, landing landingGap short of the hero) -> a separate airborne strike window of jumpActiveTime from the top of the arc -> recovery on landing (longer after a miss) -> jumpCooldown. The body passes through the hero while airborne, so only the strike can hurt.",
+  "archetypes": ["default"],
+  "jumpStartup": 0.45,
+  "jumpDistance": 3.8,
+  "minDistance": 2.3,
+  "jumpHeight": 1.7,
+  "jumpActiveTime": 0.2,
+  "jumpRecovery": 0.45,
+  "missRecoveryExtra": 0.4,
+  "jumpCooldown": 3.2,
+  "landingGap": 1.0,
+  "maxLevelDifference": 0.6,
+  "hitboxWidth": 1.1,
+  "hitboxHeight": 1.3,
+  "hitboxReach": 0.8,
+  "hitboxOffsetY": -0.25,
+  "damageMultiplier": 1.0,
+  "knockback": 4.0,
+  "staggerDuration": 0.25,
+  "stabilityDamage": 1.5
+}

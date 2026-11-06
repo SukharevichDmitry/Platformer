@@ -1,0 +1,39 @@
+{
+  "location": "laundry_alley",
+  "id": 5,
+  "sceneryTheme": "shelter",
+  "width": 20,
+  "height": 14,
+  "tileRows": [
+    "####################",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#                  #",
+    "#    __ ___        #",
+    "#############   ####",
+    "#############   ####"
+  ],
+  "enemySpawns": [],
+  "spawnPoints": [],
+  "neighbors": {},
+  "interactions": [
+    {
+      "id": "loft_bandage",
+      "kind": "pickup",
+      "visualId": "field_bandage",
+      "itemId": "field_bandage",
+      "eventId": "loft_bandage_taken",
+      "position": {
+        "x": 3.5,
+        "y": 3
+      }
+    }
+  ]
+}

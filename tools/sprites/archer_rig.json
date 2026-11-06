@@ -1,0 +1,106 @@
+{
+  "name": "archer",
+  "notes": "Scavenger archer: tall and thin, pointed cowl, long ochre coat, quiver on the back, bow taller than the head.",
+  "pixelsPerUnit": 64,
+  "frame": [128, 96],
+  "anchor": [64, 93],
+  "output": {
+    "dir": "assets/actor/enemies-v2",
+    "name": "archer",
+    "metadata": "assets/config/enemy_animations/archer.json",
+    "preview": "documents/art-previews/archer-sheet.png"
+  },
+  "style": {"headwear": "cowl", "scarf": false, "weaponType": "bow", "quiver": true, "faceShadow": true},
+  "bones": {
+    "torso": 17, "neck": 3, "headRadius": 5,
+    "thigh": 16, "shin": 15, "foot": 4,
+    "upperArm": 11, "forearm": 10,
+    "hipWidth": 3.5, "torsoWidth": 9, "coatLength": 18,
+    "armRadius": 2.3, "handRadius": 1.9, "legRadius": 2.8,
+    "bowHalf": 21, "bowCurve": 5, "bowBrace": 5, "bowPull": 13, "arrow": 26,
+    "blade": 0, "scarfTail": 0
+  },
+  "parts": {
+    "sleeve": "leather", "coat": "ochre", "hood": "leather",
+    "hand": "skin", "face": "skin",
+    "leg": "iron", "boot": "leather", "belt": "wood",
+    "bow": "wood", "string": "bone", "shaft": "wood", "blade": "steel",
+    "quiver": "leather", "fletching": "red_mark"
+  },
+  "defaultPose": {
+    "hipX": 0, "hipY": 31, "lean": 3, "head": 0, "turn": 0,
+    "armF": [14, 8], "armB": [-8, 20], "legF": [8, 4], "legB": [-8, 4],
+    "weapon": -22, "bowDraw": 0, "coat": 2
+  },
+  "poses": {
+    "idle": {},
+    "idle_breath": {"hipY": 30.4, "armF": [16, 8], "armB": [-6, 22], "weapon": -22},
+
+    "walk_contact_f": {"hipY": 30, "lean": 4, "legF": [24, 6], "legB": [-20, 10], "armB": [14, 25], "armF": [4, 8], "weapon": -24},
+    "walk_pass_b": {"hipY": 31.5, "lean": 4, "legF": [2, 4], "legB": [8, 48], "armB": [0, 25], "armF": [12, 8], "weapon": -23},
+    "walk_contact_b": {"hipY": 30, "lean": 4, "legF": [-20, 10], "legB": [24, 6], "armB": [-16, 25], "armF": [22, 8], "weapon": -20},
+    "walk_pass_f": {"hipY": 31.5, "lean": 4, "legF": [8, 48], "legB": [2, 4], "armB": [0, 25], "armF": [12, 8], "weapon": -23},
+
+    "patrol_contact_f": {"base": "walk_contact_f", "lean": 0, "head": -6, "coat": 1},
+    "patrol_pass_b": {"base": "walk_pass_b", "lean": 0, "head": -6, "coat": 1},
+    "patrol_contact_b": {"base": "walk_contact_b", "lean": 0, "head": -6, "coat": 1},
+    "patrol_pass_f": {"base": "walk_pass_f", "lean": 0, "head": -6, "coat": 1},
+
+    "detect_startle": {"hipX": -2, "lean": -6, "head": -14, "armF": [30, 20], "weapon": -40, "armB": [-40, 30]},
+    "detect_reach": {"hipX": -1, "lean": 2, "head": 0, "armF": [50, 20], "weapon": -10, "armB": [-150, 40], "legF": [16, 8], "legB": [-14, 6]},
+    "detect_ready": {"lean": 4, "armF": [75, 10], "weapon": 4, "arrow": true, "twoHand": 0, "legF": [18, 8], "legB": [-16, 6]},
+
+    "shot_nock": {"lean": 2, "armF": [80, 8], "weapon": 6, "arrow": true, "bowDraw": 0.15, "legF": [20, 6], "legB": [-18, 6]},
+    "shot_draw": {"lean": 0, "armF": [84, 6], "weapon": 8, "arrow": true, "bowDraw": 0.6, "head": -2, "legF": [22, 6], "legB": [-20, 6]},
+    "shot_full": {"hipX": -1, "lean": -3, "armF": [86, 4], "weapon": 9, "arrow": true, "bowDraw": 1.0, "head": -3, "legF": [24, 6], "legB": [-22, 6], "coat": 1},
+    "shot_release": {"hipX": -1, "lean": -5, "armF": [86, 4], "weapon": 11, "bowDraw": 0, "head": -3, "armB": [-120, 30], "legF": [24, 6], "legB": [-22, 6]},
+    "shot_recover": {"lean": 1, "armF": [60, 10], "weapon": -10, "armB": [-40, 30], "legF": [18, 6], "legB": [-16, 6]},
+
+    "bash_raise": {"hipX": -2, "lean": -8, "armF": [120, 10], "weapon": 70, "armB": [-30, 40], "legF": [20, 10], "legB": [-16, 6]},
+    "bash_hit": {"hipX": 4, "hipY": 29, "lean": 18, "armF": [70, 0], "weapon": -30, "armB": [-60, 20], "legF": [32, 10], "legB": [-30, 6], "coat": 5,
+                 "fx": [{"type": "arc", "centre": [4, 20], "r0": 14, "r1": 20, "from": 110, "to": -30, "ramp": "env_ash"}]},
+    "bash_back": {"hipX": 2, "lean": 6, "armF": [40, 10], "weapon": -15, "legF": [20, 8], "legB": [-18, 6]},
+    "bash_settle": {"lean": 3, "armF": [20, 8], "weapon": -20},
+
+    "dodge_crouch": {"hipY": 25, "lean": 16, "armF": [40, 20], "weapon": -40, "legF": [40, 60], "legB": [-20, 40]},
+    "dodge_air": {"hipX": -4, "hipY": 32, "lean": -14, "head": -8, "armF": [60, 30], "weapon": -10, "armB": [-90, 30], "legF": [40, 70], "legB": [10, 60], "coat": -4},
+    "dodge_land": {"hipX": -2, "hipY": 26, "lean": 10, "armF": [50, 20], "weapon": -30, "legF": [30, 40], "legB": [-24, 30],
+                   "fx": [{"type": "dust", "count": 4}]},
+
+    "hit_1": {"hipX": -3, "lean": -16, "head": -20, "armF": [40, 20], "armB": [-60, 10], "weapon": -10, "coat": -2},
+    "hit_2": {"hipX": -2, "lean": -6, "head": -8, "armF": [20, 10], "weapon": -18},
+
+    "stagger_1": {"hipX": -2, "hipY": 28, "lean": 24, "head": 18, "armF": [-10, 10], "armB": [10, 10], "weapon": -30, "legF": [20, 30], "legB": [-20, 24]},
+    "stagger_2": {"base": "stagger_1", "hipX": -1, "lean": 28, "legF": [14, 34], "legB": [-24, 28]},
+    "stagger_3": {"base": "stagger_1", "hipX": -2.5, "lean": 20, "legF": [24, 26], "legB": [-16, 22]},
+
+    "death_reel": {"hipX": -3, "hipY": 25, "lean": -24, "head": -20, "legF": [40, 70], "legB": [5, 80], "armB": [-90, 10], "weapon": 60},
+    "death_knees": {"hipX": -2, "hipY": 16, "lean": -40, "head": -14, "legF": [80, 90], "legB": [-5, 85], "armF": [10, 30], "armB": [-110, 10], "weapon": 90},
+    "death_topple": {"hipY": 10, "lean": -70, "head": -10, "legF": [80, 30], "legB": [60, 20], "armF": [-120, 10], "armB": [-140, 10], "weapon": 150},
+    "death_down": {"hipX": 3, "hipY": 6, "lean": -92, "legF": [90, 0], "legB": [86, 6], "armF": [-170, 10], "armB": [-150, 10], "weapon": 180},
+    "death_still": {"base": "death_down", "legF": [88, 4]},
+
+    "rise_kneel": {"hipY": 16, "lean": 20, "legF": [88, 88], "legB": [-4, 86], "armF": [50, 10], "weapon": -18},
+    "rise_half": {"hipY": 24, "lean": 12, "legF": [55, 55], "legB": [-15, 40], "armF": [30, 10], "weapon": -20},
+    "rise_up": {"hipY": 30.5, "lean": 3},
+
+    "backpedal_1": {"hipY": 29, "lean": -4, "armF": [70, 10], "weapon": 4, "arrow": true, "bowDraw": 0.3, "legF": [24, 14], "legB": [-10, 30]},
+    "backpedal_2": {"hipY": 30.5, "lean": -4, "armF": [70, 10], "weapon": 4, "arrow": true, "bowDraw": 0.3, "legF": [6, 30], "legB": [-22, 8]}
+  },
+  "animations": {
+    "idle": {"keys": ["idle", "idle_breath"], "tween": 1, "loop": true, "frameDuration": 0.22},
+    "walk": {"keys": ["walk_contact_f", "walk_pass_b", "walk_contact_b", "walk_pass_f"], "tween": 1, "loop": true, "frameDuration": 0.08},
+    "patrol": {"keys": ["patrol_contact_f", "patrol_pass_b", "patrol_contact_b", "patrol_pass_f"], "tween": 1, "loop": true, "frameDuration": 0.12},
+    "detect": {"keys": ["detect_startle", "detect_reach", "detect_ready"], "frameDuration": 0.12},
+    "shot": {"keys": ["shot_nock", "shot_draw", "shot_full", "shot_release", "shot_recover"], "phases": {"startup": 3, "active": 1, "recovery": 1},
+             "notes": "Standard attack. Startup frames follow the wind-up progress (nock, draw, full draw while aiming)."},
+    "bash": {"keys": ["bash_raise", "bash_hit", "bash_back", "bash_settle"], "phases": {"startup": 1, "active": 1, "recovery": 2},
+             "notes": "Special: point-blank bow bash before backing off."},
+    "dodge": {"keys": ["dodge_crouch", "dodge_air", "dodge_land"], "frameDuration": 0.08},
+    "hit": {"keys": ["hit_1", "hit_2"], "frameDuration": 0.12},
+    "stagger": {"keys": ["stagger_1", "stagger_2", "stagger_3"], "loop": true, "frameDuration": 0.14},
+    "death": {"keys": ["hit_1", "death_reel", "death_knees", "death_topple", "death_down", "death_still"], "frameDuration": 0.12},
+    "recover": {"keys": ["rise_kneel", "rise_half", "rise_up"], "frameDuration": 0.12},
+    "reposition": {"keys": ["backpedal_1", "backpedal_2"], "tween": 1, "loop": true, "frameDuration": 0.1}
+  }
+}

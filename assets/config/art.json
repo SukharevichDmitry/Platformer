@@ -1,0 +1,5 @@
+{
+  "heroSpriteSet": "v2",
+  "enemySpriteSet": "v2",
+  "note": "v2 = generated pixel-art frames (tools/sprites, documents/ART_ASSET_GUIDE.md); legacy = original frames. enemySpriteSet covers the regular melee hunter (type default) and the scavenger archer."
+}

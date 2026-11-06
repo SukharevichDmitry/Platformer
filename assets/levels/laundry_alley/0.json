@@ -1,0 +1,51 @@
+{
+  "location": "laundry_alley",
+  "id": 0,
+  "sceneryTheme": "red",
+  "width": 32,
+  "height": 14,
+  "tileRows": [
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "################################",
+    "################################"
+  ],
+  "enemySpawns": [],
+  "spawnPoints": [
+    {
+      "id": "street_entry",
+      "position": {
+        "x": 4.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {
+    "right": 1
+  },
+  "interactions": [
+    {
+      "id": "street_return",
+      "kind": "portal",
+      "visualId": "street_exit",
+      "eventId": "alley_returned",
+      "position": {
+        "x": 3.5,
+        "y": 3.0
+      },
+      "returnToOrigin": true,
+      "transition": "alley_exit",
+      "targetSpawnId": "alley_return"
+    }
+  ]
+}

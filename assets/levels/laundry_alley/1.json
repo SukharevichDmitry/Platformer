@@ -1,0 +1,61 @@
+{
+  "location": "laundry_alley",
+  "id": 1,
+  "sceneryTheme": "red",
+  "width": 30,
+  "height": 14,
+  "tileRows": [
+    "                              ",
+    "            =====             ",
+    "                              ",
+    "                              ",
+    "     ====                     ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "          ====                ",
+    "                              ",
+    "                              ",
+    "                          __  ",
+    "##############################",
+    "##############################"
+  ],
+  "enemySpawns": [
+    {
+      "type": "default",
+      "position": {
+        "x": 23,
+        "y": 3
+      }
+    }
+  ],
+  "spawnPoints": [],
+  "neighbors": {
+    "left": 0,
+    "right": 2
+  },
+  "interactions": [
+    {
+      "id": "smoke_incense",
+      "kind": "pickup",
+      "visualId": "smoke_incense",
+      "itemId": "smoke_incense",
+      "eventId": "smoke_incense_taken",
+      "position": {
+        "x": 9.5,
+        "y": 3
+      }
+    },
+    {
+      "id": "alley_door_key",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "alley_key_found",
+      "position": {
+        "x": 18.5,
+        "y": 3
+      },
+      "requiresFlag": "laundry_access_locked"
+    }
+  ]
+}

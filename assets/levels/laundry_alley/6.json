@@ -1,0 +1,35 @@
+{
+  "location": "laundry_alley",
+  "id": 6,
+  "sceneryTheme": "red",
+  "width": 28,
+  "height": 14,
+  "tileRows": [
+    "                            ",
+    "                            ",
+    "                            ",
+    "                            ",
+    "                            ",
+    "                            ",
+    "                            ",
+    "      ====                  ",
+    "                            ",
+    "                            ",
+    "                  _         ",
+    "                __#         ",
+    "############################",
+    "############################"
+  ],
+  "enemySpawns": [
+    {
+      "type": "default",
+      "position": {
+        "x": 12,
+        "y": 3
+      }
+    }
+  ],
+  "spawnPoints": [],
+  "neighbors": {},
+  "interactions": []
+}

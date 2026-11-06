@@ -1,0 +1,6 @@
+{
+  "id": "field_bandage",
+  "effect": "heal",
+  "heal": 1,
+  "maxStack": 3
+}

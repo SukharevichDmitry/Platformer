@@ -12,6 +12,7 @@
 
 # Package Files #
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
@@ -28,4 +29,17 @@ replay_pid*
 core/build/
 lwjgl3/build/
 
+# Generated Python bytecode from the ruins atlas builder.
+__pycache__/
+*.pyc
+
 Platformer/*
+
+# Local snapshots kept before development work.
+backups/
+
+# Local agent instructions and imported reference skills (not game assets).
+AGENTS.md
+.agents/
+.codex/
+GIT_WORKFLOW.md

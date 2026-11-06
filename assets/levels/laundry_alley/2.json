@@ -1,0 +1,95 @@
+{
+  "location": "laundry_alley",
+  "id": 2,
+  "sceneryTheme": "red",
+  "width": 32,
+  "height": 14,
+  "tileRows": [
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "################################",
+    "################################"
+  ],
+  "enemySpawns": [],
+  "spawnPoints": [
+    {
+      "id": "laundry_return",
+      "position": {
+        "x": 16.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {
+    "left": 1,
+    "right": 3
+  },
+  "interactions": [
+    {
+      "id": "open_laundry_door",
+      "kind": "portal",
+      "visualId": "laundry_door",
+      "eventId": "laundry_entered",
+      "position": {
+        "x": 18.5,
+        "y": 3
+      },
+      "targetSpawnId": "alley_entry",
+      "requiresFlag": "laundry_access_open",
+      "targetRole": "laundry_house",
+      "transition": "descend_stairs"
+    },
+    {
+      "id": "locked_laundry_door",
+      "kind": "portal",
+      "visualId": "laundry_door",
+      "eventId": "laundry_entered",
+      "position": {
+        "x": 18.5,
+        "y": 3
+      },
+      "targetSpawnId": "alley_entry",
+      "requiresFlag": "alley_key_found",
+      "targetRole": "laundry_house",
+      "transition": "descend_stairs"
+    },
+    {
+      "id": "rubble_bypass",
+      "kind": "portal",
+      "visualId": "rubble_gap",
+      "eventId": "laundry_entered",
+      "position": {
+        "x": 18.5,
+        "y": 3
+      },
+      "targetSpawnId": "alley_entry",
+      "requiresFlag": "laundry_access_rubble",
+      "targetRole": "laundry_house",
+      "transition": "descend_breach"
+    },
+    {
+      "id": "upper_laundry_window",
+      "kind": "portal",
+      "visualId": "upper_window",
+      "eventId": "laundry_entered",
+      "position": {
+        "x": 18.5,
+        "y": 6
+      },
+      "targetSpawnId": "alley_entry",
+      "requiresFlag": "laundry_access_window",
+      "targetRole": "laundry_house",
+      "transition": "descend_drop"
+    }
+  ]
+}

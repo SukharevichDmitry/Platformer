@@ -1,0 +1,60 @@
+{
+  "location": "laundry_alley",
+  "id": 9,
+  "sceneryTheme": "mechanical",
+  "width": 26,
+  "height": 14,
+  "tileRows": [
+    "##########################",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                        #",
+    "#                 ___    #",
+    "##########################",
+    "##########################"
+  ],
+  "enemySpawns": [],
+  "spawnPoints": [
+    {
+      "id": "cellar_entry",
+      "position": {
+        "x": 4.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {},
+  "interactions": [
+    {
+      "id": "cellar_return",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "vault_left",
+      "position": {
+        "x": 3.5,
+        "y": 3
+      },
+      "targetRole": "holding_cellar",
+      "targetSpawnId": "vault_return",
+      "transition": "climb_stairs"
+    },
+    {
+      "id": "sewing_kit",
+      "kind": "pickup",
+      "visualId": "sewing_kit",
+      "itemId": "sewing_kit",
+      "eventId": "sewing_kit_taken",
+      "position": {
+        "x": 14.5,
+        "y": 3
+      }
+    }
+  ]
+}

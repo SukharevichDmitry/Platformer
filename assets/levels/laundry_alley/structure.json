@@ -1,0 +1,74 @@
+{
+  "note": "Laundry alley as connected rooms with story roles. 'sequence' rooms run left to right; 'above' rooms sit on top of a sequence room (reached through a gap in its floor); 'below' rooms sit under a room and are reached by an in-location descent (stairs, breach, drop, hatch) named by a portal's targetRole. Room ids follow the listed order. The old laundry_house, catchment_cellar and catchment_vault location folders are no longer linked from the game; their content now lives in templates 7, 8 and 9.",
+  "location": "laundry_alley",
+  "start": {
+    "role": "entrance",
+    "spawn": "street_entry"
+  },
+  "farEntry": {
+    "role": "exit",
+    "spawn": "exit_approach"
+  },
+  "sequence": [
+    {
+      "role": "entrance",
+      "template": 0
+    },
+    {
+      "role": "corridor",
+      "template": 1
+    },
+    {
+      "role": "corridor",
+      "template": 6,
+      "chance": 0.5
+    },
+    {
+      "role": "laundry",
+      "template": 2
+    },
+    {
+      "role": "cellar_descent",
+      "template": 3
+    },
+    {
+      "role": "exit",
+      "template": 4
+    }
+  ],
+  "above": [
+    {
+      "role": "side_room",
+      "template": 5,
+      "over": "corridor"
+    }
+  ],
+  "requiredRoles": [
+    "entrance",
+    "corridor",
+    "side_room",
+    "laundry",
+    "laundry_house",
+    "cellar_descent",
+    "holding_cellar",
+    "exit"
+  ],
+  "below": [
+    {
+      "role": "laundry_house",
+      "template": 7,
+      "under": "laundry"
+    },
+    {
+      "role": "holding_cellar",
+      "template": 8,
+      "under": "cellar_descent"
+    },
+    {
+      "role": "vault",
+      "template": 9,
+      "under": "holding_cellar"
+    }
+  ],
+  "camera": "room"
+}
