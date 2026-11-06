@@ -147,6 +147,15 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
     private boolean slotManaged, slotCrossing, slotWasAttacking;
     private float slotLeaveRemaining, slotHoldTime;
     public enum LeapPhase { NONE, AIRBORNE, SETTLING }
+    /** Jump attack (config/enemy_jump_attack.json): crouch, jump at the hero, airborne strike, recovery. */
+    public enum JumpAttackPhase { NONE, CROUCH, AIRBORNE, RECOVERY }
+    private JumpAttackPhase jumpAttackPhase = JumpAttackPhase.NONE;
+    private float jumpAttackTime, jumpAttackRecovery, jumpAttackCooldownRemaining;
+    private float jumpVx, jumpVy, jumpLandingX;
+    private com.cursedarchie.platformer.combat.AttackRuntime jumpAttackRuntime;
+    private Hero jumpAttackTarget;
+    private final com.badlogic.gdx.math.Rectangle jumpHitBounds = new com.badlogic.gdx.math.Rectangle();
+    private final com.badlogic.gdx.math.Rectangle jumpHurtBounds = new com.badlogic.gdx.math.Rectangle();
     private static final float WALK_DAMPING = 8f;
     private LeapPhase leapPhase = LeapPhase.NONE;
     private float leapTime, leapCooldownRemaining;
@@ -599,6 +608,207 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             body.setLinearDamping(WALK_DAMPING);   // landing brakes the sideways speed again
         }
     }
+    public JumpAttackPhase getJumpAttackPhase() { return jumpAttackPhase; }
+    public boolean isJumpAttacking() { return jumpAttackPhase != JumpAttackPhase.NONE; }
+    public boolean isJumpAirborne() { return jumpAttackPhase == JumpAttackPhase.AIRBORNE; }
+    /** Leap over the hero, or a jump attack's arc and landing: they own the body, so nothing may steer or push it. */
+    public boolean isAirborneManeuver() { return isLeapAirborne() || isJumpPassingThroughHero(); }
+    public float getJumpAttackTime() { return jumpAttackTime; }
+    public float getJumpLandingX() { return jumpLandingX; }
+    public com.cursedarchie.platformer.combat.AttackRuntime getJumpAttackRuntime() { return jumpAttackRuntime; }
+    public float getJumpAttackCooldownRemaining() { return jumpAttackCooldownRemaining; }
+    /** 0..1 through the crouch or the landing recovery (1 while airborne). */
+    public float getJumpAttackPhaseProgress() {
+        JumpAttackConfig c = JumpAttackConfig.get();
+        if (jumpAttackPhase == JumpAttackPhase.CROUCH) return Math.min(1f, jumpAttackTime / c.jumpStartup);
+        if (jumpAttackPhase == JumpAttackPhase.RECOVERY)
+            return jumpAttackRecovery <= 0f ? 1f : Math.min(1f, jumpAttackTime / jumpAttackRecovery);
+        return 1f;
+    }
+
+    /** Starts the crouch of a jump attack at the hero when the whole arc and the landing are possible. */
+    public boolean requestJumpAttack(Hero hero) {
+        JumpAttackConfig c = JumpAttackConfig.get();
+        if (hero == null || !hero.isAlive() || !alive || !active || !grounded || isJumpAttacking() ||
+            !c.archetypes.contains(archetypeId, false) || jumpAttackCooldownRemaining > 0f ||
+            attackCooldownRemaining > 0f || isAttacking() || isLeaping() || isKnockedDown() || isStaggered() ||
+            isBlocking() || isDashPhase() || isDodging() || isRetreating() || isActionRecovering()) return false;
+        // In a group fight the jump is an attack like any other: it needs an attack slot.
+        if (slotManaged && !hasAttackSlot()) return false;
+        if (!planJump(hero)) return false;
+        jumpAttackPhase = JumpAttackPhase.CROUCH;
+        jumpAttackTime = 0f;
+        jumpAttackTarget = hero;
+        attackRequested = false;
+        currentIntent = Intent.IDLE;
+        facingLeft = jumpVx < 0f;
+        moveStop();
+        return true;
+    }
+
+    /**
+     * Plans an arc jumpHeight high that lands landingGap short of the hero, at most jumpDistance away. Refused
+     * when the hero is too close or too far, on another level, when the arc would pass through a wall, ledge or
+     * ceiling, or when the landing has no floor at the take-off level (a pit or an impossible gap).
+     */
+    private boolean planJump(Hero hero) {
+        JumpAttackConfig c = JumpAttackConfig.get();
+        float dx = hero.getPosition().x - getPosition().x;
+        float distance = Math.abs(dx);
+        float feet = getPosition().y - size / 2f;
+        float heroFeet = hero.getPosition().y - hero.getSize() / 2f;
+        if (distance < c.minDistance || distance > c.jumpDistance + c.landingGap ||
+            Math.abs(heroFeet - feet) > c.maxLevelDifference) return false;
+        float direction = Math.signum(dx);
+        float travel = Math.min(c.jumpDistance, Math.max(.5f, distance - c.landingGap));
+        float gravity = -physicsWorld.getGravity().y * body.getGravityScale();
+        if (gravity <= 0f) return false;
+        float vy = (float) Math.sqrt(2f * gravity * c.jumpHeight);
+        float flight = 2f * vy / gravity;
+        float vx = direction * travel / flight;
+        float x0 = getPosition().x, y0 = getPosition().y;
+        int steps = 14;
+        float prevX = x0, prevY = y0;
+        for (int i = 1; i <= steps; i++) {
+            float t = flight * i / steps;
+            float x = x0 + vx * t, y = y0 + vy * t - gravity * t * t / 2f;
+            for (float probe : new float[] {-.45f, 0f, .45f})
+                if (terrainBetween(prevX, prevY + probe * size, x, y + probe * size)) return false;
+            prevX = x;
+            prevY = y;
+        }
+        float landX = x0 + vx * flight;
+        for (float side : new float[] {-.35f, 0f, .35f})
+            if (!floorNear(landX + side * size, feet, c.maxLevelDifference)) return false;
+        if (allyNear(landX, y0, size * .9f)) return false;
+        jumpVx = vx;
+        jumpVy = vy;
+        jumpLandingX = landX;
+        return true;
+    }
+
+    /** Solid terrain on the segment (one-way platforms do not block a jump). */
+    private boolean terrainBetween(float x0, float y0, float x1, float y1) {
+        if (Math.abs(x1 - x0) < 1e-4f && Math.abs(y1 - y0) < 1e-4f) return false;
+        final boolean[] blocked = {false};
+        physicsWorld.rayCast((fixture, point, normal, fraction) -> {
+            if (!fixture.isSensor() && "level".equals(fixture.getBody().getUserData()) &&
+                !(fixture.getUserData() instanceof com.cursedarchie.platformer.physics.OneWaySurface)) {
+                blocked[0] = true;
+                return 0f;
+            }
+            return -1f;
+        }, x0, y0, x1, y1);
+        return blocked[0];
+    }
+
+    /** Another enemy's body within reach of the landing: the jump would come down on an ally. */
+    private boolean allyNear(float x, float y, float reach) {
+        final boolean[] found = {false};
+        physicsWorld.QueryAABB(fixture -> {
+            Object owner = fixture.getBody().getUserData();
+            if (owner instanceof Enemy && owner != this && ((Enemy) owner).isAlive() && !fixture.isSensor()) {
+                found[0] = true;
+                return false;
+            }
+            return true;
+        }, x - reach, y - size / 2f, x + reach, y + size / 2f);
+        return found[0];
+    }
+
+    private boolean floorNear(float x, float feet, float tolerance) {
+        final boolean[] ground = {false};
+        physicsWorld.rayCast((fixture, point, normal, fraction) -> {
+            if (!fixture.isSensor() && "level".equals(fixture.getBody().getUserData())) {
+                ground[0] = true;
+                return 0f;
+            }
+            return -1f;
+        }, x, feet + tolerance, x, feet - tolerance);
+        return ground[0];
+    }
+
+    /** Runs the jump attack; returns true while it owns the enemy (no thinking, steering or other attacks). */
+    private boolean updateJumpAttack(float delta) {
+        jumpAttackCooldownRemaining = Math.max(0f, jumpAttackCooldownRemaining - delta);
+        if (jumpAttackPhase == JumpAttackPhase.NONE) return false;
+        JumpAttackConfig c = JumpAttackConfig.get();
+        jumpAttackTime += delta;
+        switch (jumpAttackPhase) {
+            case CROUCH:
+                // Hit out of the crouch: the jump never happens.
+                if (isStaggered() || isKnockedDown()) { endJumpAttack(1f); return false; }
+                body.setLinearVelocity(0f, body.getLinearVelocity().y);
+                if (jumpAttackTime < c.jumpStartup) return true;
+                // Aim again at take-off: the hero may have moved during the crouch.
+                if (jumpAttackTarget == null || !planJump(jumpAttackTarget)) { endJumpAttack(1f); return false; }
+                facingLeft = jumpVx < 0f;
+                float apex = jumpVy / Math.max(1f, -physicsWorld.getGravity().y * body.getGravityScale());
+                jumpAttackRuntime = new com.cursedarchie.platformer.combat.AttackRuntime(new AttackDefinition(
+                    "enemy_jump_attack", CombatHit.Type.MELEE_HEAVY, apex, c.jumpActiveTime, 0f, c.hitboxReach,
+                    c.hitboxWidth, c.hitboxHeight, c.hitboxOffsetY, c.damageMultiplier, c.knockback,
+                    c.staggerDuration, c.stabilityDamage, true, apex + c.jumpActiveTime, apex + c.jumpActiveTime),
+                    facingLeft);
+                body.setLinearDamping(0f);          // keep the planned arc (walking damping would shorten it)
+                body.setLinearVelocity(jumpVx, jumpVy);
+                jumpAttackPhase = JumpAttackPhase.AIRBORNE;
+                jumpAttackTime = 0f;
+                emitCue(Cue.RAIDER_DASH);
+                return true;
+            case AIRBORNE:
+                jumpAttackRuntime.advance(delta);
+                if (jumpAttackRuntime.isActive() && !isStaggered()) strikeFromJump();
+                if ((jumpAttackTime > .1f && grounded) || jumpAttackTime > 1.5f) {
+                    body.setLinearDamping(WALK_DAMPING);
+                    body.setLinearVelocity(0f, body.getLinearVelocity().y);
+                    jumpAttackPhase = JumpAttackPhase.RECOVERY;
+                    jumpAttackRecovery = c.jumpRecovery + (jumpAttackRuntime.hitAnyTarget() ? 0f : c.missRecoveryExtra);
+                    jumpAttackTime = 0f;
+                }
+                return true;
+            case RECOVERY:
+                body.setLinearVelocity(0f, body.getLinearVelocity().y);
+                // The body keeps passing through the hero until it is clear, so landing never shoves anyone.
+                if (jumpAttackTime >= jumpAttackRecovery && (!overlapsJumpTarget() || jumpAttackTime > jumpAttackRecovery + 1f))
+                    endJumpAttack(c.jumpCooldown);
+                return jumpAttackPhase != JumpAttackPhase.NONE;
+            default:
+                return false;
+        }
+    }
+
+    private boolean overlapsJumpTarget() {
+        if (jumpAttackTarget == null) return false;
+        float reach = (size + jumpAttackTarget.getSize()) / 2f;
+        return Math.abs(jumpAttackTarget.getPosition().x - getPosition().x) < reach &&
+            Math.abs(jumpAttackTarget.getPosition().y - getPosition().y) < reach;
+    }
+
+    /** While the jump has the body (arc and landing), it passes through the hero: only the strike can hurt. */
+    public boolean isJumpPassingThroughHero() {
+        return jumpAttackPhase == JumpAttackPhase.AIRBORNE || jumpAttackPhase == JumpAttackPhase.RECOVERY;
+    }
+
+    private void strikeFromJump() {
+        Hero hero = jumpAttackTarget;
+        if (hero == null || !jumpAttackRuntime.canHit(this, hero, jumpHitBounds, jumpHurtBounds)) return;
+        AttackDefinition attack = jumpAttackRuntime.definition();
+        CombatHit hit = new CombatHit(attack.type, getDamage() * attack.damageMultiplier, this, hero,
+            jumpAttackRuntime.direction(), attack.stabilityDamage, attack.knockback, attack.staggerDuration,
+            attack.blockable);
+        if (!hero.receiveHit(hit)) return;
+        emitCombatHit(hit);
+        jumpAttackRuntime.recordHit(hero);
+    }
+
+    private void endJumpAttack(float cooldown) {
+        if (jumpAttackPhase == JumpAttackPhase.AIRBORNE) body.setLinearDamping(WALK_DAMPING);
+        jumpAttackPhase = JumpAttackPhase.NONE;
+        jumpAttackTime = 0f;
+        jumpAttackCooldownRemaining = cooldown;
+        beginAttackCooldown();
+    }
+
     public boolean isLineBlocked() { return lineBlockedRemaining > 0f; }
     /** Breaker holds its ground: it will not chase far past where it first stood. */
     public boolean isBeyondLeash(float limit) { return !Float.isNaN(anchorX) && Math.abs(getPosition().x - anchorX) > limit; }
@@ -714,8 +924,12 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
         retreatCooldownRemaining = Math.max(0f, retreatCooldownRemaining - delta);
         supportCooldownRemaining = Math.max(0f, supportCooldownRemaining - delta);
         supportFlashRemaining = Math.max(0f, supportFlashRemaining - delta);
-        if (isLeapAirborne()) return;
+        if (isAirborneManeuver() || isJumpAttacking()) return;
         if ("default".equals(archetypeId)) updateRaider(hero);
+        // Jump attack: closes a mid-range gap that the raider dash is too short for.
+        if (canSeeHero && awareness == Awareness.TRACKING && hero != null &&
+            JumpAttackConfig.get().archetypes.contains(archetypeId, false) && !raiderBusy())
+            requestJumpAttack(hero);
         if ("infiltrator".equals(archetypeId)) updateInfiltrator(hero);
         if ("overseer".equals(archetypeId)) updateOverseer(allies, delta);
         if ("scavenger".equals(archetypeId)) {
@@ -1256,6 +1470,12 @@ public abstract class Enemy extends Actor<Enemy.EnemyMotionState, Enemy.EnemyCom
             if (Math.abs(body.getLinearVelocity().x) > .5f) retreatTrailToX = getPosition().x;
         }
 
+        if (updateJumpAttack(delta)) {
+            // Crouch, arc and landing recovery own the enemy until they end.
+            attackRequested = false;
+            currentIntent = Intent.IDLE;
+            return;
+        }
         updateLeap(delta);
         if (isLeapAirborne()) {
             // In the air nothing but the arc matters: no thinking, no attack, no steering.

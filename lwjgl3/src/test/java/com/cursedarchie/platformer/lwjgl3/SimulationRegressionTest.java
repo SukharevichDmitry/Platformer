@@ -8,6 +8,7 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.cursedarchie.platformer.actors.enemies.Enemy;
 import com.cursedarchie.platformer.actors.enemies.RangedAttackConfig;
 import com.cursedarchie.platformer.actors.enemies.EnemyFactory;
+import com.cursedarchie.platformer.actors.enemies.JumpAttackConfig;
 import com.cursedarchie.platformer.actors.enemies.logic.SimpleEnemyBrain;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
@@ -104,6 +105,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         checkSliceItemsAndGuard();
         checkArrowCover();
         checkArcherActionReadability();
+        checkJumpAttack();
         passed = true;
         Gdx.app.exit();
     }
@@ -336,6 +338,126 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         } finally {
             attackWorld.dispose();
         }
+    }
+
+    /** Grounded test enemy with no brain; the caller drives it. */
+    private static Enemy groundedFoe(GameWorld w, float x, float y) {
+        Enemy e = EnemyFactory.createDefaultEnemy(w.getWorld(), new Vector2(x, y));
+        e.setIntent(Enemy.Intent.IDLE);   // no brain: it stays unaware and never starts a jump by itself
+        w.addEnemy(e);
+        for (int i = 0; i < 40 && !e.isGrounded(); i++) w.update(GameWorld.FIXED_STEP);
+        if (!e.isGrounded()) throw new AssertionError("Jump test enemy did not land on the floor at " + e.getPosition());
+        return e;
+    }
+
+    private static void pinHero(Hero hero, float x, float y, boolean pinned) {
+        hero.getBody().setType(pinned ? com.badlogic.gdx.physics.box2d.BodyDef.BodyType.StaticBody :
+            com.badlogic.gdx.physics.box2d.BodyDef.BodyType.DynamicBody);
+        hero.getBody().setTransform(x, y, 0f);
+    }
+
+    private void checkJumpAttack() {
+        JumpAttackConfig c = JumpAttackConfig.get();
+        float step = GameWorld.FIXED_STEP;
+        // 1. Flat floor, real AI: crouch in place, an arc of the configured height that lands short of the hero,
+        //    the only damage dealt during the airborne strike, a recovery, then ordinary behaviour.
+        GameWorld flat = new GameWorld();
+        try {
+            Hero hero = flat.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy e = groundedFoe(flat, 13.6f, 2.5f);
+            e.setFacingLeft(true);
+            e.setBrain(new SimpleEnemyBrain(flat));
+            float health = hero.getHealth(), groundY = e.getPosition().y, peak = -1e9f, landX = Float.NaN;
+            float crouch = 0f, recovery = 0f;
+            boolean airborne = false, hitInAir = false, done = false;
+            for (int i = 0; i < 600 && !done; i++) {
+                Enemy.JumpAttackPhase before = e.getJumpAttackPhase();
+                flat.update(step);
+                if (hero.getHealth() < health) {
+                    if (e.getJumpAttackPhase() != Enemy.JumpAttackPhase.AIRBORNE && before != Enemy.JumpAttackPhase.AIRBORNE)
+                        throw new AssertionError("Hero was hurt outside the jump's airborne strike");
+                    hitInAir = true;
+                    health = hero.getHealth();
+                }
+                switch (e.getJumpAttackPhase()) {
+                    case CROUCH:
+                        crouch += step;
+                        if (Math.abs(e.getBody().getLinearVelocity().x) > .05f)
+                            throw new AssertionError("Hunter slid during the jump crouch");
+                        break;
+                    case AIRBORNE: airborne = true; peak = Math.max(peak, e.getPosition().y); break;
+                    case RECOVERY:
+                        if (Float.isNaN(landX)) landX = e.getPosition().x;
+                        recovery += step;
+                        break;
+                    default: if (airborne && recovery > 0f) done = true;
+                }
+            }
+            if (!done) throw new AssertionError("Jump attack never ran to completion on a flat floor");
+            if (crouch < c.jumpStartup - 2f * step) throw new AssertionError("Jump crouch was too short to read: " + crouch);
+            if (Math.abs(peak - groundY - c.jumpHeight) > .35f)
+                throw new AssertionError("Jump arc height " + (peak - groundY) + " differs from jumpHeight " + c.jumpHeight);
+            if (Math.abs(landX - hero.getPosition().x) < c.landingGap * .5f)
+                throw new AssertionError("Hunter came down on top of the hero");
+            if (!hitInAir) throw new AssertionError("Airborne strike did not hit a hero standing in its path");
+            if (recovery < c.jumpRecovery - 2f * step) throw new AssertionError("Jump landing had no recovery");
+            if (e.getJumpAttackCooldownRemaining() <= 0f) throw new AssertionError("Jump attack has no cooldown");
+            if (e.requestJumpAttack(hero)) throw new AssertionError("Jump attack ignored its cooldown");
+        } finally { flat.dispose(); }
+
+        // 2. A miss costs a longer recovery.
+        GameWorld miss = new GameWorld();
+        try {
+            Hero hero = miss.getHero();
+            hero.getBody().setTransform(10f, 2.5f, 0f);
+            Enemy e = groundedFoe(miss, 13.6f, 2.5f);
+            if (!e.requestJumpAttack(hero)) throw new AssertionError("Jump attack refused on a flat floor");
+            float recovery = 0f;
+            boolean moved = false;
+            for (int i = 0; i < 400 && (e.isJumpAttacking()); i++) {
+                miss.update(step);
+                if (!moved && e.isJumpAirborne()) { hero.getBody().setTransform(3f, 2.5f, 0f); moved = true; }
+                if (e.getJumpAttackPhase() == Enemy.JumpAttackPhase.RECOVERY) recovery += step;
+            }
+            if (recovery < c.jumpRecovery + c.missRecoveryExtra - 2f * step)
+                throw new AssertionError("Missed jump did not pay the extra recovery: " + recovery);
+        } finally { miss.dispose(); }
+
+        // 3. Walls, pits and other levels: the jump is refused instead of passing through or falling in.
+        GameWorld wall = new GameWorld();
+        try {
+            Hero hero = wall.getHero();
+            pinHero(hero, 10f, 2.5f, true);
+            Enemy e = groundedFoe(wall, 13.6f, 2.5f);
+            com.badlogic.gdx.physics.box2d.BodyDef def = new com.badlogic.gdx.physics.box2d.BodyDef();
+            def.position.set(11.9f, e.getPosition().y + 1f);
+            com.badlogic.gdx.physics.box2d.Body pillar = wall.getWorld().createBody(def);
+            com.badlogic.gdx.physics.box2d.PolygonShape box = new com.badlogic.gdx.physics.box2d.PolygonShape();
+            box.setAsBox(.2f, 2f);
+            pillar.createFixture(box, 0f);
+            box.dispose();
+            pillar.setUserData("level");
+            if (e.requestJumpAttack(hero)) throw new AssertionError("Jump attack would pass through a wall");
+            wall.getWorld().destroyBody(pillar);
+            pinHero(hero, 10f, e.getPosition().y + 2.2f, true);
+            if (e.requestJumpAttack(hero)) throw new AssertionError("Jump attack targeted a hero on another level");
+            pinHero(hero, 10f, e.getPosition().y, true);
+            if (!e.requestJumpAttack(hero)) throw new AssertionError("Jump attack refused once the wall was gone");
+        } finally { wall.dispose(); }
+
+        GameWorld pit = new GameWorld();
+        try {
+            pit.changeLocation("combat_test", 0);
+            for (Enemy other : pit.getEnemies()) other.setActive(false);
+            Hero hero = pit.getHero();
+            // combat_test: floor top at y = 4 except a two-deep pit at x 34..39.
+            Enemy e = groundedFoe(pit, 31.5f, 4.5f);
+            pinHero(hero, 37.6f, e.getPosition().y, true);
+            if (e.requestJumpAttack(hero)) throw new AssertionError("Jump attack would land in a pit");
+            pinHero(hero, 27.8f, e.getPosition().y, true);
+            if (!e.requestJumpAttack(hero)) throw new AssertionError("Jump attack refused over solid floor");
+        } finally { pit.dispose(); }
     }
 
     private void checkEnemySearchMemory() {

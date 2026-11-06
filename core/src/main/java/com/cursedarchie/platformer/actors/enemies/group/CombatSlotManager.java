@@ -219,7 +219,7 @@ public final class CombatSlotManager {
             if (owner == null) continue;
             if (!members.contains(owner)) { release(owner); continue; }
             if (slot.isReserved()) continue;                       // an attack in progress keeps its slot
-            if (owner.isLeapAirborne()) continue;
+            if (owner.isAirborneManeuver()) continue;
             boolean melee = owner.getCombatRole().isMelee();
             if (!slot.valid || (melee && slot.type == CombatSlot.Type.MELEE && !heroReachable(owner)) ||
                 (melee && owner.isRetreating())) {
@@ -260,7 +260,7 @@ public final class CombatSlotManager {
         // Everyone who is not locked into an attack, a leap or a step-away is re-solved: nearest first.
         pass.clear();
         for (Enemy e : members) {
-            if (e.isAttacking() || e.isDashPhase() || e.isLeapAirborne()) continue;
+            if (e.isAttacking() || e.isJumpAttacking() || e.isDashPhase() || e.isLeapAirborne()) continue;
             if (e.getSlotLeaveRemaining() > 0f) { release(e); continue; }
             if (e.hasAttackSlot() && e.getSlotState() == SlotState.ATTACK_POSITION && e.getCombatRole().isMelee()) {
                 continue;                                              // settled attackers keep their place
@@ -473,7 +473,7 @@ public final class CombatSlotManager {
     private void publish(Hero hero, float delta) {
         previous.clear();
         for (Enemy e : members) {
-            if (e.isLeapAirborne()) continue;
+            if (e.isAirborneManeuver()) continue;
             CombatRole role = e.getCombatRole();
             int own = sideOf(e);
             CombatSlot slot = e.getCurrentSlot();
@@ -531,7 +531,7 @@ public final class CombatSlotManager {
 
     private void tryLeap(Enemy e, CombatSlot slot, int own) {
         if (Math.abs(e.getPosition().x - heroX) > config.leapMaxStartDistance) return;
-        if (e.getLeapCooldownRemaining() > 0f || !e.isGrounded() || e.isLeaping()) return;
+        if (e.getLeapCooldownRemaining() > 0f || !e.isGrounded() || e.isLeaping() || e.isJumpAttacking()) return;
         float flight = 2f * LEAP_VY / Math.abs(gameWorld.getWorld().getGravity().y == 0f ? 80f :
             gameWorld.getWorld().getGravity().y);
         float destX = targetXFor(slot, e);
@@ -598,7 +598,7 @@ public final class CombatSlotManager {
 
     private boolean pushable(Enemy e) {
         return e.isAlive() && e.isActive() && !e.isKnockedDown() && !e.isStaggered() && !e.isDodging() &&
-            !e.isDashing() && !e.isLeapAirborne() && e.getBody().getType() == BodyDef.BodyType.DynamicBody;
+            !e.isDashing() && !e.isAirborneManeuver() && e.getBody().getType() == BodyDef.BodyType.DynamicBody;
     }
 
     private float weight(Enemy e) {

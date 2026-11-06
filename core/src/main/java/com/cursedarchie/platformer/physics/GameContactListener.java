@@ -162,11 +162,11 @@ public class GameContactListener implements ContactListener {
             contact.setEnabled(false);
     }
 
-    /** An enemy leaping over the hero passes through them until it is clear again. */
+    /** An enemy leaping over the hero, or in a jump attack's arc, passes through them: only the strike hurts. */
     private static boolean isLeapPair(Object a, Object b) {
         Enemy leaper = a instanceof Enemy ? (Enemy) a : b instanceof Enemy ? (Enemy) b : null;
         Object other = leaper == a ? b : a;
-        return leaper != null && other instanceof Hero && leaper.isLeaping();
+        return leaper != null && other instanceof Hero && (leaper.isLeaping() || leaper.isJumpPassingThroughHero());
     }
 
     private static boolean isFallPair(Object a, Object b) {
