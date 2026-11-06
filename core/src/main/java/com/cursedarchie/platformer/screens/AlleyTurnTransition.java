@@ -221,7 +221,11 @@ final class AlleyTurnTransition implements Disposable {
         boolean after = switched && !failed;
         WorldRenderer.HeroLayer hero = after ? heroAfter : heroBefore;
         boolean onStreet = after == reverse;
-        float heroTurn = after ? 0f : MathUtils.clamp(turn / Math.max(.01f, profile.heroTurnUntil), 0f, 1f);
+        // Before the swap the hero turns into the depth; after it, it comes out of the depth back to side view
+        // while the camera finishes the turn (the same 2.5D effect, reversed).
+        float heroTurn = after ?
+            1f - Interpolation.smooth.apply(MathUtils.clamp((turn - profile.switchAt) / Math.max(.01f, 1f - profile.switchAt), 0f, 1f)) :
+            MathUtils.clamp(turn / Math.max(.01f, profile.heroTurnUntil), 0f, 1f);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         drawHero(hero, renderer.heroTurnFrame(heroTurn), onStreet);

@@ -4,6 +4,9 @@ import com.badlogic.gdx.math.Vector2;
 
 /** Authored room object; its identity and effect are independent of art. */
 public final class InteractionData {
+    /** targetRoomId value meaning "the target location's room that holds targetSpawnId". */
+    public static final int ROOM_BY_SPAWN = -100;
+
     public String id;
     public String kind;
     public String eventId;

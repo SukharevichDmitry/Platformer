@@ -162,7 +162,10 @@ final class GeneratedLocationFactory {
         throw new IllegalArgumentException("Generated entry room has no clear alley portal position");
     }
 
-    /** Street spawn for the alley's far exit, kept clear of the entrance door when both share a room. */
+    /**
+     * The alley's far mouth on the street: where its exit comes out, and a second way in that leads to the
+     * alley's exit room. Kept clear of the entrance door when both share a room.
+     */
     private static void addAlleyExitSpawn(RoomInstance room, boolean sharesEntranceRoom) {
         Tile[][] tiles = room.getTiles();
         int start = sharesEntranceRoom ? room.getWidth() - 6 : room.getWidth() / 3;
@@ -170,11 +173,23 @@ final class GeneratedLocationFactory {
             int x = start + (offset % 2 == 0 ? offset / 2 : -(offset + 1) / 2);
             if (x < 3 || x >= room.getWidth() - 3) continue;
             for (int y = 2; y < Math.min(7, room.getHeight() - 2); y++) {
-                if (tiles[x][y - 1] == null || tiles[x][y] != null || tiles[x][y + 1] != null) continue;
+                if (tiles[x][y - 1] == null || tiles[x][y] != null || tiles[x][y + 1] != null ||
+                    tiles[x - 1][y] != null || tiles[x + 1][y] != null) continue;
                 SpawnPointData exit = new SpawnPointData();
                 exit.id = "alley_exit_return";
                 exit.position = new Vector2(x + .5f, y + .5f);
                 room.getSpawnPoints().add(exit);
+                InteractionData mouth = new InteractionData();
+                mouth.id = "laundry_alley_far_mouth";
+                mouth.kind = "portal";
+                mouth.visualId = "alley_door";
+                mouth.eventId = "alley_far_mouth_used";
+                mouth.position = new Vector2(x + .5f, y + .5f);
+                mouth.targetLocation = "laundry_alley";
+                mouth.targetRoomId = InteractionData.ROOM_BY_SPAWN;
+                mouth.targetSpawnId = "exit_approach";
+                mouth.transition = "alley_enter";
+                room.getInteractions().add(mouth);
                 return;
             }
         }

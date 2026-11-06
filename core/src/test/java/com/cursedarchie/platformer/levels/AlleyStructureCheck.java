@@ -51,7 +51,7 @@ public final class AlleyStructureCheck {
             .copyTo(new FileHandle(new File(args[1], "alley-levels/" + TransitionProfile.FILE)));
         String structure = alley.child(AlleyStructure.FILE).readString("UTF-8");
         expect(fixture, structure.replace("\"role\": \"exit\",\n      \"template\": 4", "\"role\": \"exit\",\n      \"template\": 0"),
-            "exit portal needs its own targetSpawnId on the street");
+            "exit portal must not land at the entrance's return spawn");
         expect(fixture, structure.replace("\"over\": \"corridor\"", "\"over\": \"laundry\""), "cannot be reached on foot");
         expect(fixture, structure.replace("\"side_room\",\n    \"laundry\"", "\"side_room\",\n    \"rooftop\",\n    \"laundry\""),
             "required room role is missing: rooftop");

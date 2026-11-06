@@ -5,6 +5,10 @@
     "role": "entrance",
     "spawn": "street_entry"
   },
+  "farEntry": {
+    "role": "exit",
+    "spawn": "exit_approach"
+  },
   "sequence": [
     {
       "role": "entrance",

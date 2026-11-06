@@ -2948,6 +2948,22 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 route.getCurrentRoom().getRoomId() == streetRoom ||
                 route.getCurrentRoom().namedSpawn("alley_exit_return") == null)
                 throw new AssertionError("Far alley exit did not come out at its own street spawn");
+
+            // The far mouth beside that spawn leads back into the alley's exit room, and the entrance's own
+            // street exit still returns to the entrance door, whichever mouth the hero came in by.
+            int farRoom = route.getCurrentRoom().getRoomId();
+            com.cursedarchie.platformer.levels.wrappers.InteractionData mouth = null;
+            for (com.cursedarchie.platformer.levels.wrappers.InteractionData interaction : route.getCurrentRoom().getInteractions())
+                if ("laundry_alley_far_mouth".equals(interaction.id)) mouth = interaction;
+            if (mouth == null) throw new AssertionError("Street has no far alley mouth at the exit spawn");
+            if (!route.enterPortal(mouth) || !"laundry_alley".equals(route.getLocation().getLocation()) ||
+                route.getCurrentRoom().namedSpawn("exit_approach") == null)
+                throw new AssertionError("Far alley mouth did not lead into the alley's exit room");
+            route.getHero().getBody().setTransform(3.5f, 3f, 0f);
+            route.update(GameWorld.FIXED_STEP);
+            if (!route.enterPortal(route.getCurrentRoom().getInteractions().first()) ||
+                route.getCurrentRoom().getRoomId() != streetRoom || route.getCurrentRoom().getRoomId() == farRoom)
+                throw new AssertionError("Entrance exit did not return to the entrance door after a far-mouth entry");
         } finally { route.dispose(); }
     }
 

@@ -180,6 +180,9 @@ public final class AlleyStructure {
                     throw invalid(directory, "rooms " + all[i].getRoomId() + " and " + all[j].getRoomId() + " overlap");
         try {
             LocationReachability.validate(location, entrance, startSpawn);
+            // The far mouth on the street leads into the exit room; the whole alley must work from there too.
+            JsonValue far = root.get("farEntry");
+            if (far != null) LocationReachability.validate(location, roomId(far.getString("role")), far.getString("spawn"));
         } catch (IllegalArgumentException e) {
             throw invalid(directory, e.getMessage());
         }

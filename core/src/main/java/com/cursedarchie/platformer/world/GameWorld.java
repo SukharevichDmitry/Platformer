@@ -850,7 +850,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 portalOriginRoomId = currentRoomId;
                 portalOriginSpawnId = profile != null ? profile.originSpawnId : "alley_return";
             }
-            changeLocation(portal.targetLocation, portal.targetRoomId, portal.targetSpawnId);
+            int room = portal.targetRoomId == InteractionData.ROOM_BY_SPAWN ?
+                roomManager.loadLocation(portal.targetLocation).roomWithSpawn(portal.targetSpawnId) : portal.targetRoomId;
+            changeLocation(portal.targetLocation, room, portal.targetSpawnId);
         }
         runFlags.add(portal.eventId);
         persistenceRevision++;
