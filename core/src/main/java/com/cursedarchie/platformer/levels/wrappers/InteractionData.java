@@ -15,6 +15,8 @@ public final class InteractionData {
     public String targetSpawnId;
     public boolean returnToOrigin;
     public String requiresFlag;
+    /** Portal only: id of an animated transition in config/transitions.json, e.g. "alley_enter". */
+    public String transition;
 
     public InteractionData() { }
 }

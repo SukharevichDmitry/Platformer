@@ -45,6 +45,24 @@ public final class RoomValidationCheck {
         sample.child("0.json").writeString(VALID_ROOM.replace("\"neighbors\":{}", "\"interactions\":[" + interaction.replace("\"x\":1.5", "\"x\":1.1") + "],\"neighbors\":{}"), false);
         expectError(sample, "0.json", "needs clearance from walls");
 
+        String portal = "{\"id\":\"exit\",\"kind\":\"portal\",\"visualId\":\"street_exit\",\"eventId\":\"left\","
+            + "\"position\":{\"x\":1.5,\"y\":0.5},\"returnToOrigin\":true,\"transition\":\"no_such_turn\"}";
+        sample.child("0.json").writeString(VALID_ROOM.replace("\"neighbors\":{}", "\"interactions\":[" + portal + "],\"neighbors\":{}"), false);
+        expectError(sample, "0.json", "portal transition is unknown: no_such_turn");
+
+        // Every shipped transition hides the hero at its swap; a profile that would show the jump is rejected.
+        com.badlogic.gdx.utils.ObjectMap<String, TransitionProfile> profiles =
+            TransitionProfile.load(new FileHandle(new File(args[0], TransitionProfile.FILE)));
+        if (!profiles.containsKey("alley_enter") || !profiles.containsKey("alley_exit") ||
+            profiles.get("alley_enter").direction != 1 || profiles.get("alley_exit").direction != -1)
+            throw new AssertionError("Alley transitions must turn counter-clockwise in and clockwise out");
+        try {
+            TransitionProfile.parse("{\"bad\":{\"switchAt\":0.9,\"coverFrom\":0.3,\"coverTo\":0.6}}");
+            throw new AssertionError("A transition that swaps outside its cover window was accepted");
+        } catch (IllegalArgumentException expected) {
+            if (!expected.getMessage().contains("hide the hero")) throw expected;
+        }
+
         sample.child("0.json").writeString("{\"id\":0,\"tileRows\":[", false);
         expectError(sample, "0.json", "invalid JSON");
 

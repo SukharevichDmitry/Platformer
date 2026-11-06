@@ -43,7 +43,8 @@
         "x": 3.5,
         "y": 3.0
       },
-      "returnToOrigin": true
+      "returnToOrigin": true,
+      "transition": "alley_exit"
     }
   ]
 }

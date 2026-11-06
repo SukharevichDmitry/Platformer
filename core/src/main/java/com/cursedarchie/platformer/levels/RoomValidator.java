@@ -87,6 +87,12 @@ public final class RoomValidator {
         if (interactions == null) return;
         for (JsonValue portal : interactions) {
             if (!"portal".equals(portal.getString("kind", ""))) continue;
+            String transition = portal.getString("transition", null);
+            if (transition != null) {
+                FileHandle profiles = directory.parent().parent().child(TransitionProfile.FILE);
+                if (!profiles.exists() || !TransitionProfile.load(profiles).containsKey(transition))
+                    throw invalid(file, "portal transition is unknown: " + transition);
+            }
             if (portal.getBoolean("returnToOrigin", false)) {
                 if (!"laundry_alley".equals(directory.name()))
                     throw invalid(file, "returnToOrigin is only valid at the alley street exit");

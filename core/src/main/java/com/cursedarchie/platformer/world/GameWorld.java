@@ -818,10 +818,13 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             if (portalOriginLocation == null) return false;
             changeLocation(portalOriginLocation, portalOriginRoomId, portalOriginSpawnId);
         } else {
-            if ("ruins".equals(currentLocationName) && "laundry_alley".equals(portal.targetLocation)) {
+            // An alley entrance remembers where the hero came from; the exit leads back there.
+            TransitionProfile profile = TransitionProfile.get(portal.transition);
+            if (profile != null && profile.savesOrigin ||
+                profile == null && "ruins".equals(currentLocationName) && "laundry_alley".equals(portal.targetLocation)) {
                 portalOriginLocation = currentLocationName;
                 portalOriginRoomId = currentRoomId;
-                portalOriginSpawnId = "alley_return";
+                portalOriginSpawnId = profile != null ? profile.originSpawnId : "alley_return";
             }
             changeLocation(portal.targetLocation, portal.targetRoomId, portal.targetSpawnId);
         }

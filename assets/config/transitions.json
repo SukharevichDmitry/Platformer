@@ -1,0 +1,38 @@
+{
+  "note": "Location transition profiles. A portal names one in its \"transition\" field. Times are seconds; fractions are of the turn (0..1) or of the screen width. Physics never rotates: the turn is drawn from captured 2D frames.",
+  "alley_enter": {
+    "kind": "alley_turn",
+    "direction": "counterclockwise",
+    "turnDuration": 0.9,
+    "settleDuration": 0.35,
+    "switchAt": 0.5,
+    "heroTurnUntil": 0.38,
+    "occluderWidth": 0.17,
+    "coverFrom": 0.34,
+    "coverTo": 0.66,
+    "cameraShift": 0.05,
+    "fadePeak": 0.32,
+    "dustCount": 16,
+    "sound": "sfx/whiff.wav",
+    "soundVolume": 0.22,
+    "savesOrigin": true,
+    "originSpawnId": "alley_return"
+  },
+  "alley_exit": {
+    "kind": "alley_turn",
+    "direction": "clockwise",
+    "turnDuration": 0.9,
+    "settleDuration": 0.3,
+    "switchAt": 0.5,
+    "heroTurnUntil": 0.38,
+    "occluderWidth": 0.17,
+    "coverFrom": 0.34,
+    "coverTo": 0.66,
+    "cameraShift": 0.0,
+    "fadePeak": 0.32,
+    "dustCount": 16,
+    "sound": "sfx/whiff.wav",
+    "soundVolume": 0.22,
+    "savesOrigin": false
+  }
+}

@@ -147,6 +147,7 @@ final class GeneratedLocationFactory {
                 portal.targetLocation = "laundry_alley";
                 portal.targetRoomId = 0;
                 portal.targetSpawnId = "street_entry";
+                portal.transition = "alley_enter";
                 room.getInteractions().add(portal);
                 SpawnPointData returnPoint = new SpawnPointData();
                 returnPoint.id = "alley_return";
