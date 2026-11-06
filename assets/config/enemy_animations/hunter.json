@@ -1,0 +1,345 @@
+{
+  "version": 1,
+  "sprite": "hunter",
+  "frame": [
+    128,
+    96
+  ],
+  "anchor": [
+    64,
+    93
+  ],
+  "pixelsPerUnit": 64,
+  "facing": "right",
+  "animations": {
+    "idle": {
+      "frames": 4,
+      "frameDuration": 0.2,
+      "loop": true,
+      "weaponTip": [
+        [
+          80,
+          85
+        ],
+        [
+          80,
+          85
+        ],
+        [
+          81,
+          86
+        ],
+        [
+          80,
+          85
+        ]
+      ]
+    },
+    "walk": {
+      "frames": 8,
+      "frameDuration": 0.08,
+      "loop": true,
+      "weaponTip": [
+        [
+          74,
+          88
+        ],
+        [
+          76,
+          87
+        ],
+        [
+          79,
+          85
+        ],
+        [
+          82,
+          85
+        ],
+        [
+          84,
+          84
+        ],
+        [
+          82,
+          85
+        ],
+        [
+          79,
+          85
+        ],
+        [
+          76,
+          87
+        ]
+      ]
+    },
+    "patrol": {
+      "frames": 8,
+      "frameDuration": 0.12,
+      "loop": true,
+      "weaponTip": [
+        [
+          56,
+          42
+        ],
+        [
+          56,
+          41
+        ],
+        [
+          56,
+          40
+        ],
+        [
+          56,
+          41
+        ],
+        [
+          56,
+          42
+        ],
+        [
+          56,
+          41
+        ],
+        [
+          56,
+          40
+        ],
+        [
+          56,
+          41
+        ]
+      ]
+    },
+    "detect": {
+      "frames": 3,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          64,
+          44
+        ],
+        [
+          70,
+          38
+        ],
+        [
+          77,
+          41
+        ]
+      ]
+    },
+    "attack": {
+      "frames": 5,
+      "frameDuration": 0.083,
+      "loop": false,
+      "weaponTip": [
+        [
+          60,
+          21
+        ],
+        [
+          45,
+          23
+        ],
+        [
+          107,
+          66
+        ],
+        [
+          99,
+          78
+        ],
+        [
+          92,
+          46
+        ]
+      ],
+      "phases": {
+        "startup": [
+          0,
+          1
+        ],
+        "active": [
+          2,
+          2
+        ],
+        "recovery": [
+          3,
+          4
+        ]
+      }
+    },
+    "jump_attack": {
+      "frames": 6,
+      "frameDuration": 0.083,
+      "loop": false,
+      "weaponTip": [
+        [
+          66,
+          27
+        ],
+        [
+          59,
+          32
+        ],
+        [
+          48,
+          23
+        ],
+        [
+          99,
+          67
+        ],
+        [
+          93,
+          85
+        ],
+        [
+          100,
+          57
+        ]
+      ],
+      "phases": {
+        "startup": [
+          0,
+          1
+        ],
+        "active": [
+          2,
+          3
+        ],
+        "recovery": [
+          4,
+          5
+        ]
+      },
+      "notes": "Special: visible crouch, airborne phase with its own strike frame, landing recovery (stage 3 jump attack)."
+    },
+    "block": {
+      "frames": 2,
+      "frameDuration": 0.1,
+      "loop": false,
+      "weaponTip": [
+        [
+          76,
+          33
+        ],
+        [
+          71,
+          34
+        ]
+      ]
+    },
+    "hit": {
+      "frames": 2,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          57,
+          52
+        ],
+        [
+          64,
+          48
+        ]
+      ]
+    },
+    "stagger": {
+      "frames": 3,
+      "frameDuration": 0.14,
+      "loop": true,
+      "weaponTip": [
+        [
+          64,
+          95
+        ],
+        [
+          66,
+          95
+        ],
+        [
+          63,
+          94
+        ]
+      ]
+    },
+    "death": {
+      "frames": 6,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          57,
+          52
+        ],
+        [
+          46,
+          70
+        ],
+        [
+          42,
+          83
+        ],
+        [
+          14,
+          76
+        ],
+        [
+          29,
+          77
+        ],
+        [
+          29,
+          77
+        ]
+      ]
+    },
+    "recover": {
+      "frames": 3,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          95,
+          55
+        ],
+        [
+          83,
+          49
+        ],
+        [
+          80,
+          86
+        ]
+      ]
+    },
+    "reposition": {
+      "frames": 4,
+      "frameDuration": 0.1,
+      "loop": true,
+      "weaponTip": [
+        [
+          77,
+          42
+        ],
+        [
+          77,
+          41
+        ],
+        [
+          77,
+          41
+        ],
+        [
+          77,
+          41
+        ]
+      ]
+    }
+  }
+}

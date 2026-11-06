@@ -218,9 +218,14 @@ def resolve(rig, ref):
     return pose
 
 
+STYLE_DEFAULTS = {"headwear": "hood", "scarf": True, "weaponType": "spear",
+                  "armband": False, "quiver": False, "faceShadow": False}
+
+
 def draw_figure(rig, pose, canvas):
     b = rig["bones"]
     parts = rig["parts"]
+    style = dict(STYLE_DEFAULTS, **rig.get("style", {}))
     turn = pose.get("turn", 0)          # 0 = side view, 1 = seen from behind
     squeeze = 1 - turn * .75
     hip = (pose["hipX"], pose["hipY"])
@@ -252,24 +257,40 @@ def draw_figure(rig, pose, canvas):
     shoulderF, elbowF, handF = arm("armF", 1)
     shoulderB, elbowB, handB = arm("armB", -1)
 
+    kind = style["weaponType"]
     weapon = None
-    if pose.get("weapon") is not None:
+    nock = None
+    if pose.get("weapon") is not None and kind != "none":
         wa = math.radians(pose["weapon"])
-        length = b["weapon"]
         direction = (math.cos(wa) * squeeze, math.sin(wa))
-        grip = pose.get("grip", .4)
-        butt = (handF[0] - direction[0] * length * grip, handF[1] - direction[1] * length * grip)
-        tip = (butt[0] + direction[0] * length, butt[1] + direction[1] * length)
-        weapon = (butt, tip, direction)
-        if pose.get("twoHand") is not None:
-            target = (butt[0] + direction[0] * length * pose["twoHand"],
-                      butt[1] + direction[1] * length * pose["twoHand"])
-            elbowB, handB = two_bone(shoulderB, target, b["upperArm"], b["forearm"], -1)
+        if kind == "bow":
+            # The bow hand holds the grip; the string hand pulls the nock back along the aim line.
+            draw = pose.get("bowDraw", 0)
+            nock = (handF[0] - direction[0] * (b["bowBrace"] + draw * b["bowPull"]),
+                    handF[1] - direction[1] * (b["bowBrace"] + draw * b["bowPull"]))
+            tip = add(handF, (direction[0] * 3, direction[1] * 3))
+            weapon = (handF, tip, direction)
+            if draw > 0 or pose.get("twoHand") is not None:
+                elbowB, handB = two_bone(shoulderB, nock, b["upperArm"], b["forearm"], -1)
+        else:
+            length = b["weapon"]
+            grip = pose.get("grip", .4)
+            butt = (handF[0] - direction[0] * length * grip, handF[1] - direction[1] * length * grip)
+            tip = (butt[0] + direction[0] * length, butt[1] + direction[1] * length)
+            weapon = (butt, tip, direction)
+            if pose.get("twoHand") is not None:
+                target = (butt[0] + direction[0] * length * pose["twoHand"],
+                          butt[1] + direction[1] * length * pose["twoHand"])
+                elbowB, handB = two_bone(shoulderB, target, b["upperArm"], b["forearm"], -1)
 
-    def limb_arm(shoulder, elbow, hand, far):
+    def limb_arm(shoulder, elbow, hand, far, band=False):
         cid = canvas.new_part(parts["sleeve"], far)
         canvas.capsule(shoulder, elbow, b["armRadius"], cid)
         canvas.capsule(elbow, hand, b["armRadius"] - .4, cid, b["armRadius"] - .7)
+        if band:
+            mid = (lerp(shoulder[0], elbow[0], .5), lerp(shoulder[1], elbow[1], .5))
+            end = (lerp(shoulder[0], elbow[0], .68), lerp(shoulder[1], elbow[1], .68))
+            canvas.capsule(mid, end, b["armRadius"], canvas.new_part(parts["armband"], far))
         canvas.disc(hand, b["handRadius"], canvas.new_part(parts["hand"], far))
 
     def limb_leg(root, knee, foot, far):
@@ -285,6 +306,31 @@ def draw_figure(rig, pose, canvas):
         if weapon is None:
             return
         butt, tip, direction = weapon
+        if kind == "bow":
+            perp = (-direction[1], direction[0])
+            limb = canvas.new_part(parts["bow"])
+            half, bend = b["bowHalf"], b["bowCurve"] + pose.get("bowDraw", 0) * 2
+            pts = []
+            for i in range(-8, 9):
+                t = i / 8
+                pts.append((butt[0] + perp[0] * t * half - direction[0] * bend * t * t,
+                            butt[1] + perp[1] * t * half - direction[1] * bend * t * t))
+            for a, c in zip(pts, pts[1:]):
+                canvas.capsule(a, c, 1.2 if abs(a[0] - butt[0]) + abs(a[1] - butt[1]) < half * .5 else .9, limb)
+            string = ramp_colour(canvas, parts["string"], 1)
+            canvas.fx_line(pts[0], nock, string)
+            canvas.fx_line(pts[-1], nock, string)
+            if pose.get("arrow"):
+                head = (nock[0] + direction[0] * b["arrow"], nock[1] + direction[1] * b["arrow"])
+                canvas.capsule(nock, head, .6, canvas.new_part(parts["shaft"]))
+                canvas.capsule((head[0] - direction[0] * 3, head[1] - direction[1] * 3), head, 1.2,
+                               canvas.new_part(parts["blade"]), .5)
+            return
+        if kind == "club":
+            canvas.capsule(butt, tip, 1.1, canvas.new_part(parts["shaft"]))
+            canvas.capsule((lerp(butt[0], tip[0], .7), lerp(butt[1], tip[1], .7)), tip,
+                           b["clubHead"] * .7, canvas.new_part(parts["blade"]), b["clubHead"])
+            return
         blade = (tip[0] - direction[0] * b["blade"], tip[1] - direction[1] * b["blade"])
         canvas.capsule(butt, blade, .9, canvas.new_part(parts["shaft"]))
         canvas.capsule(blade, tip, 1.6, canvas.new_part(parts["blade"]), .6)
@@ -292,21 +338,31 @@ def draw_figure(rig, pose, canvas):
         canvas.capsule(blade, wrap, 1.3, canvas.new_part(parts["wrap"]))
 
     back_view = turn > .55
-    # Back to front: far arm, far leg, scarf tail, coat skirt, torso, near leg, head, near arm, weapon.
-    if not back_view:
-        limb_arm(shoulderB, elbowB, handB, True)
-    limb_leg(*legB, True)
-
-    scarf_angle = math.radians(pose.get("scarf", 200))
-    tail = add(neck, (math.cos(scarf_angle) * b["scarfTail"] * squeeze, math.sin(scarf_angle) * b["scarfTail"]))
-    canvas.capsule(add(neck, (-1, -1)), tail, 2.2, canvas.new_part(parts["scarf"]), 1.2)
-
-    limb_leg(*legF, False)
-
     flare = pose.get("coat", 0)
     lean = math.radians(pose["lean"])
     across = (math.cos(lean) * squeeze, -math.sin(lean))
     hw = b["torsoWidth"] / 2 * (1 + turn * .3)
+
+    # Back to front: far arm, far leg, quiver, scarf tail, near leg, coat, head, near arm, weapon.
+    if not back_view:
+        limb_arm(shoulderB, elbowB, handB, True)
+    limb_leg(*legB, True)
+
+    if style["quiver"]:
+        top = add(neck, (-across[0] * (hw + 1.5), -across[1] * (hw + 1.5) + 2))
+        bottom = add(hip, (-across[0] * (hw + 2.5), -across[1] * (hw + 2.5) + 6))
+        fletch = canvas.new_part(parts["fletching"])
+        for k in (-1.5, 0, 1.5):
+            canvas.disc(add(top, (k - 1, 3 + abs(k))), 1.2, fletch)
+        canvas.capsule(top, bottom, 2.3, canvas.new_part(parts["quiver"]))
+
+    if style["scarf"]:
+        scarf_angle = math.radians(pose.get("scarf", 200))
+        tail = add(neck, (math.cos(scarf_angle) * b["scarfTail"] * squeeze, math.sin(scarf_angle) * b["scarfTail"]))
+        canvas.capsule(add(neck, (-1, -1)), tail, 2.2, canvas.new_part(parts["scarf"]), 1.2)
+
+    limb_leg(*legF, False)
+
     hem_y = hip[1] - b["coatLength"]
     coat = canvas.new_part(parts["coat"])
     canvas.poly([
@@ -321,37 +377,64 @@ def draw_figure(rig, pose, canvas):
         add(neck, (across[0] * (hw + .5), across[1] * (hw + .5))),
         add(neck, (-across[0] * (hw + .5), -across[1] * (hw + .5))),
     ], coat)
+    if "cape" in parts:
+        cape_len = b.get("capeLength", 9)
+        canvas.poly([
+            add(neck, (-across[0] * (hw + 1.5), -across[1] * (hw + 1.5) + 1)),
+            add(neck, (across[0] * (hw + 1), across[1] * (hw + 1) + 1)),
+            add(neck, (across[0] * (hw + 1.5) + flare * .1, -cape_len + 2)),
+            add(neck, (-across[0] * (hw + 3) - flare * .4, -cape_len)),
+        ], canvas.new_part(parts["cape"]))
     canvas.capsule(add(hip, (-across[0] * hw, 1)), add(hip, (across[0] * hw, 1)), 1.1,
                    canvas.new_part(parts["belt"]))
 
     hr = b["headRadius"]
-    hood = canvas.new_part(parts["hood"])
-    canvas.disc(add(head, (-1.2 * squeeze, .6)), hr + .8, hood)
-    if not back_view:
-        face = canvas.new_part(parts["face"])
-        canvas.disc(add(head, (1.6 * squeeze, -.6)), hr - 1.6, face)
-        canvas.capsule(add(neck, (-hw * .6, .5)), add(neck, (hw * .9, 1)), 2.2, canvas.new_part(parts["scarf"]))
-        ex, ey = canvas.to_px(add(head, (3.2 * squeeze, .2)))
-        canvas.fx[(int(ex), int(ey))] = None     # placeholder, eye is drawn after render
-        canvas.eye = (int(ex), int(ey))
+    canvas.eye = None
+    headwear = style["headwear"]
+    if headwear == "cap":
+        canvas.disc(add(head, (-2.2 * squeeze, -.4)), hr - 1, canvas.new_part(parts["hair"]))
+        canvas.disc(add(head, (.6 * squeeze, -.6)), hr - .6, canvas.new_part(parts["face"]))
+        cap = canvas.new_part(parts["hood"])
+        canvas.poly([add(head, (-hr - .4, 1)), add(head, (hr * squeeze + .4, 1)),
+                     add(head, (hr * .6 * squeeze, hr + .6)), add(head, (-hr * .7, hr + .4))], cap)
+        if not back_view:
+            canvas.capsule(add(head, (hr * .4 * squeeze, 1)), add(head, ((hr + 3) * squeeze, .6)), .9, cap)
     else:
+        hood = canvas.new_part(parts["hood"])
+        canvas.disc(add(head, (-1.2 * squeeze, .6)), hr + .8, hood)
+        if headwear == "cowl":
+            canvas.poly([add(head, (-hr * .6, hr * .4)), add(head, (-hr - 6, hr + 3)),
+                         add(head, (-1, hr + 1.2))], hood)
+        if not back_view:
+            canvas.disc(add(head, (1.6 * squeeze, -.6)), hr - 1.6,
+                        canvas.new_part(parts["face"], style["faceShadow"]))
+    if not back_view:
+        if style["scarf"]:
+            canvas.capsule(add(neck, (-hw * .6, .5)), add(neck, (hw * .9, 1)), 2.2, canvas.new_part(parts["scarf"]))
+        ex, ey = canvas.to_px(add(head, (3.2 * squeeze, .2)))
+        canvas.eye = (int(ex), int(ey))
+    elif style["scarf"]:
         canvas.capsule(add(neck, (-hw, .5)), add(neck, (hw, .5)), 2.2, canvas.new_part(parts["scarf"]))
-        canvas.eye = None
 
     if back_view:
         limb_arm(shoulderB, elbowB, handB, True)
     draw_weapon()
-    limb_arm(shoulderF, elbowF, handF, False)
-    if pose.get("twoHand") is not None and not back_view:
+    limb_arm(shoulderF, elbowF, handF, False, style["armband"])
+    if (pose.get("twoHand") is not None or nock is not None and pose.get("bowDraw", 0) > 0) and not back_view:
         canvas.disc(handB, b["handRadius"], canvas.new_part(parts["hand"]))
 
-    tip_px = canvas.to_px(weapon[1]) if weapon else canvas.to_px(handF)
-    return {"hip": hip, "tip": weapon[1] if weapon else handF, "tipPx": tip_px}
+    tip_point = weapon[1] if weapon else handF
+    return {"hip": hip, "tip": tip_point, "tipPx": canvas.to_px(tip_point)}
+
+
+def ramp_colour(canvas, ramp_name, step):
+    return canvas.ramps[ramp_name][step]
 
 
 def apply_fx(rig, pose, canvas, joints, ramps):
     for fx in pose.get("fx", []):
-        colours = [ramps[fx.get("ramp", "steel")][i] for i in (1, 2, 3)]
+        ramp = ramps[fx.get("ramp", "steel")]
+        colours = [ramp[min(i, len(ramp) - 1)] for i in (len(ramp) - 3, len(ramp) - 2, len(ramp) - 1)]
         centre = add(joints["hip"], tuple(fx.get("centre", (0, 12))))
         if fx["type"] == "arc":
             canvas.fx_arc(centre, fx["r0"], fx["r1"], fx["from"], fx["to"], colours)
@@ -405,8 +488,8 @@ def build(rig_path):
         tips = []
         for index, pose in enumerate(poses):
             canvas = Canvas(fw, fh, anchor)
+            canvas.ramps = ramps
             joints = draw_figure(rig, pose, canvas)
-            canvas.fx = {k: v for k, v in canvas.fx.items() if v is not None}
             apply_fx(rig, pose, canvas, joints, ramps)
             pixels = canvas.render(ramps, outline)
             if canvas.eye:
@@ -431,6 +514,7 @@ def build(rig_path):
     out = ROOT / rig["output"]["dir"]
     pack(rendered, fw, fh, out / (rig["output"]["name"] + ".png"), out / (rig["output"]["name"] + ".atlas"))
     meta_path = ROOT / rig["output"]["metadata"]
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     preview(rendered, fw, fh, ROOT / rig["output"]["preview"], rig)
     print(f"{rig['name']}: {len(rendered)} frames, {len(rig['animations'])} animations")
