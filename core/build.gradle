@@ -16,6 +16,12 @@ tasks.register('validateRooms', JavaExec) {
   mainClass = 'com.cursedarchie.platformer.levels.RoomValidationCheck'
   args rootProject.file('assets').path, layout.buildDirectory.dir('validation-fixtures').get().asFile.path
 }
+tasks.register('validateAlleyStructure', JavaExec) {
+  dependsOn 'testClasses'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.cursedarchie.platformer.levels.AlleyStructureCheck'
+  args rootProject.file('assets').path, layout.buildDirectory.dir('validation-fixtures').get().asFile.path
+}
 tasks.register('validateGenerationProfiles', JavaExec) {
   dependsOn 'testClasses'
   classpath = sourceSets.test.runtimeClasspath
@@ -70,6 +76,7 @@ tasks.register('qualityGateGeneratedWorld', JavaExec) {
 }
 tasks.named('check') {
   dependsOn 'validateRooms'
+  dependsOn 'validateAlleyStructure'
   dependsOn 'validateGenerationProfiles'
   dependsOn 'validateRoomTemplates'
   dependsOn 'validateRoomGraphs'

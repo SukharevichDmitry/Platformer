@@ -7,7 +7,6 @@ import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.cursedarchie.platformer.levels.wrappers.RoomData;
 import com.cursedarchie.platformer.levels.wrappers.InteractionData;
-import com.cursedarchie.platformer.levels.wrappers.Neighbors;
 import com.cursedarchie.platformer.run.RunCheckpoint;
 
 import java.util.*;
@@ -112,7 +111,7 @@ public class RoomManager {
             if ("laundry_house".equals(location) || "catchment_cellar".equals(location)) {
                 for (InteractionData interaction : data.interactions) {
                     if (!"alley_return".equals(interaction.id)) continue;
-                    interaction.targetRoomId = "laundry_house".equals(location) ? alleyRoomCount() - 2 : alleyRoomCount() - 1;
+                    interaction.targetRoomId = alley().roomId("laundry_house".equals(location) ? "laundry" : "cellar_descent");
                 }
             }
 
@@ -130,49 +129,20 @@ public class RoomManager {
         return locationInstance;
     }
 
-    private int alleyRoomCount() {
-        return 4 + Math.floorMod(runSeed, 4);
+    /** The run's alley: rooms, roles and seeded optional rooms from levels/laundry_alley/structure.json. */
+    private AlleyStructure alley() {
+        return AlleyStructure.build(Gdx.files.internal("levels/laundry_alley"), runSeed);
     }
 
-    /** Deterministic corridor: entry, supplies, optional passages, laundry, cellar. */
     private LocationInstance generateAlley() {
-        FileHandle directory = Gdx.files.internal("levels/laundry_alley");
-        RoomValidator.validateLocation(directory);
-        Random random = new Random(runSeed ^ 0x4A11E7L);
-        int count = alleyRoomCount();
-        LocationInstance alley = new LocationInstance("laundry_alley");
-        for (int id = 0; id < count; id++) {
-            int template = id == 0 ? 0 : id == 1 ? 1 : id == count - 2 ? 2 : id == count - 1 ? 3 : 1;
-            RoomData data = RoomLoader.load(directory.child(template + ".json"));
-            data.id = id;
-            data.neighbors = new Neighbors();
-            data.neighbors.left = id == 0 ? null : id - 1;
-            data.neighbors.right = id == count - 1 ? null : id + 1;
-            if (id > 1 && id < count - 2) {
-                data.interactions.clear();
-                data.enemySpawns.clear();
-            }
-            if (id != 0) {
-                int width = 26 + random.nextInt(11);
-                data.width = width;
-                data.tileRows = new String[14];
-                for (int y = 0; y < 12; y++) data.tileRows[y] = " ".repeat(width);
-                data.tileRows[12] = "#".repeat(width);
-                data.tileRows[13] = "#".repeat(width);
-            }
-            RoomInstance room = new RoomInstance(data);
-            room.buildTiles();
-            alley.addRoom(room);
-        }
-        buildRoomLayout(alley);
-        return alley;
+        return alley().location();
     }
 
     public void saveGeneratedRun(LocationInstance location) {
         if (location != null && location.isGenerated()) runStore.save(location.getGeneratedRun());
     }
 
-    private void buildRoomLayout(LocationInstance location) {
+    static void buildRoomLayout(LocationInstance location) {
 
         RoomInstance start = location.getRoom(0);
 

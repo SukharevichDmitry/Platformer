@@ -1,0 +1,57 @@
+{
+  "note": "Laundry alley as connected rooms with story roles. Rooms in 'sequence' run left to right; 'above' rooms sit on top of a sequence room and are reached through a gap in their floor. Room ids follow the listed order (sequence first). The holding cellar is still its own location reached from the cellar descent; stage 5 joins it as a vertical descent.",
+  "location": "laundry_alley",
+  "start": {
+    "role": "entrance",
+    "spawn": "street_entry"
+  },
+  "sequence": [
+    {
+      "role": "entrance",
+      "template": 0
+    },
+    {
+      "role": "corridor",
+      "template": 1
+    },
+    {
+      "role": "corridor",
+      "template": 6,
+      "chance": 0.5
+    },
+    {
+      "role": "laundry",
+      "template": 2
+    },
+    {
+      "role": "cellar_descent",
+      "template": 3
+    },
+    {
+      "role": "exit",
+      "template": 4
+    }
+  ],
+  "above": [
+    {
+      "role": "side_room",
+      "template": 5,
+      "over": "corridor"
+    }
+  ],
+  "linked": [
+    {
+      "role": "holding_cellar",
+      "location": "catchment_cellar",
+      "from": "cellar_descent"
+    }
+  ],
+  "requiredRoles": [
+    "entrance",
+    "corridor",
+    "side_room",
+    "laundry",
+    "cellar_descent",
+    "exit"
+  ]
+}
