@@ -91,6 +91,12 @@ public class LocationInstance {
         }
     }
 
+    /** Id of the room that owns a named spawn, or -1. */
+    public int roomWithSpawn(String spawnId) {
+        for (RoomInstance room : rooms.values()) if (room.namedSpawn(spawnId) != null) return room.getRoomId();
+        return -1;
+    }
+
     public void addRoom(RoomInstance room) {
         rooms.put(room.getRoomId(), room);
     }

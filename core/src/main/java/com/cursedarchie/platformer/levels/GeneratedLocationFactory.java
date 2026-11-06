@@ -66,6 +66,8 @@ final class GeneratedLocationFactory {
             if (metScavenger) { alleyRouteIndex = i; shooterBeforeAlley = true; break; }
         }
         int alleyRoomId = graph.mainRoute.get(alleyRouteIndex);
+        // The alley's far exit comes out one room further along the main route than its entrance.
+        int alleyExitRoomId = graph.mainRoute.get(Math.min(alleyRouteIndex + 1, graph.mainRoute.size() - 1));
         int forcedShooterRoomId = shooterBeforeAlley ? -1 : graph.mainRoute.get(alleyRouteIndex - 1);
         GeneratedRunSave run = describeRun(profile, catalog, graph, layout, restored);
 
@@ -115,6 +117,7 @@ final class GeneratedLocationFactory {
             room.buildTiles();
             RoomFineDecorator.decorate(room, catalog.templates.get(placed.templateId));
             if (placed.id == alleyRoomId) addAlleyPortal(room);
+            if (placed.id == alleyExitRoomId) addAlleyExitSpawn(room, placed.id == alleyRoomId);
             location.addRoom(room);
         }
         for (PlacedRoomGraph.DoorJoin join : layout.doorJoins) {
@@ -157,6 +160,25 @@ final class GeneratedLocationFactory {
             }
         }
         throw new IllegalArgumentException("Generated entry room has no clear alley portal position");
+    }
+
+    /** Street spawn for the alley's far exit, kept clear of the entrance door when both share a room. */
+    private static void addAlleyExitSpawn(RoomInstance room, boolean sharesEntranceRoom) {
+        Tile[][] tiles = room.getTiles();
+        int start = sharesEntranceRoom ? room.getWidth() - 6 : room.getWidth() / 3;
+        for (int offset = 0; offset < room.getWidth(); offset++) {
+            int x = start + (offset % 2 == 0 ? offset / 2 : -(offset + 1) / 2);
+            if (x < 3 || x >= room.getWidth() - 3) continue;
+            for (int y = 2; y < Math.min(7, room.getHeight() - 2); y++) {
+                if (tiles[x][y - 1] == null || tiles[x][y] != null || tiles[x][y + 1] != null) continue;
+                SpawnPointData exit = new SpawnPointData();
+                exit.id = "alley_exit_return";
+                exit.position = new Vector2(x + .5f, y + .5f);
+                room.getSpawnPoints().add(exit);
+                return;
+            }
+        }
+        throw new IllegalArgumentException("Generated street has no clear alley exit position");
     }
 
     private static Vector2 findShooterPosition(GeneratedRoomTiles tiles, int roomId, int width, int height) {

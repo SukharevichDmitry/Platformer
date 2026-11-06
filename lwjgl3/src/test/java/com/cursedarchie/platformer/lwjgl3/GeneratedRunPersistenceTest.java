@@ -420,23 +420,29 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
     }
 
     private void checkGeneratedAlleyVariants() {
-        boolean[] lengths = new boolean[4];
+        boolean[] lengths = new boolean[2];
         for (long seed = 0; seed < 24; seed++) {
             GameWorld world = new GameWorld(seed);
             try {
                 world.changeLocation("laundry_alley", 0);
+                // Entrance, corridor, optional second corridor, laundry, cellar descent, exit, plus the side room.
                 int count = world.getLocation().getRooms().size();
-                if (count < 4 || count > 7) throw new AssertionError("Invalid alley length: " + count);
-                lengths[count - 4] = true;
-                if (roomWithInteraction(world, "street_return") != 0 ||
-                    roomWithInteraction(world, "locked_laundry_door") != count - 2 ||
-                    roomWithInteraction(world, "alley_cellar_stairs") != count - 1)
+                if (count < 6 || count > 7) throw new AssertionError("Invalid alley length: " + count);
+                lengths[count - 6] = true;
+                int laundry = roomWithInteraction(world, "locked_laundry_door");
+                int stairs = roomWithInteraction(world, "alley_cellar_stairs");
+                int exit = roomWithInteraction(world, "main_street_exit");
+                int side = roomWithInteraction(world, "loft_bandage");
+                if (roomWithInteraction(world, "street_return") != 0 || stairs != laundry + 1 || exit != stairs + 1)
                     throw new AssertionError("Required alley landmarks changed order");
+                RoomInstance loft = world.getLocation().getRoom(side);
+                if (loft.getDownNeighbor() == null || loft.getDownNeighbor() != 1)
+                    throw new AssertionError("Side room is not above the first corridor");
                 world.changeLocation("laundry_house", 0);
-                if (interaction(world, "alley_return").targetRoomId != count - 2)
+                if (interaction(world, "alley_return").targetRoomId != laundry)
                     throw new AssertionError("Laundry return targets the wrong generated room");
                 world.changeLocation("catchment_cellar", 0);
-                if (interaction(world, "alley_return").targetRoomId != count - 1)
+                if (interaction(world, "alley_return").targetRoomId != stairs)
                     throw new AssertionError("Cellar return targets the wrong generated room");
             } finally { world.dispose(); }
         }

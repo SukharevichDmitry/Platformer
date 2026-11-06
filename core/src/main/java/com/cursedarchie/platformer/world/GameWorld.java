@@ -816,7 +816,11 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
             getNearbyInteraction() != portal) return false;
         if (portal.returnToOrigin) {
             if (portalOriginLocation == null) return false;
-            changeLocation(portalOriginLocation, portalOriginRoomId, portalOriginSpawnId);
+            // A far exit names its own street spawn; it lands in whichever origin room holds that spawn.
+            int room = portal.targetSpawnId == null ? -1 :
+                roomManager.loadLocation(portalOriginLocation).roomWithSpawn(portal.targetSpawnId);
+            if (room >= 0) changeLocation(portalOriginLocation, room, portal.targetSpawnId);
+            else changeLocation(portalOriginLocation, portalOriginRoomId, portalOriginSpawnId);
         } else {
             // An alley entrance remembers where the hero came from; the exit leads back there.
             TransitionProfile profile = TransitionProfile.get(portal.transition);

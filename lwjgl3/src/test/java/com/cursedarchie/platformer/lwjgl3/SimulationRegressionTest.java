@@ -2910,7 +2910,7 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (lastRoom < 3) throw new AssertionError("Generated alley is too short");
             for (int roomId = 1; roomId <= lastRoom; roomId++) {
                 com.cursedarchie.platformer.levels.RoomInstance next = route.getLocation().getRoom(roomId);
-                route.getHero().getBody().setTransform(next.getWorldX() + 2f, 3f, 0f);
+                route.getHero().getBody().setTransform(next.getWorldX() + 2f, next.getWorldY() + 3f, 0f);
                 route.update(GameWorld.FIXED_STEP);
                 if (route.getCurrentRoom().getRoomId() != roomId)
                     throw new AssertionError("Alley boundary did not advance to room " + roomId);
@@ -2926,6 +2926,23 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 route.getCurrentRoom().getRoomId() != streetRoom ||
                 Math.abs(route.getHero().getPosition().x - streetX) > .01f)
                 throw new AssertionError("Alley exit did not return to the same street doorway");
+
+            // The far exit is its own room and comes out further along the street, not at the entrance door.
+            route.getHero().getBody().setTransform(streetX, route.getCurrentRoom().getWorldY() + entrance.position.y, 0f);
+            if (!route.enterPortal(entrance)) throw new AssertionError("Alley could not be re-entered");
+            com.cursedarchie.platformer.levels.RoomInstance exitRoom = null;
+            com.cursedarchie.platformer.levels.wrappers.InteractionData farExit = null;
+            for (com.cursedarchie.platformer.levels.RoomInstance room : route.getLocation().getRooms())
+                for (com.cursedarchie.platformer.levels.wrappers.InteractionData interaction : room.getInteractions())
+                    if ("main_street_exit".equals(interaction.id)) { exitRoom = room; farExit = interaction; }
+            if (farExit == null || exitRoom.getRoomId() == 0) throw new AssertionError("Alley has no separate exit room");
+            route.getHero().getBody().setTransform(exitRoom.getWorldX() + farExit.position.x,
+                exitRoom.getWorldY() + farExit.position.y, 0f);
+            route.update(GameWorld.FIXED_STEP);
+            if (!route.enterPortal(farExit) || !"ruins".equals(route.getLocation().getLocation()) ||
+                route.getCurrentRoom().getRoomId() == streetRoom ||
+                route.getCurrentRoom().namedSpawn("alley_exit_return") == null)
+                throw new AssertionError("Far alley exit did not come out at its own street spawn");
         } finally { route.dispose(); }
     }
 
