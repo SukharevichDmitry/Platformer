@@ -1,0 +1,457 @@
+{
+  "version": 1,
+  "sprite": "hero-v2",
+  "frame": [
+    128,
+    96
+  ],
+  "anchor": [
+    64,
+    93
+  ],
+  "pixelsPerUnit": 64,
+  "facing": "right",
+  "animations": {
+    "idle": {
+      "frames": 4,
+      "frameDuration": 0.18,
+      "loop": true,
+      "weaponTip": [
+        [
+          83,
+          35
+        ],
+        [
+          83,
+          35
+        ],
+        [
+          83,
+          35
+        ],
+        [
+          83,
+          35
+        ]
+      ]
+    },
+    "walk": {
+      "frames": 8,
+      "frameDuration": 0.09,
+      "loop": true,
+      "weaponTip": [
+        [
+          82,
+          37
+        ],
+        [
+          83,
+          36
+        ],
+        [
+          83,
+          34
+        ],
+        [
+          84,
+          35
+        ],
+        [
+          84,
+          35
+        ],
+        [
+          84,
+          35
+        ],
+        [
+          83,
+          34
+        ],
+        [
+          83,
+          36
+        ]
+      ]
+    },
+    "run": {
+      "frames": 8,
+      "frameDuration": 0.07,
+      "loop": true,
+      "weaponTip": [
+        [
+          104,
+          51
+        ],
+        [
+          104,
+          49
+        ],
+        [
+          104,
+          48
+        ],
+        [
+          104,
+          50
+        ],
+        [
+          105,
+          51
+        ],
+        [
+          104,
+          49
+        ],
+        [
+          104,
+          47
+        ],
+        [
+          104,
+          49
+        ]
+      ]
+    },
+    "jump": {
+      "frames": 2,
+      "frameDuration": 0.1,
+      "loop": false,
+      "weaponTip": [
+        [
+          90,
+          39
+        ],
+        [
+          87,
+          34
+        ]
+      ]
+    },
+    "fall": {
+      "frames": 2,
+      "frameDuration": 0.12,
+      "loop": true,
+      "weaponTip": [
+        [
+          83,
+          34
+        ],
+        [
+          83,
+          34
+        ]
+      ]
+    },
+    "light1": {
+      "frames": 5,
+      "frameDuration": 0.083,
+      "loop": false,
+      "weaponTip": [
+        [
+          83,
+          61
+        ],
+        [
+          75,
+          62
+        ],
+        [
+          123,
+          58
+        ],
+        [
+          113,
+          55
+        ],
+        [
+          100,
+          43
+        ]
+      ],
+      "phases": {
+        "startup": [
+          0,
+          1
+        ],
+        "active": [
+          2,
+          2
+        ],
+        "recovery": [
+          3,
+          4
+        ]
+      }
+    },
+    "light2": {
+      "frames": 6,
+      "frameDuration": 0.083,
+      "loop": false,
+      "weaponTip": [
+        [
+          73,
+          11
+        ],
+        [
+          51,
+          9
+        ],
+        [
+          116,
+          68
+        ],
+        [
+          108,
+          85
+        ],
+        [
+          110,
+          69
+        ],
+        [
+          104,
+          52
+        ]
+      ],
+      "phases": {
+        "startup": [
+          0,
+          1
+        ],
+        "active": [
+          2,
+          3
+        ],
+        "recovery": [
+          4,
+          5
+        ]
+      }
+    },
+    "finisher": {
+      "frames": 7,
+      "frameDuration": 0.083,
+      "loop": false,
+      "weaponTip": [
+        [
+          35,
+          68
+        ],
+        [
+          33,
+          72
+        ],
+        [
+          118,
+          50
+        ],
+        [
+          58,
+          47
+        ],
+        [
+          107,
+          76
+        ],
+        [
+          106,
+          73
+        ],
+        [
+          97,
+          40
+        ]
+      ],
+      "phases": {
+        "startup": [
+          0,
+          1
+        ],
+        "active": [
+          2,
+          3
+        ],
+        "recovery": [
+          4,
+          6
+        ]
+      },
+      "notes": "Area sweep on both sides; recovery opens on the distinct final pose (spear planted forward-down)."
+    },
+    "block": {
+      "frames": 2,
+      "frameDuration": 0.1,
+      "loop": false,
+      "weaponTip": [
+        [
+          77,
+          33
+        ],
+        [
+          68,
+          35
+        ]
+      ],
+      "notes": "Frame 0 holds the guard, frame 1 is shown while the block flash is active."
+    },
+    "hit": {
+      "frames": 2,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          58,
+          44
+        ],
+        [
+          69,
+          37
+        ]
+      ]
+    },
+    "stomp": {
+      "frames": 3,
+      "frameDuration": 0.1,
+      "loop": false,
+      "weaponTip": [
+        [
+          103,
+          34
+        ],
+        [
+          107,
+          64
+        ],
+        [
+          48,
+          55
+        ]
+      ],
+      "notes": "Falling onto an enemy's head."
+    },
+    "recover": {
+      "frames": 3,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          115,
+          59
+        ],
+        [
+          100,
+          44
+        ],
+        [
+          83,
+          35
+        ]
+      ]
+    },
+    "death": {
+      "frames": 6,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          58,
+          44
+        ],
+        [
+          46,
+          52
+        ],
+        [
+          35,
+          71
+        ],
+        [
+          8,
+          68
+        ],
+        [
+          21,
+          70
+        ],
+        [
+          21,
+          70
+        ]
+      ]
+    },
+    "alley_turn": {
+      "frames": 4,
+      "frameDuration": 0.12,
+      "loop": false,
+      "weaponTip": [
+        [
+          79,
+          33
+        ],
+        [
+          73,
+          33
+        ],
+        [
+          69,
+          33
+        ],
+        [
+          69,
+          34
+        ]
+      ],
+      "notes": "Side view to back view; played in reverse when leaving an alley."
+    },
+    "dash_charge": {
+      "frames": 2,
+      "frameDuration": 0.06,
+      "loop": false,
+      "weaponTip": [
+        [
+          91,
+          68
+        ],
+        [
+          90,
+          71
+        ]
+      ]
+    },
+    "dash": {
+      "frames": 3,
+      "frameDuration": 0.05,
+      "loop": true,
+      "weaponTip": [
+        [
+          112,
+          64
+        ],
+        [
+          112,
+          64
+        ],
+        [
+          112,
+          64
+        ]
+      ]
+    },
+    "dash_stop": {
+      "frames": 2,
+      "frameDuration": 0.08,
+      "loop": false,
+      "weaponTip": [
+        [
+          94,
+          51
+        ],
+        [
+          90,
+          41
+        ]
+      ]
+    }
+  }
+}
