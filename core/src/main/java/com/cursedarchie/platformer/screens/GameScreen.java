@@ -1,5 +1,6 @@
     package com.cursedarchie.platformer.screens;
-    import com.badlogic.gdx.*;
+    import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.*;
     import com.cursedarchie.platformer.controllers.ControlBindings.Action;
     import com.badlogic.gdx.graphics.GL20;
     import com.cursedarchie.platformer.Main;
@@ -9,7 +10,8 @@
     import com.cursedarchie.platformer.world.MiniMapRenderer;
     import com.cursedarchie.platformer.world.LocationTitleOverlay;
     import com.cursedarchie.platformer.world.FpsOverlay;
-    import com.cursedarchie.platformer.levels.wrappers.InteractionData;
+    import com.cursedarchie.platformer.levels.TransitionProfile;
+import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 
     public class GameScreen implements Screen {
 
@@ -22,6 +24,7 @@
         private final BagOverlay bagOverlay;
         private final DialogueOverlay dialogue;
         private final AlleyTurnTransition alleyTurn;
+        private final DescentTransition descent;
         private boolean bagOpen;
         private boolean npcInteractHeld;
         private InteractionData enteringPortal;
@@ -58,6 +61,7 @@
             bagOverlay = new BagOverlay();
             dialogue = new DialogueOverlay(gameWorld, game.getControls());
             alleyTurn = new AlleyTurnTransition();
+            descent = new DescentTransition();
             initializationMs = (System.nanoTime() - constructionStartedNs) / 1_000_000f;
         }
 
@@ -192,7 +196,12 @@
 
             long updateStartedNs = System.nanoTime();
             if (enteringPortal != null) {
-                if (alleyTurn.isActive()) {
+                if (descent.isActive()) {
+                    if (descent.update(delta, gameWorld.getHero(), renderer)) {
+                        enteringPortal = null;
+                        lastTouchedPortal = gameWorld.getTouchedPortal();
+                    }
+                } else if (alleyTurn.isActive()) {
                     if (alleyTurn.update(delta)) {
                         boolean changed = gameWorld.enterPortal(enteringPortal);
                         alleyTurn.switched(changed, renderer);
@@ -312,6 +321,7 @@
             bagOverlay.dispose();
             dialogue.dispose();
             alleyTurn.dispose();
+            descent.dispose();
             gameWorld.dispose();
         }
 
@@ -319,11 +329,20 @@
         public GameWorld getGameWorld() { return gameWorld; }
 
         private void startPortal(InteractionData portal) {
+            TransitionProfile profile = AlleyTurnTransition.profileFor(gameWorld.getLocation().getLocation(), portal);
+            gameWorld.getHeroController().clearInput();
+            if (profile != null && profile.isDescent()) {
+                // The backend moves the hero first; the descent then animates the way down to the landing.
+                Vector2 doorway = gameWorld.getHero().getPosition().cpy();
+                if (!gameWorld.enterPortal(portal)) return;
+                enteringPortal = portal;
+                descent.begin(profile, doorway, gameWorld.getHero().getPosition().cpy());
+                return;
+            }
             enteringPortal = portal;
             portalProgress = 0f;
             // Control stays locked (the world is not updated) until the transition ends.
-            alleyTurn.begin(AlleyTurnTransition.profileFor(gameWorld.getLocation().getLocation(), portal), renderer);
-            gameWorld.getHeroController().clearInput();
+            alleyTurn.begin(profile, renderer);
         }
 
         /** A walk-in doorway starts its transition when the hero steps into it, not while already standing in it. */

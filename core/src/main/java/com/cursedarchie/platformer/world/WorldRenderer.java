@@ -77,6 +77,30 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     }
     /** Transitions capture the world without the hero and draw the hero as its own layer. */
     private boolean heroHidden;
+    /** In-location descents drive the hero's animation and opacity while the world is paused. */
+    private String heroOverrideAnim;
+    private float heroOverrideTime, heroAlpha = 1f;
+    private boolean heroOverrideLeft;
+    private float landingDustX, landingDustY, landingDustAge = -1f;
+    private int landingDustCount;
+    private float cameraTargetY;
+
+    public void setHeroOverride(String anim, float time, float alpha, boolean facingLeft) {
+        heroOverrideAnim = anim;
+        heroOverrideTime = time;
+        heroAlpha = alpha;
+        heroOverrideLeft = facingLeft;
+    }
+
+    public void addLandingDust(float x, float y, int count) {
+        landingDustX = x;
+        landingDustY = y;
+        landingDustCount = count;
+        landingDustAge = 0f;
+    }
+
+    /** The camera has caught up with its target (vertical follow is eased). */
+    public boolean isCameraSettled() { return Math.abs(cam.position.y - cameraTargetY) < .08f; }
     public void setHeroHidden(boolean hidden) { heroHidden = hidden; }
 
     /** The hero as a transition layer: feet in screen pixels of the last rendered frame, frame size and facing. */
@@ -490,6 +514,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawArrowImpacts();
             drawPortals(true);
             drawDefeatEffects();
+            drawLandingDust(delta);
             drawCombatEvents();
             drawDamageIndicators();
         spriteBatch.end();
@@ -669,6 +694,21 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         float dy = y1 - y0;
         barFrom(x0, y0, (float) Math.sqrt(dx * dx + dy * dy), thickness,
             (float) Math.toDegrees(Math.atan2(dy, dx)));
+    }
+
+    /** Puffs of dust where a descent lands, spreading and fading over half a second. */
+    private void drawLandingDust(float delta) {
+        if (landingDustAge < 0f) return;
+        landingDustAge += delta;
+        float t = landingDustAge / .5f;
+        if (t >= 1f) { landingDustAge = -1f; return; }
+        for (int i = 0; i < landingDustCount; i++) {
+            float side = (i & 1) == 0 ? -1f : 1f, spread = .25f + .12f * (i / 2);
+            spriteBatch.setColor(.72f, .66f, .6f, .5f * (1f - t));
+            glow(landingDustX + side * spread * (.4f + t), landingDustY + .08f + .25f * t * (i % 3) / 2f,
+                .08f + .1f * t);
+        }
+        spriteBatch.setColor(Color.WHITE);
     }
 
     private void glow(float cx, float cy, float radius) {
@@ -1485,7 +1525,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             cameraY = clampCamera(heroPos.y,
                 levelBottom - EDGE_MARGIN + floorLift + halfHeight,
                 levelTop + EDGE_MARGIN - halfHeight);
+            if (gameWorld.getLocation().isCameraPerRoom()) {
+                // Stacked rooms (side room, laundry, cellar): frame the hero's own room, never the one below.
+                RoomInstance band = null;
+                for (RoomInstance room : gameWorld.getLocation().getRooms())
+                    if (room.contains(heroPos)) band = room;
+                if (band != null) cameraY = clampCamera(heroPos.y, band.getWorldY() + halfHeight,
+                    band.getWorldY() + band.getHeight() - halfHeight);
+            }
         }
+        cameraTargetY = cameraY;
 
         // Never pan through empty space on a location transition. Only vertical
         // movement within one location is eased; horizontal follow stays responsive.
@@ -1585,6 +1634,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     /** Legacy frames fill the collision square; generated frames are wider and stand on its bottom edge. */
     private void drawHeroFrame(TextureRegion legacyFrame, float x, float y, float size) {
+        if (heroAlpha < 1f) {
+            Color tint = spriteBatch.getColor();
+            spriteBatch.setColor(tint.r, tint.g, tint.b, tint.a * heroAlpha);
+        }
         if (heroSprites == null) {
             spriteBatch.draw(legacyFrame, x, y, size, size);
             return;
@@ -1669,6 +1722,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         } else if (motion instanceof MoveState) {
             boolean running = Math.abs(hero.getBody().getLinearVelocity().x) > hero.getVelocity() * .75f;
             name = running ? "run" : "walk";
+        }
+        if (heroOverrideAnim != null) {
+            name = heroOverrideAnim;
+            frame = -1;
+            time = heroOverrideTime;
+            left = heroOverrideLeft;
         }
         heroAnim = heroSprites.get(name);
         heroAnimFrame = frame >= 0 ? frame : heroAnim.frameAt(time);
