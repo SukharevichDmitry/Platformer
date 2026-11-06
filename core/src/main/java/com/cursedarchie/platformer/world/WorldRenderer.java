@@ -75,6 +75,47 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         enteringPortal = portal;
         portalProgress = Math.max(0f, Math.min(1f, progress));
     }
+    /** Transitions capture the world without the hero and draw the hero as its own layer. */
+    private boolean heroHidden;
+    public void setHeroHidden(boolean hidden) { heroHidden = hidden; }
+
+    /** The hero as a transition layer: feet in screen pixels of the last rendered frame, frame size and facing. */
+    public static final class HeroLayer {
+        public float feetX, feetY, pixelsPerUnit, width, height, anchorX, anchorY;
+        public boolean facingLeft;
+    }
+
+    public HeroLayer heroLayer(int screenWidth, int screenHeight) {
+        com.badlogic.gdx.math.Vector3 feet = new com.badlogic.gdx.math.Vector3(
+            hero.getPosition().x, hero.getPosition().y - Hero.BODY_SIZE / 2f, 0f);
+        cam.project(feet, 0f, 0f, screenWidth, screenHeight);
+        HeroLayer layer = new HeroLayer();
+        layer.feetX = feet.x;
+        layer.feetY = feet.y;
+        layer.pixelsPerUnit = screenHeight / (cam.viewportHeight * cam.zoom);
+        layer.facingLeft = hero.isFacingLeft();
+        if (heroSprites != null) {
+            layer.width = heroSprites.width;
+            layer.height = heroSprites.height;
+            layer.anchorX = heroSprites.anchorX;
+            layer.anchorY = heroSprites.anchorY;
+        } else {
+            layer.width = layer.height = Hero.BODY_SIZE;
+            layer.anchorX = Hero.BODY_SIZE / 2f;
+        }
+        return layer;
+    }
+
+    /** Right-facing hero frame for the alley turn: 0 = side view, 1 = seen from behind. */
+    public TextureRegion heroTurnFrame(float turn) {
+        if (heroSprites == null) return heroIdleRight;
+        CharacterSpriteSet.Anim anim = heroSprites.get("alley_turn");
+        return anim.frames.get(Math.max(0, Math.min(anim.frames.size - 1, (int) (turn * anim.frames.size))));
+    }
+
+    /** Dark interior stone used for foreground columns. */
+    public TextureRegion foregroundStone() { return wallFaces[0]; }
+
     private String interactKey() { return controlBindings == null ? "E" : controlBindings.keyName(Action.INTERACT); }
 
     private final OrthographicCamera cam;
@@ -436,7 +477,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             drawPortals(false);
             drawInteractions();
             drawSmoke();
-            drawHero();
+            if (!heroHidden) drawHero();
             drawEnemy();
             drawArrows();
             drawArrowImpacts();

@@ -318,11 +318,12 @@ public final class PackagedSmokeTest extends Main {
             entranceRoom.getWorldY() + entrance.position.y, 0f);
         world.update(GameWorld.FIXED_STEP);
         Gdx.input.getInputProcessor().keyDown(getControls().key(Action.INTERACT));
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < 30 && (i < 9 || screen.isTransitionActive()); i++) {
             if (i == 3) screen.resize(800, 600);
             screen.render(.1f);
             captureAlleyFrame("in", i);
         }
+        if (screen.isTransitionActive()) throw new AssertionError("Alley turn did not end");
         if (!"laundry_alley".equals(world.getLocation().getLocation()))
             throw new AssertionError("Visual alley turn did not switch to the alley");
         // A repeated key-down from the same long press must not immediately return.
@@ -341,10 +342,11 @@ public final class PackagedSmokeTest extends Main {
             alleyRoom.getWorldY() + exit.position.y, 0f);
         world.update(GameWorld.FIXED_STEP);
         Gdx.input.getInputProcessor().keyDown(getControls().key(Action.INTERACT));
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < 30 && (i < 9 || screen.isTransitionActive()); i++) {
             screen.render(.1f);
             captureAlleyFrame("out", i);
         }
+        if (screen.isTransitionActive()) throw new AssertionError("Reverse alley turn did not end");
         Gdx.input.getInputProcessor().keyUp(getControls().key(Action.INTERACT));
         screen.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         if (!"ruins".equals(world.getLocation().getLocation()))

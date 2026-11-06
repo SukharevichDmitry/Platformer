@@ -82,6 +82,10 @@
                         gameWorld.toggleCombatTestRoom();
                         return true;
                     }
+                    if (keycode == Input.Keys.F10) {
+                        alleyTurn.toggleDebug();
+                        return true;
+                    }
                     if (keycode == Input.Keys.F9) {
                         if (gameWorld.isCombatTestLocation()) gameWorld.resetCombatTestRoom();
                         return true;
@@ -101,12 +105,9 @@
                             npcInteractHeld = true;
                             enteringPortal = nearby;
                             portalProgress = 0f;
-                            if (AlleyTurnTransition.supports(
-                                gameWorld.getLocation().getLocation(), nearby)) {
-                                boolean returning = "laundry_alley".equals(
-                                    gameWorld.getLocation().getLocation());
-                                alleyTurn.begin(returning, renderer);
-                            }
+                            // Control stays locked (the world is not updated) until the transition ends.
+                            alleyTurn.begin(AlleyTurnTransition.profileFor(
+                                gameWorld.getLocation().getLocation(), nearby), renderer);
                             gameWorld.getHeroController().clearInput();
                             return true;
                         }
@@ -314,5 +315,7 @@
 
         public boolean isDisposed() { return disposed; }
         public GameWorld getGameWorld() { return gameWorld; }
+        /** A portal transition is playing; input and the simulation are locked until it ends. */
+        public boolean isTransitionActive() { return enteringPortal != null; }
 
     }
