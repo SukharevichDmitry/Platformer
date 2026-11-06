@@ -2172,7 +2172,19 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         int frame = fixed[0];
         boolean left = enemy.isFacingLeft();
         com.cursedarchie.platformer.actors.enemies.states.combat.AttackState attack = meleeState(enemy);
-        if (name == null && attack != null && attack.getRuntime() != null) {
+        if (enemy.isJumpAttacking()) {
+            // Frames follow the real arc: crouch by progress, rise or strike by velocity and hit window, land.
+            name = "jump_attack";
+            switch (enemy.getJumpAttackPhase()) {
+                case CROUCH: frame = enemy.getJumpAttackPhaseProgress() < .5f ? 0 : 1; break;
+                case AIRBORNE:
+                    AttackRuntime strike = enemy.getJumpAttackRuntime();
+                    frame = strike != null && strike.phase() != AttackRuntime.Phase.STARTUP ? 3 :
+                        enemy.getBody().getLinearVelocity().y > 0f ? 2 : 3;
+                    break;
+                default: frame = enemy.getJumpAttackPhaseProgress() < .6f ? 4 : 5;
+            }
+        } else if (name == null && attack != null && attack.getRuntime() != null) {
             left = attack.isFacingLeft();
             name = "attack";
             frame = phaseFrame(hunterSprites.get(name), attack, enemy);
@@ -2275,8 +2287,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     spriteBatch.setColor(.4f, 1f, 1f, .8f);
                 } else if (enemy.isKnockedDown()) {
                     spriteBatch.setColor(.85f, .8f, .68f, 1f);   // dusty: it has just hit the ground
-                } else if (enemy.isDashWindingUp()) {
-                    spriteBatch.setColor(1f, .85f, .3f, 1f);   // crouched, amber: dash is coming
+                } else if (enemy.isDashWindingUp() ||
+                    enemy.getJumpAttackPhase() == Enemy.JumpAttackPhase.CROUCH) {
+                    spriteBatch.setColor(1f, .85f, .3f, 1f);   // crouched, amber: dash or jump is coming
                 } else if (enemy.isDashing()) {
                     spriteBatch.setColor(1f, 1f, 1f, .75f);
                 } else if (enemy.getSupportFlashRemaining() > 0f) {
@@ -2316,6 +2329,17 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                     else
                         spriteBatch.draw(enemyFrame, enemy.getPosition().x - enemy.getSize()/2f,
                             enemy.getPosition().y - enemy.getSize()/2f, enemy.getSize(), enemy.getSize());
+                }
+                if (enemy.getJumpAttackPhase() == Enemy.JumpAttackPhase.CROUCH) {
+                    // Jump telegraph: amber marks on the floor where the jump will come down, filling in.
+                    float charge = enemy.getJumpAttackPhaseProgress();
+                    float ground = enemy.getPosition().y - enemy.getSize() / 2f + .03f;
+                    spriteBatch.setColor(1f, .55f, .15f, .35f + .5f * charge);
+                    for (int k = -2; k <= 2; k++)
+                        spriteBatch.draw(sceneryPixel, enemy.getJumpLandingX() + k * .28f - .09f, ground, .18f, .07f);
+                    spriteBatch.setColor(1f, .85f, .3f, .9f);
+                    spriteBatch.draw(sceneryPixel, enemy.getJumpLandingX() - .6f * charge, ground + .07f, 1.2f * charge, .05f);
+                    spriteBatch.setColor(Color.WHITE);
                 }
                 if (enemy.getCombatStateMachine().getCurrentState() instanceof
                     com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) {
