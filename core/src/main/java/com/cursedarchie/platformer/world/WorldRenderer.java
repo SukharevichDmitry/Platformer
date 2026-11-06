@@ -83,8 +83,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final ShapeRenderer debugRenderer = new ShapeRenderer();
     private final TextureAtlas atlas;
     /** Generated pixel-art hero (config/art.json); null keeps the legacy 32 x 32 frames. */
-    private final HeroSpriteSet heroSprites;
-    private HeroSpriteSet.Anim heroAnim;
+    private final CharacterSpriteSet heroSprites;
+    /** Generated regular melee hunter and scavenger archer; null keeps the legacy enemy art. */
+    private final CharacterSpriteSet hunterSprites, archerSprites;
+    private CharacterSpriteSet.Anim archerAnim;
+    private int archerAnimFrame;
+    private CharacterSpriteSet.Anim heroAnim;
     private int heroAnimFrame;
     private boolean heroAnimFacingLeft;
     private final TextureAtlas ruinsAtlas;
@@ -204,7 +208,12 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         slotFont.getData().setScale(0.014f);
         slotFont.setUseIntegerPositions(false);
         atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
-        heroSprites = HeroSpriteSet.loadConfigured();
+        heroSprites = CharacterSpriteSet.load("heroSpriteSet",
+            "actor/hero-v2/hero-v2.atlas", "config/hero_animations.json");
+        hunterSprites = CharacterSpriteSet.load("enemySpriteSet",
+            "actor/enemies-v2/hunter.atlas", "config/enemy_animations/hunter.json");
+        archerSprites = CharacterSpriteSet.load("enemySpriteSet",
+            "actor/enemies-v2/archer.atlas", "config/enemy_animations/archer.json");
         ruinsAtlas = new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas"));
         for (int i = 0; i < wallFaces.length; i++) {
             String name = "wall_mask_" + (i & 15);
@@ -710,6 +719,14 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private void drawArcherSprite(float centreX, float bottomY, boolean facingLeft, float forwardLean,
                                   float scaleX, float scaleY) {
         float face = facingLeft ? -1f : 1f;
+        if (archerSprites != null) {
+            // Mirrored and leaned about the feet anchor, like the legacy painting.
+            CharacterSpriteSet set = archerSprites;
+            spriteBatch.draw(archerAnim.frames.get(archerAnimFrame), centreX - set.anchorX, bottomY - set.anchorY,
+                set.anchorX, set.anchorY, set.width, set.height, facingLeft ? -scaleX : scaleX, scaleY,
+                -face * forwardLean);
+            return;
+        }
         spriteBatch.draw(scavengerSprite, centreX - ARCHER_VISUAL_WIDTH / 2f, bottomY,
             ARCHER_VISUAL_WIDTH / 2f, 0f, ARCHER_VISUAL_WIDTH, ARCHER_VISUAL_HEIGHT, scaleX, scaleY,
             -face * forwardLean, 0, 0, scavengerSprite.getWidth(), scavengerSprite.getHeight(),
@@ -825,6 +842,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             g = b = .35f;
         }
 
+        if (archerSprites != null) selectArcherSprite(enemy, melee, ranged, retreat);
         drawArcherTrail(enemy, left, feet);
         spriteBatch.setColor(r, g, b, a);
         drawArcherSprite(pos.x + offX, feet + offY, left, lean, scaleX, scaleY);
@@ -1570,7 +1588,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             else if (r < .35f) { name = "stomp"; frame = 2; }
             else { name = "recover"; frame = Math.min(2, (int) ((r - .35f) / .65f * 3f)); }
         } else if (hero.isRolling()) {
-            HeroSpriteSet.Anim dash = heroSprites.get("dash");
+            CharacterSpriteSet.Anim dash = heroSprites.get("dash");
             float p = hero.getRollProgress();
             left = hero.getRollDirection() < 0f;
             if (p < .12f) { name = "dash_charge"; frame = p < .06f ? 0 : 1; }
@@ -1584,7 +1602,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             name = step == AttackState.COMBO_FINISHER ? "finisher" :
                 step == AttackState.COMBO_SECOND || step == AttackState.JUMP_ATTACK ? "light2" : "light1";
             float t = runtime.elapsed(), startup = attack.getStartup(), activeEnd = attack.getActiveEnd();
-            HeroSpriteSet.Anim anim = heroSprites.get(name);
+            CharacterSpriteSet.Anim anim = heroSprites.get(name);
             switch (runtime.phase()) {
                 case STARTUP: frame = anim.phaseFrame("startup", t / Math.max(.001f, startup)); break;
                 case ACTIVE: frame = anim.phaseFrame("active", (t - startup) / Math.max(.001f, activeEnd - startup)); break;
@@ -2002,6 +2020,106 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
 
 
+    /** Frame for states every generated enemy shares; null when the enemy is in none of them. */
+    private String commonEnemyAnim(Enemy enemy, int[] frame) {
+        frame[0] = -1;
+        if (enemy.isKnockedDown()) {
+            float p = enemy.getKnockdownProgress(), fall = Math.max(.01f, enemy.getKnockdownFallFraction());
+            if (p < fall) { frame[0] = 0; return "hit"; }
+            frame[0] = Math.min(2, (int) ((p - fall) / Math.max(.01f, 1f - fall) * 3f));
+            return "recover";
+        }
+        if (enemy.isStaggered()) return "stagger";
+        if (gameWorld.hasRecentDamage(enemy)) { frame[0] = 1; return "hit"; }
+        if (enemy.getAwareness() == Enemy.Awareness.ALERT && enemy.getAwarenessTime() < .36f) {
+            frame[0] = Math.min(2, (int) (enemy.getAwarenessTime() / .12f));
+            return "detect";
+        }
+        return null;
+    }
+
+    private String movingEnemyAnim(Enemy enemy) {
+        float speed = Math.abs(enemy.getBody().getLinearVelocity().x);
+        if (speed <= .1f) return "idle";
+        if (enemy.getMotionStateMachine().getCurrentState() instanceof PatrolState) return "patrol";
+        // Short steps between combat positions use the guarded shuffle instead of the full walk.
+        return enemy.isSlotManaged() && speed < enemy.getVelocity() * .6f ? "reposition" : "walk";
+    }
+
+    private static int phaseFrame(CharacterSpriteSet.Anim anim,
+                                  com.cursedarchie.platformer.actors.enemies.states.combat.AttackState attack,
+                                  Enemy enemy) {
+        AttackRuntime runtime = attack.getRuntime();
+        float t = runtime.elapsed(), startup = attack.startup(enemy), activeEnd = attack.activeEnd(enemy);
+        switch (runtime.phase()) {
+            case STARTUP: return anim.phaseFrame("startup", t / Math.max(.001f, startup));
+            case ACTIVE: return anim.phaseFrame("active", (t - startup) / Math.max(.001f, activeEnd - startup));
+            default: return anim.phaseFrame("recovery", (t - activeEnd) / Math.max(.001f, runtime.duration() - activeEnd));
+        }
+    }
+
+    /** Regular melee hunter: the generated frame for its state, standing on the bottom of its body. */
+    private void drawHunter(Enemy enemy) {
+        int[] fixed = new int[1];
+        String name = commonEnemyAnim(enemy, fixed);
+        int frame = fixed[0];
+        boolean left = enemy.isFacingLeft();
+        com.cursedarchie.platformer.actors.enemies.states.combat.AttackState attack = meleeState(enemy);
+        if (name == null && attack != null && attack.getRuntime() != null) {
+            left = attack.isFacingLeft();
+            name = "attack";
+            frame = phaseFrame(hunterSprites.get(name), attack, enemy);
+        } else if (name == null && enemy.isLeaping()) {
+            name = "jump_attack";
+            frame = enemy.isLeapAirborne() ? (enemy.getBody().getLinearVelocity().y > 0f ? 2 : 3) : 5;
+        } else if (name == null && enemy.isBlocking()) {
+            name = "block";
+            frame = enemy.getBlockHitFlashRemaining() > 0f ? 1 : 0;
+        } else if (name == null && !enemy.isGrounded()) {
+            name = "jump_attack";
+            frame = 2;
+        } else if (name == null) {
+            name = movingEnemyAnim(enemy);
+        }
+        CharacterSpriteSet.Anim anim = hunterSprites.get(name);
+        if (frame < 0) frame = anim.frameAt(enemy.getMotionStateTime());
+        TextureRegion region = anim.frames.get(frame);
+        float footX = enemy.getPosition().x, footY = enemy.getPosition().y - enemy.getSize() / 2f - hunterSprites.anchorY;
+        if (left)
+            spriteBatch.draw(region, footX + hunterSprites.anchorX, footY, -hunterSprites.width, hunterSprites.height);
+        else
+            spriteBatch.draw(region, footX - hunterSprites.anchorX, footY, hunterSprites.width, hunterSprites.height);
+    }
+
+    /** Archer: one generated frame per action, matching the single action drawArcher shows. */
+    private void selectArcherSprite(Enemy enemy,
+                                    com.cursedarchie.platformer.actors.enemies.states.combat.AttackState melee,
+                                    Enemy.RangedPhase ranged, Enemy.RetreatPhase retreat) {
+        int[] fixed = new int[1];
+        String name = commonEnemyAnim(enemy, fixed);
+        int frame = fixed[0];
+        if (name == null && melee != null && melee.getRuntime() != null) {
+            name = "bash";
+            frame = phaseFrame(archerSprites.get(name), melee, enemy);
+        } else if (name == null && ranged != Enemy.RangedPhase.NONE) {
+            name = "shot";
+            CharacterSpriteSet.Anim shot = archerSprites.get(name);
+            switch (ranged) {
+                case DRAW: frame = shot.phaseFrame("startup", enemy.getRangedWindupProgress() * .99f); break;
+                case LOCKED: case CUE: frame = shot.phaseFrame("startup", .99f); break;
+                default: frame = enemy.getRangedRecoveryProgress() < .4f ?
+                    shot.phaseFrame("active", 0f) : shot.phaseFrame("recovery", 0f);
+            }
+        } else if (name == null && (retreat != Enemy.RetreatPhase.NONE || enemy.isDodging())) {
+            name = "dodge";
+            frame = retreat == Enemy.RetreatPhase.TELEGRAPH ? 0 : retreat == Enemy.RetreatPhase.RECOVER ? 2 : 1;
+        } else if (name == null) {
+            name = movingEnemyAnim(enemy);
+        }
+        archerAnim = archerSprites.get(name);
+        archerAnimFrame = frame >= 0 ? frame : archerAnim.frameAt(enemy.getMotionStateTime());
+    }
+
     private void drawEnemy() {
         Array<Enemy> enemies = gameWorld.getAliveEnemies();
 
@@ -2086,8 +2204,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                         spriteBatch.setColor(.78f, .55f, 1f, 1f);
                     else if ("boss".equals(enemy.getArchetypeId()))
                         spriteBatch.setColor(.85f, .32f, .3f, 1f);
-                    spriteBatch.draw(enemyFrame, enemy.getPosition().x - enemy.getSize()/2f,
-                        enemy.getPosition().y - enemy.getSize()/2f, enemy.getSize(), enemy.getSize());
+                    if (hunterSprites != null && "default".equals(enemy.getArchetypeId()))
+                        drawHunter(enemy);
+                    else
+                        spriteBatch.draw(enemyFrame, enemy.getPosition().x - enemy.getSize()/2f,
+                            enemy.getPosition().y - enemy.getSize()/2f, enemy.getSize(), enemy.getSize());
                 }
                 if (enemy.getCombatStateMachine().getCurrentState() instanceof
                     com.cursedarchie.platformer.actors.enemies.states.combat.AttackState) {
@@ -2921,5 +3042,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         ruinsAtlas.dispose();
         atlas.dispose();
         if (heroSprites != null) heroSprites.dispose();
+        if (hunterSprites != null) hunterSprites.dispose();
+        if (archerSprites != null) archerSprites.dispose();
     }
 }

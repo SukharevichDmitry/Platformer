@@ -10,12 +10,12 @@ import com.badlogic.gdx.utils.JsonValue;
 import com.badlogic.gdx.utils.ObjectMap;
 
 /**
- * Generated hero frames ({@code tools/sprites/hero_rig.json}) and their metadata from
+ * Generated character frames (rigs in {@code tools/sprites}) and their metadata, e.g.
  * {@code config/hero_animations.json}. Frames face right; the anchor is the middle of the feet, which sits on the
- * bottom of the hero's collision box. Attack frames are chosen per phase so the drawing always follows the
- * startup / active / recovery timing of the running {@code AttackRuntime}. See documents/ART_ASSET_GUIDE.md.
+ * bottom of the collision box. Attack frames are chosen per phase so the drawing always follows the
+ * startup / active / recovery timing of the running attack. See documents/ART_ASSET_GUIDE.md.
  */
-final class HeroSpriteSet implements Disposable {
+final class CharacterSpriteSet implements Disposable {
     static final String CONFIG = "config/art.json";
 
     static final class Anim {
@@ -61,7 +61,7 @@ final class HeroSpriteSet implements Disposable {
     final float width, height, anchorX, anchorY, pixelsPerUnit;
     private final int frameHeightPx;
 
-    private HeroSpriteSet(String atlasPath, JsonValue meta) {
+    private CharacterSpriteSet(String atlasPath, JsonValue meta) {
         atlas = new TextureAtlas(Gdx.files.internal(atlasPath));
         pixelsPerUnit = meta.getFloat("pixelsPerUnit", 64f);
         int[] frame = meta.get("frame").asIntArray();
@@ -75,29 +75,35 @@ final class HeroSpriteSet implements Disposable {
         for (JsonValue anim = meta.get("animations").child; anim != null; anim = anim.next) {
             Array<TextureAtlas.AtlasRegion> regions = atlas.findRegions(anim.name);
             if (regions.size != anim.getInt("frames"))
-                throw new IllegalArgumentException("Hero atlas is missing frames of " + anim.name);
+                throw new IllegalArgumentException(atlasPath + " is missing frames of " + anim.name);
             animations.put(anim.name, new Anim(new Array<TextureRegion>(regions), anim));
         }
     }
 
-    /** The configured set, or null when the legacy hero frames are selected or the set cannot be read. */
-    static HeroSpriteSet loadConfigured() {
+    /** True when {@code config/art.json} selects the generated set under {@code key} (default "v2"). */
+    static boolean selected(String key) {
         try {
-            String set = "v2";
-            if (Gdx.files.internal(CONFIG).exists())
-                set = new JsonReader().parse(Gdx.files.internal(CONFIG)).getString("heroSpriteSet", set);
-            if (!"v2".equals(set)) return null;
-            JsonValue meta = new JsonReader().parse(Gdx.files.internal("config/hero_animations.json"));
-            return new HeroSpriteSet("actor/hero-v2/hero-v2.atlas", meta);
+            if (!Gdx.files.internal(CONFIG).exists()) return true;
+            return "v2".equals(new JsonReader().parse(Gdx.files.internal(CONFIG)).getString(key, "v2"));
         } catch (RuntimeException e) {
-            Gdx.app.error("HeroSpriteSet", "Falling back to legacy hero frames", e);
+            return true;
+        }
+    }
+
+    /** The set, or null when it is not selected in config/art.json or cannot be read (legacy art is used then). */
+    static CharacterSpriteSet load(String configKey, String atlasPath, String metadataPath) {
+        if (!selected(configKey)) return null;
+        try {
+            return new CharacterSpriteSet(atlasPath, new JsonReader().parse(Gdx.files.internal(metadataPath)));
+        } catch (RuntimeException e) {
+            Gdx.app.error("CharacterSpriteSet", "Falling back to legacy frames for " + atlasPath, e);
             return null;
         }
     }
 
     Anim get(String name) {
         Anim anim = animations.get(name);
-        if (anim == null) throw new IllegalArgumentException("Unknown hero animation: " + name);
+        if (anim == null) throw new IllegalArgumentException("Unknown animation: " + name);
         return anim;
     }
 

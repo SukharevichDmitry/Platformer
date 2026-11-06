@@ -120,14 +120,22 @@
 
 ## 8. Конвейер
 
-- Исходные данные героя: `tools/sprites/hero_rig.json` (кости, позы,
-  анимации). Сборка: `python3 tools/sprites/build_character_sprites.py`
-  (только стандартная библиотека Python 3). Результат детерминирован.
-- Выход: `assets/actor/hero-v2/hero-v2.png`, `hero-v2.atlas` (регион =
-  анимация, `index` = номер кадра), `assets/config/hero_animations.json`
-  (длительности, фазы, привязка, наконечник оружия), лист предпросмотра
-  `documents/art-previews/hero-v2-sheet.png`.
-- Выбор набора: `assets/config/art.json` → `heroSpriteSet` = `v2` или
-  `legacy`. Старые кадры `assets/actor/hero*.png` не удаляются.
+- Риги: `tools/sprites/hero_rig.json`, `hunter_rig.json` (обычный ловчий,
+  тип `default`), `archer_rig.json` (стрелок-падальщик, тип `scavenger`).
+  В риге — кости, стиль (`headwear`: hood/cap/cowl, `weaponType`:
+  spear/club/bow, колчан, повязка), детали → рампы палитры, позы, анимации.
+- Сборка: `python3 tools/sprites/build_character_sprites.py [риг.json ...]`
+  (без аргументов — герой; только стандартная библиотека Python 3).
+  Результат детерминирован; цвет вне палитры останавливает сборку.
+- Выход: атлас (регион = анимация, `index` = кадр) в `assets/actor/hero-v2/`
+  или `assets/actor/enemies-v2/`, метаданные (длительности, фазы, привязка,
+  наконечник оружия) в `assets/config/hero_animations.json` и
+  `assets/config/enemy_animations/*.json`, лист предпросмотра в
+  `documents/art-previews/`.
+- Выбор набора: `assets/config/art.json` → `heroSpriteSet` и
+  `enemySpriteSet` = `v2` или `legacy`. Старые кадры не удаляются.
+- Набор анимаций врага: idle, walk, patrol, detect, стандартная атака,
+  особая атака, block или dodge, hit, stagger, death, recover, reposition
+  (перемещение между боевыми позициями).
 - Сгенерированные кадры — база для дальнейшей ручной доработки; при ручной
   правке PNG нужно сохранить размеры кадров, привязку и палитру.
