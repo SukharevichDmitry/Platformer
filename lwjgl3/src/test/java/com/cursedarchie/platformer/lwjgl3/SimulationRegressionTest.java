@@ -2914,6 +2914,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 route.update(GameWorld.FIXED_STEP);
                 if (route.getCurrentRoom().getRoomId() != roomId)
                     throw new AssertionError("Alley boundary did not advance to room " + roomId);
+                // Cellars lie below the street's y = 0; only falling out of the location may kill.
+                if (!route.getHero().isAlive())
+                    throw new AssertionError("Hero died standing in alley room " + roomId);
             }
             route.getHero().getBody().setTransform(3.5f, 3f, 0f);
             route.update(GameWorld.FIXED_STEP);
@@ -2925,7 +2928,9 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (!route.enterPortal(exit) || !"ruins".equals(route.getLocation().getLocation()) ||
                 route.getCurrentRoom().getRoomId() != streetRoom ||
                 Math.abs(route.getHero().getPosition().x - streetX) > .01f)
-                throw new AssertionError("Alley exit did not return to the same street doorway");
+                throw new AssertionError("Alley exit did not return to the same street doorway: " +
+                    route.getLocation().getLocation() + " room " + route.getCurrentRoom().getRoomId() + " (expected " +
+                    streetRoom + "), x " + route.getHero().getPosition().x + " (expected " + streetX + ")");
 
             // The far exit is its own room and comes out further along the street, not at the entrance door.
             route.getHero().getBody().setTransform(streetX, route.getCurrentRoom().getWorldY() + entrance.position.y, 0f);

@@ -13,6 +13,8 @@ public final class InteractionData {
     public String targetLocation;
     public int targetRoomId;
     public String targetSpawnId;
+    /** Portal inside a structured location: role of the target room there (resolved by AlleyStructure). */
+    public String targetRole;
     public boolean returnToOrigin;
     public String requiresFlag;
     /** Portal only: id of an animated transition in config/transitions.json, e.g. "alley_enter". */

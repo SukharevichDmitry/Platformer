@@ -234,8 +234,9 @@ public class HeroController implements InputProcessor {
     }
 
 
+    /** Falling out below the lowest room of the location (cellars sit below the street's y = 0). */
     private void checkHeroPositionForDeathFall() {
-        if ((hero.getPosition().y + hero.getBounds().height) < 0) {
+        if ((hero.getPosition().y + hero.getBounds().height) < gameWorld.getLocation().getBottom()) {
             hero.setAlive(false);
         }
     }

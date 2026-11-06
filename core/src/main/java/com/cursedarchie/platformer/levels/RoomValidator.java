@@ -93,6 +93,12 @@ public final class RoomValidator {
                 if (!profiles.exists() || !TransitionProfile.load(profiles).containsKey(transition))
                     throw invalid(file, "portal transition is unknown: " + transition);
             }
+            if (portal.has("targetRole")) {
+                // Resolved and checked against the location's structure.json, which knows the room roles.
+                string(portal.get("targetRole"), file, "portal.targetRole");
+                string(portal.get("targetSpawnId"), file, "portal.targetSpawnId");
+                continue;
+            }
             if (portal.getBoolean("returnToOrigin", false)) {
                 if (!"laundry_alley".equals(directory.name()))
                     throw invalid(file, "returnToOrigin is only valid at the alley street exit");

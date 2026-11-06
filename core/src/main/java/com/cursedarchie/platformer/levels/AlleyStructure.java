@@ -13,11 +13,13 @@ import java.util.Random;
 
 /**
  * A multi-room alley built from {@code structure.json} in its level directory: a left-to-right sequence of rooms
- * with story roles (entrance, corridor, laundry, cellar descent, exit), optional seeded rooms, and rooms placed
- * above a sequence room (a side room reached through a gap in its floor). Room templates are the directory's
- * numbered room files. The built location is validated: every required role is present, the exit is its own
- * room and leads back to the street at a different spawn than the entrance, and every room and interaction can be
- * reached on foot from the entrance spawn. Pure data and file I/O, so it also runs in headless checks.
+ * with story roles (entrance, corridor, laundry, cellar descent, exit), optional seeded rooms, rooms placed above
+ * a room (a side room reached through a gap in its floor) and rooms below one (laundry house, holding cellar,
+ * vault) reached by in-location descents. Room templates are the directory's numbered room files. The built
+ * location is validated: every required role is present, rooms do not overlap, the exit is its own room and
+ * leads back to the street at a different spawn than the entrance, and every room and interaction can be reached
+ * from the entrance spawn on foot or through the location's own descents. Pure data and file I/O, so it also
+ * runs in headless checks.
  */
 public final class AlleyStructure {
     public static final String FILE = "structure.json";
@@ -54,30 +56,76 @@ public final class AlleyStructure {
             data.neighbors.right = id == sequence.size - 1 ? null : id + 1;
             if (!firstRoomByRole.containsKey(roles.get(id))) firstRoomByRole.put(roles.get(id), id);
         }
-        JsonValue above = root.get("above");
-        if (above != null) for (JsonValue entry : above) {
-            String over = entry.getString("over");
-            Integer baseId = firstRoomByRole.get(over);
-            if (baseId == null) throw invalid(directory, "above room has no '" + over + "' room to sit on");
-            RoomData base = sequence.get(baseId);
-            if (base.neighbors.up != null) throw invalid(directory, "two rooms sit above room " + baseId);
-            RoomData data = template(directory, entry);
-            if (data.width > base.width) throw invalid(directory, entry.getString("role") + " is wider than the room below");
-            data.id = rooms.size;
-            data.neighbors = new Neighbors();
-            data.neighbors.down = baseId;
-            base.neighbors.up = data.id;
-            rooms.add(data);
-            firstRoomByRole.put(entry.getString("role"), data.id);
-        }
+        addStacked(directory, root.get("above"), "over", true, sequence, rooms);
+        addStacked(directory, root.get("below"), "under", false, sequence, rooms);
         for (RoomData data : rooms) {
             data.location = name;
+            resolveRoles(directory, data, rooms);
             RoomInstance room = new RoomInstance(data);
             room.buildTiles();
             location.addRoom(room);
         }
+        location.setCameraPerRoom("room".equals(root.getString("camera", "location")));
         RoomManager.buildRoomLayout(location);
         validate(directory, root);
+    }
+
+    /** Rooms on top of ("over") or under ("under") an earlier room, one per side of each base room. */
+    private void addStacked(FileHandle directory, JsonValue entries, String key, boolean up,
+                            Array<RoomData> sequence, Array<RoomData> rooms) {
+        if (entries == null) return;
+        for (JsonValue entry : entries) {
+            String baseRole = entry.getString(key);
+            Integer baseId = firstRoomByRole.get(baseRole);
+            if (baseId == null) throw invalid(directory, entry.getString("role") + " has no '" + baseRole + "' room");
+            RoomData base = rooms.get(baseId);
+            if ((up ? base.neighbors.up : base.neighbors.down) != null)
+                throw invalid(directory, "two rooms share one side of room " + baseId);
+            RoomData data = template(directory, entry);
+            // A room above is entered through its floor, so it must stay over the room it sits on.
+            if (up && data.width > base.width) throw invalid(directory, entry.getString("role") + " is wider than the room below");
+            data.id = rooms.size;
+            data.neighbors = new Neighbors();
+            if (up) { data.neighbors.down = baseId; base.neighbors.up = data.id; }
+            else { data.neighbors.up = baseId; base.neighbors.down = data.id; }
+            rooms.add(data);
+            firstRoomByRole.put(entry.getString("role"), data.id);
+        }
+    }
+
+    /**
+     * Portals naming a {@code targetRole} lead to that room of this location; {@code {room:role}} in a flag
+     * becomes {@code location:roomId}, so defeat flags follow the room wherever the seed places it.
+     */
+    private void resolveRoles(FileHandle directory, RoomData data, Array<RoomData> rooms) {
+        for (InteractionData interaction : data.interactions) {
+            if (interaction.requiresFlag != null) interaction.requiresFlag = roomTokens(directory, interaction.requiresFlag);
+            if (interaction.targetRole == null) continue;
+            Integer target = firstRoomByRole.get(interaction.targetRole);
+            if (target == null)
+                throw invalid(directory, interaction.id + " leads to a missing room role: " + interaction.targetRole);
+            boolean spawnFound = false;
+            for (com.cursedarchie.platformer.levels.wrappers.SpawnPointData spawn : rooms.get(target).spawnPoints)
+                if (spawn.id.equals(interaction.targetSpawnId)) spawnFound = true;
+            if (!spawnFound)
+                throw invalid(directory, interaction.id + " lands at a missing spawn " + interaction.targetSpawnId);
+            interaction.targetLocation = location.getLocation();
+            interaction.targetRoomId = target;
+        }
+    }
+
+    private String roomTokens(FileHandle directory, String text) {
+        StringBuilder out = new StringBuilder();
+        int at = 0;
+        for (int open = text.indexOf("{room:"); open >= 0; open = text.indexOf("{room:", at)) {
+            int close = text.indexOf('}', open);
+            String role = text.substring(open + 6, close);
+            Integer id = firstRoomByRole.get(role);
+            if (id == null) throw invalid(directory, "flag names a missing room role: " + role);
+            out.append(text, at, open).append(location.getLocation()).append(':').append(id);
+            at = close + 1;
+        }
+        return out.append(text.substring(at)).toString();
     }
 
     public static AlleyStructure build(FileHandle directory, long seed) {
@@ -122,15 +170,14 @@ public final class AlleyStructure {
                 if (profile.savesOrigin && leave.targetSpawnId.equals(profile.originSpawnId))
                     throw invalid(directory, "exit portal must not land at the entrance's return spawn");
         }
-        JsonValue linked = root.get("linked");
-        if (linked != null) for (JsonValue link : linked) {
-            int from = roomId(link.getString("from"));
-            boolean found = false;
-            if (from >= 0) for (InteractionData interaction : location.getRoom(from).getInteractions())
-                if ("portal".equals(interaction.kind) && link.getString("location").equals(interaction.targetLocation))
-                    found = true;
-            if (!found) throw invalid(directory, link.getString("role") + " is not linked from " + link.getString("from"));
-        }
+        RoomInstance[] all = location.getRooms().toArray(new RoomInstance[0]);
+        for (int i = 0; i < all.length; i++)
+            for (int j = i + 1; j < all.length; j++)
+                if (all[i].getWorldX() < all[j].getWorldX() + all[j].getWidth() &&
+                    all[j].getWorldX() < all[i].getWorldX() + all[i].getWidth() &&
+                    all[i].getWorldY() < all[j].getWorldY() + all[j].getHeight() &&
+                    all[j].getWorldY() < all[i].getWorldY() + all[i].getHeight())
+                    throw invalid(directory, "rooms " + all[i].getRoomId() + " and " + all[j].getRoomId() + " overlap");
         try {
             LocationReachability.validate(location, entrance, startSpawn);
         } catch (IllegalArgumentException e) {

@@ -91,6 +91,19 @@ public class LocationInstance {
         }
     }
 
+    private boolean cameraPerRoom;
+
+    /** Lowest world y of any room; 0 for single-level locations. */
+    public float getBottom() {
+        float bottom = Float.POSITIVE_INFINITY;
+        for (RoomInstance room : rooms.values()) bottom = Math.min(bottom, room.getWorldY());
+        return bottom == Float.POSITIVE_INFINITY ? 0f : Math.min(0f, bottom);
+    }
+
+    /** The camera keeps to the vertical band of the hero's room instead of the whole location. */
+    public boolean isCameraPerRoom() { return cameraPerRoom; }
+    public void setCameraPerRoom(boolean value) { cameraPerRoom = value; }
+
     /** Id of the room that owns a named spawn, or -1. */
     public int roomWithSpawn(String spawnId) {
         for (RoomInstance room : rooms.values()) if (room.namedSpawn(spawnId) != null) return room.getRoomId();

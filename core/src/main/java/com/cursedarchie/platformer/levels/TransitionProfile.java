@@ -7,9 +7,11 @@ import com.badlogic.gdx.utils.JsonValue;
 import com.badlogic.gdx.utils.ObjectMap;
 
 /**
- * One animated location transition from {@code config/transitions.json}, named by a portal's
- * {@code transition} field. The alley turn is a 2.5D camera turn drawn from captured 2D frames; physics and the
- * Box2D world never rotate, and the hero's gameplay state is untouched while control is locked.
+ * One animated transition from {@code config/transitions.json}, named by a portal's {@code transition} field.
+ * {@code alley_turn}: a 2.5D camera turn between locations, drawn from captured 2D frames; physics and the Box2D
+ * world never rotate. {@code descent}: a vertical move between rooms of the same location along a stairs or drop
+ * path, followed by the camera; nothing is reloaded, so room state is kept. In both, the hero's gameplay state is
+ * untouched while control is locked.
  */
 public final class TransitionProfile {
     public static final String FILE = "config/transitions.json";
@@ -33,6 +35,11 @@ public final class TransitionProfile {
     /** The source location, room and return spawn are remembered for the matching exit. */
     public final boolean savesOrigin;
     public final String originSpawnId;
+    /** Descent only: "stairs" (steady diagonal) or "drop" (step forward, then fall), total time, settle limit. */
+    public final String path;
+    public final float duration, settleMax;
+    /** Descent only: the hero is hidden while crossing the floor between these fractions of the move. */
+    public final float fadeFrom, fadeTo;
 
     private TransitionProfile(String id, JsonValue v) {
         this.id = id;
@@ -48,6 +55,9 @@ public final class TransitionProfile {
         if (!"counterclockwise".equals(turn) && !"clockwise".equals(turn))
             throw new IllegalArgumentException("Transition " + id + " has an unknown direction: " + turn);
         direction = "clockwise".equals(turn) ? -1 : 1;
+        boolean alley = "alley_turn".equals(kind);
+        if (!alley && !"descent".equals(kind))
+            throw new IllegalArgumentException("Transition " + id + " has an unknown kind: " + kind);
         turnDuration = positive(v, "turnDuration", .9f);
         settleDuration = Math.max(0f, v.getFloat("settleDuration", .3f));
         switchAt = fraction(v, "switchAt", .5f);
@@ -55,7 +65,7 @@ public final class TransitionProfile {
         occluderWidth = fraction(v, "occluderWidth", .17f);
         coverFrom = fraction(v, "coverFrom", .34f);
         coverTo = fraction(v, "coverTo", .66f);
-        if (!(coverFrom < switchAt && switchAt < coverTo))
+        if (alley && !(coverFrom < switchAt && switchAt < coverTo))
             throw new IllegalArgumentException("Transition " + id + " must hide the hero at its switch point");
         cameraShift = Math.max(0f, v.getFloat("cameraShift", 0f));
         fadePeak = fraction(v, "fadePeak", .3f);
@@ -66,7 +76,18 @@ public final class TransitionProfile {
         originSpawnId = v.getString("originSpawnId", null);
         if (savesOrigin && originSpawnId == null)
             throw new IllegalArgumentException("Transition " + id + " saves an origin but names no originSpawnId");
+        path = v.getString("path", "stairs");
+        if (!"stairs".equals(path) && !"drop".equals(path))
+            throw new IllegalArgumentException("Transition " + id + " has an unknown path: " + path);
+        duration = positive(v, "duration", 1f);
+        settleMax = Math.max(0f, v.getFloat("settleMax", .6f));
+        fadeFrom = fraction(v, "fadeFrom", .4f);
+        fadeTo = fraction(v, "fadeTo", .6f);
+        if (!alley && !(fadeFrom < fadeTo))
+            throw new IllegalArgumentException("Transition " + id + " must hide the hero while it crosses the floor");
     }
+
+    public boolean isDescent() { return "descent".equals(kind); }
 
     public float totalDuration() { return turnDuration + settleDuration; }
 

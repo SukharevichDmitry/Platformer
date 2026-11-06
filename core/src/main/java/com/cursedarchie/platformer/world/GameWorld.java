@@ -811,6 +811,22 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         persistenceRevision++;
     }
 
+    private void moveWithinLocation(int roomId, String spawnId) {
+        RoomInstance room = location.getRoom(roomId);
+        Vector2 spawn = room == null ? null : room.namedSpawn(spawnId);
+        if (spawn == null || !isRestoredPositionClear(spawn))
+            throw new IllegalArgumentException("Invalid descent spawn " + currentLocationName + "/" + roomId + ":" + spawnId);
+        hero.getBody().setTransform(spawn, 0f);
+        hero.getBody().setLinearVelocity(0f, 0f);
+        hero.setFootContacts(0);
+        hero.setGrounded(false);
+        heroController.clearInput();
+        currentRoomId = roomId;
+        currentRoom = room;
+        markCurrentRoomVisited();
+        persistenceRevision++;
+    }
+
     public boolean enterPortal(InteractionData portal) {
         if (portal == null || !"portal".equals(portal.kind) ||
             getNearbyInteraction() != portal) return false;
@@ -821,6 +837,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
                 roomManager.loadLocation(portalOriginLocation).roomWithSpawn(portal.targetSpawnId);
             if (room >= 0) changeLocation(portalOriginLocation, room, portal.targetSpawnId);
             else changeLocation(portalOriginLocation, portalOriginRoomId, portalOriginSpawnId);
+        } else if (currentLocationName.equals(portal.targetLocation)) {
+            // Stairs, hatches and breaches inside one location: nothing is unloaded, so enemies, items,
+            // broken tiles and room state stay exactly as they were.
+            moveWithinLocation(portal.targetRoomId, portal.targetSpawnId);
         } else {
             // An alley entrance remembers where the hero came from; the exit leads back there.
             TransitionProfile profile = TransitionProfile.get(portal.transition);

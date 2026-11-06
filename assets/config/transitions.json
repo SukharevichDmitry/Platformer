@@ -1,5 +1,5 @@
 {
-  "note": "Location transition profiles. trigger: touch = starts when the hero walks into the doorway (|dx| <= triggerHalfWidth), interact = on the interact key; touch portals also accept the key. A portal names one in its \"transition\" field. Times are seconds; fractions are of the turn (0..1) or of the screen width. Physics never rotates: the turn is drawn from captured 2D frames.",
+  "note": "Location transition profiles. trigger: touch = starts when the hero walks into the doorway (|dx| <= triggerHalfWidth), interact = on the interact key; touch portals also accept the key. A portal names one in its \"transition\" field. Times are seconds; fractions are of the turn (0..1) or of the screen width. Physics never rotates: the turn is drawn from captured 2D frames. kind descent = a vertical move between rooms of the same location (stairs, breach, drop, hatch): control is locked, the hero travels along the path shape while the camera follows vertically, and nothing is reloaded, so enemies, items, opened passages and room state stay as they are. The hero is hidden while it passes through the floor between fadeFrom and fadeTo.",
   "alley_enter": {
     "kind": "alley_turn",
     "trigger": "touch",
@@ -38,5 +38,65 @@
     "sound": "sfx/whiff.wav",
     "soundVolume": 0.22,
     "savesOrigin": false
+  },
+  "descend_stairs": {
+    "kind": "descent",
+    "trigger": "interact",
+    "fadeFrom": 0.4,
+    "fadeTo": 0.62,
+    "settleMax": 0.6,
+    "dustCount": 6,
+    "soundVolume": 0.35,
+    "path": "stairs",
+    "duration": 1.1,
+    "sound": "sfx/fall_land.wav"
+  },
+  "descend_breach": {
+    "kind": "descent",
+    "trigger": "interact",
+    "fadeFrom": 0.4,
+    "fadeTo": 0.62,
+    "settleMax": 0.6,
+    "dustCount": 14,
+    "soundVolume": 0.35,
+    "path": "stairs",
+    "duration": 0.9,
+    "sound": "sfx/wall_bump.wav"
+  },
+  "descend_drop": {
+    "kind": "descent",
+    "trigger": "interact",
+    "fadeFrom": 0.3,
+    "fadeTo": 0.55,
+    "settleMax": 0.6,
+    "dustCount": 6,
+    "soundVolume": 0.35,
+    "path": "drop",
+    "duration": 0.75,
+    "sound": "sfx/fall_land.wav"
+  },
+  "descend_hatch": {
+    "kind": "descent",
+    "trigger": "interact",
+    "fadeFrom": 0.35,
+    "fadeTo": 0.6,
+    "settleMax": 0.6,
+    "dustCount": 6,
+    "soundVolume": 0.35,
+    "path": "drop",
+    "duration": 0.85,
+    "sound": "sfx/block_metal.wav"
+  },
+  "climb_stairs": {
+    "kind": "descent",
+    "trigger": "interact",
+    "fadeFrom": 0.38,
+    "fadeTo": 0.6,
+    "settleMax": 0.6,
+    "dustCount": 0,
+    "soundVolume": 0.25,
+    "path": "stairs",
+    "duration": 1.1,
+    "sound": "sfx/get_up.wav"
   }
 }

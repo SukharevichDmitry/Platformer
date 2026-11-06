@@ -10,7 +10,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Conservative on-foot reachability over every room of an authored location, in world cells. The hero (one cell
+ * Conservative reachability over every room of an authored location, in world cells, on foot and through the
+ * location's own portals (descents into rooms below). The hero (one cell
  * tall) stands on a solid or one-way cell; it walks, steps off ledges, drops through one-way platforms and jumps at
  * most {@link #JUMP_RISE} cells up and {@link #JUMP_REACH} across. A jump may go across, up through a gap and across
  * again, which is how the hero climbs through an opening into the room above. The hero's real jump is higher
@@ -52,8 +53,22 @@ public final class LocationReachability {
         Vector2 spawn = start == null ? null : start.namedSpawn(startSpawnId);
         if (spawn == null)
             throw new IllegalArgumentException(location.getLocation() + ": missing start spawn " + startSpawnId);
-        int sx = (int) Math.floor(spawn.x), sy = (int) Math.floor(spawn.y - .5f);
-        reach.flood(reach.land(sx, sy));
+        reach.flood(reach.landAt(spawn));
+        // A portal into another room of this location (stairs, hatch, breach) is a route once its door is reached.
+        boolean grew = true;
+        while (grew) {
+            int before = reach.standing.size();
+            for (RoomInstance room : location.getRooms())
+                for (InteractionData portal : room.getInteractions()) {
+                    if (!"portal".equals(portal.kind) || portal.returnToOrigin ||
+                        !location.getLocation().equals(portal.targetLocation)) continue;
+                    RoomInstance target = location.getRoom(portal.targetRoomId);
+                    Vector2 landing = target == null ? null : target.namedSpawn(portal.targetSpawnId);
+                    if (landing != null && reach.reachesPoint(room.localToWorld(portal.position)))
+                        reach.flood(reach.landAt(landing));
+                }
+            grew = reach.standing.size() > before;
+        }
         for (RoomInstance room : location.getRooms()) {
             if (!reach.reachesRoom(room))
                 throw new IllegalArgumentException(location.getLocation() + ": room " + room.getRoomId() +
@@ -76,6 +91,10 @@ public final class LocationReachability {
     }
 
     private boolean canStand(int x, int y) { return free(x, y) && !oneWay.contains(key(x, y)) && support(x, y - 1); }
+
+    private long[] landAt(Vector2 centre) {
+        return land((int) Math.floor(centre.x), (int) Math.floor(centre.y - .5f));
+    }
 
     /** Where a hero released at (x, y) comes to rest, or null when it falls out of the location. */
     private long[] land(int x, int y) {

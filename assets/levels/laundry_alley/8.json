@@ -1,0 +1,128 @@
+{
+  "location": "laundry_alley",
+  "id": 8,
+  "sceneryTheme": "mechanical",
+  "width": 36,
+  "height": 14,
+  "tileRows": [
+    "####################################",
+    "#                   ##             #",
+    "#                   ##             #",
+    "#                   ##             #",
+    "#                                  #",
+    "#                                  #",
+    "#                                  #",
+    "#                                  #",
+    "#                                  #",
+    "#                                  #",
+    "#                                  #",
+    "#                                  #",
+    "###############   ##################",
+    "####################################"
+  ],
+  "enemySpawns": [
+    {
+      "type": "scavenger",
+      "position": {
+        "x": 19,
+        "y": 3.0
+      }
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "laundry_entry",
+      "position": {
+        "x": 4.5,
+        "y": 2.5
+      }
+    },
+    {
+      "id": "vault_return",
+      "position": {
+        "x": 31.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {},
+  "interactions": [
+    {
+      "id": "alley_return",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "cellar_left",
+      "position": {
+        "x": 3.5,
+        "y": 3.0
+      },
+      "targetRole": "cellar_descent",
+      "targetSpawnId": "cellar_return",
+      "transition": "climb_stairs"
+    },
+    {
+      "id": "cellar_prisoner",
+      "kind": "npc",
+      "visualId": "warden",
+      "eventId": "prisoner_met",
+      "position": {
+        "x": 13.5,
+        "y": 3.0
+      }
+    },
+    {
+      "id": "red_register_fragment",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "clue_red_register",
+      "position": {
+        "x": 22.5,
+        "y": 3.0
+      }
+    },
+    {
+      "id": "sorting_mark",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "clue_mechanical_mark",
+      "position": {
+        "x": 26.5,
+        "y": 3.0
+      }
+    },
+    {
+      "id": "ink_house_mark",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "clue_ink_house",
+      "position": {
+        "x": 30.5,
+        "y": 3.0
+      }
+    },
+    {
+      "id": "catchment_key",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "cellar_key_found",
+      "position": {
+        "x": 8.5,
+        "y": 3
+      }
+    },
+    {
+      "id": "vault_hatch",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "vault_opened",
+      "position": {
+        "x": 33.5,
+        "y": 3
+      },
+      "targetRole": "vault",
+      "targetSpawnId": "cellar_entry",
+      "transition": "descend_hatch",
+      "requiresFlag": "cellar_key_found"
+    }
+  ]
+}

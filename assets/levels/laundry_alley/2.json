@@ -44,10 +44,10 @@
         "x": 18.5,
         "y": 3
       },
-      "targetLocation": "laundry_house",
-      "targetRoomId": 0,
       "targetSpawnId": "alley_entry",
-      "requiresFlag": "laundry_access_open"
+      "requiresFlag": "laundry_access_open",
+      "targetRole": "laundry_house",
+      "transition": "descend_stairs"
     },
     {
       "id": "locked_laundry_door",
@@ -58,10 +58,10 @@
         "x": 18.5,
         "y": 3
       },
-      "targetLocation": "laundry_house",
-      "targetRoomId": 0,
       "targetSpawnId": "alley_entry",
-      "requiresFlag": "alley_key_found"
+      "requiresFlag": "alley_key_found",
+      "targetRole": "laundry_house",
+      "transition": "descend_stairs"
     },
     {
       "id": "rubble_bypass",
@@ -72,10 +72,10 @@
         "x": 18.5,
         "y": 3
       },
-      "targetLocation": "laundry_house",
-      "targetRoomId": 0,
       "targetSpawnId": "alley_entry",
-      "requiresFlag": "laundry_access_rubble"
+      "requiresFlag": "laundry_access_rubble",
+      "targetRole": "laundry_house",
+      "transition": "descend_breach"
     },
     {
       "id": "upper_laundry_window",
@@ -86,10 +86,10 @@
         "x": 18.5,
         "y": 6
       },
-      "targetLocation": "laundry_house",
-      "targetRoomId": 0,
       "targetSpawnId": "alley_entry",
-      "requiresFlag": "laundry_access_window"
+      "requiresFlag": "laundry_access_window",
+      "targetRole": "laundry_house",
+      "transition": "descend_drop"
     }
   ]
 }
