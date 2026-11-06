@@ -82,6 +82,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     private final ShapeRenderer debugRenderer = new ShapeRenderer();
     private final TextureAtlas atlas;
+    /** Generated pixel-art hero (config/art.json); null keeps the legacy 32 x 32 frames. */
+    private final HeroSpriteSet heroSprites;
+    private HeroSpriteSet.Anim heroAnim;
+    private int heroAnimFrame;
+    private boolean heroAnimFacingLeft;
     private final TextureAtlas ruinsAtlas;
     private final TextureRegion[] wallFaces = new TextureRegion[256];
     private final TextureRegion backgroundStone;
@@ -199,6 +204,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         slotFont.getData().setScale(0.014f);
         slotFont.setUseIntegerPositions(false);
         atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
+        heroSprites = HeroSpriteSet.loadConfigured();
         ruinsAtlas = new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas"));
         for (int i = 0; i < wallFaces.length; i++) {
             String name = "wall_mask_" + (i & 15);
@@ -1511,6 +1517,98 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         spriteBatch.draw(wallFaces[lighting], drawX, drawY, width, height);
     }
 
+    /** Legacy frames fill the collision square; generated frames are wider and stand on its bottom edge. */
+    private void drawHeroFrame(TextureRegion legacyFrame, float x, float y, float size) {
+        if (heroSprites == null) {
+            spriteBatch.draw(legacyFrame, x, y, size, size);
+            return;
+        }
+        float scale = size / Hero.BODY_SIZE;
+        float w = heroSprites.width * scale, h = heroSprites.height * scale;
+        float footX = x + size / 2f, footY = y - heroSprites.anchorY * scale;
+        TextureRegion frame = heroAnim.frames.get(heroAnimFrame);
+        // Frames face right: mirror by drawing with a negative width from the right edge.
+        if (heroAnimFacingLeft)
+            spriteBatch.draw(frame, footX + heroSprites.anchorX * scale, footY, -w, h);
+        else
+            spriteBatch.draw(frame, footX - heroSprites.anchorX * scale, footY, w, h);
+    }
+
+    /** Open combo window: a small pulsing glint on the spear tip, in the palette's fx colours. */
+    private void drawComboGlint(float x, float y, float size) {
+        Object state = hero.getCombatStateMachine().getCurrentState();
+        if (!(state instanceof AttackState) || ((AttackState) state).getRuntime() == null ||
+            !((AttackState) state).getRuntime().isInComboWindow()) return;
+        float scale = size / Hero.BODY_SIZE, px = scale / heroSprites.pixelsPerUnit;
+        float side = heroAnimFacingLeft ? -1f : 1f;
+        float tx = x + size / 2f + side * heroSprites.tipX(heroAnim, heroAnimFrame) * scale;
+        float ty = y + heroSprites.tipY(heroAnim, heroAnimFrame) * scale;
+        float arm = (2f + (int) (effectClock * 16f) % 3) * px;
+        spriteBatch.setColor(1f, .957f, .784f, 1f);
+        spriteBatch.draw(sceneryPixel, tx - arm, ty - px / 2f, arm * 2f, px);
+        spriteBatch.draw(sceneryPixel, tx - px / 2f, ty - arm, px, arm * 2f);
+        spriteBatch.setColor(.941f, .753f, .314f, 1f);
+        spriteBatch.draw(sceneryPixel, tx - px / 2f, ty - px / 2f, px, px);
+        spriteBatch.setColor(Color.WHITE);
+    }
+
+    /** Picks the generated animation and frame for the hero's current motion and combat state. */
+    private void selectHeroSprite() {
+        boolean left = hero.isFacingLeft();
+        String name = "idle";
+        int frame = -1;
+        float time = hero.getMotionStateTime();
+        Object combat = hero.getCombatStateMachine().getCurrentState();
+        Object motion = hero.getMotionStateMachine().getCurrentState();
+        if (!hero.isAlive()) {
+            name = "death";
+        } else if (hero.isFalling()) {
+            // Head landing: drop and impact while falling, then lie and push back up.
+            boolean recovering = hero.getFallPhase() == Hero.FallPhase.FALL_RECOVERY;
+            float r = hero.getFallRecoveryProgress();
+            if (!recovering) { name = "stomp"; frame = hero.getFallProgress() < .5f ? 0 : 1; }
+            else if (r < .35f) { name = "stomp"; frame = 2; }
+            else { name = "recover"; frame = Math.min(2, (int) ((r - .35f) / .65f * 3f)); }
+        } else if (hero.isRolling()) {
+            HeroSpriteSet.Anim dash = heroSprites.get("dash");
+            float p = hero.getRollProgress();
+            left = hero.getRollDirection() < 0f;
+            if (p < .12f) { name = "dash_charge"; frame = p < .06f ? 0 : 1; }
+            else if (p > .8f) { name = "dash_stop"; frame = p < .9f ? 0 : 1; }
+            else { name = "dash"; frame = dash.frameAt(p * Hero.ROLL_DURATION); }
+        } else if (combat instanceof AttackState && ((AttackState) combat).getRuntime() != null) {
+            AttackState attack = (AttackState) combat;
+            AttackRuntime runtime = attack.getRuntime();
+            left = attack.isFacingLeft();
+            int step = attack.getComboStep();
+            name = step == AttackState.COMBO_FINISHER ? "finisher" :
+                step == AttackState.COMBO_SECOND || step == AttackState.JUMP_ATTACK ? "light2" : "light1";
+            float t = runtime.elapsed(), startup = attack.getStartup(), activeEnd = attack.getActiveEnd();
+            HeroSpriteSet.Anim anim = heroSprites.get(name);
+            switch (runtime.phase()) {
+                case STARTUP: frame = anim.phaseFrame("startup", t / Math.max(.001f, startup)); break;
+                case ACTIVE: frame = anim.phaseFrame("active", (t - startup) / Math.max(.001f, activeEnd - startup)); break;
+                default: frame = anim.phaseFrame("recovery",
+                    (t - activeEnd) / Math.max(.001f, runtime.duration() - activeEnd));
+            }
+        } else if (hero.isBlocking() || hero.isBlockBroken()) {
+            name = "block";
+            frame = hero.getBlockFlashRemaining() > 0f || hero.isBlockBroken() ? 1 : 0;
+        } else if (hero.isStaggered() || gameWorld.hasRecentDamage(hero)) {
+            name = "hit";
+            frame = hero.isStaggered() ? 0 : 1;
+        } else if (motion instanceof JumpState) {
+            boolean rising = hero.getBody().getLinearVelocity().y > 0f;
+            name = rising ? "jump" : "fall";
+        } else if (motion instanceof MoveState) {
+            boolean running = Math.abs(hero.getBody().getLinearVelocity().x) > hero.getVelocity() * .75f;
+            name = running ? "run" : "walk";
+        }
+        heroAnim = heroSprites.get(name);
+        heroAnimFrame = frame >= 0 ? frame : heroAnim.frameAt(time);
+        heroAnimFacingLeft = left;
+    }
+
     private void drawHero() {
 
         TextureRegion heroFrame = this.hero.isFacingLeft() ? heroIdleLeft : heroIdleRight;
@@ -1586,6 +1684,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 heroWalkRightAnimation.getKeyFrame(rollTime * 3f, true);
         }
 
+        if (heroSprites != null) selectHeroSprite();
+
         if (gameWorld.hasRecentDamage(hero)) {
             spriteBatch.setColor(1f, 0.35f, 0.35f, 1f);
         } else if (hero.getInvulnerabilityRemaining() > 0f) {
@@ -1624,16 +1724,14 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             float back = -hero.getRollDirection();
             for (int k = 4; k >= 1; k--) {
                 spriteBatch.setColor(1f, .72f, .4f, .42f - k * .08f);
-                spriteBatch.draw(heroFrame, drawX + back * k * .42f, drawY, drawSize, drawSize);
+                drawHeroFrame(heroFrame, drawX + back * k * .42f, drawY, drawSize);
             }
             spriteBatch.setColor(Color.WHITE);
         }
         beginTip(hero.getPosition().x, hero.getPosition().y - Hero.BODY_SIZE / 2f, heroTipAngle());
-        spriteBatch.draw(
-            heroFrame,
-            drawX, drawY, drawSize, drawSize
-        );
+        drawHeroFrame(heroFrame, drawX, drawY, drawSize);
         endTip();
+        if (heroSprites != null) drawComboGlint(drawX, drawY, drawSize);
         if (arrowReaction >= 0f && arrowReaction < .35f) {
             // Brief white flash over the hero before the red damage tint takes over.
             spriteBatch.setColor(1f, 1f, 1f, .75f * (1f - arrowReaction / .35f));
@@ -2822,5 +2920,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         debugRenderer.dispose();
         ruinsAtlas.dispose();
         atlas.dispose();
+        if (heroSprites != null) heroSprites.dispose();
     }
 }

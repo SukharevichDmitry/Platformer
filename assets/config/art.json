@@ -1,0 +1,4 @@
+{
+  "heroSpriteSet": "v2",
+  "note": "v2 = generated pixel-art hero (tools/sprites, documents/ART_ASSET_GUIDE.md); legacy = original 32 x 32 frames in atlases/game.atlas."
+}
