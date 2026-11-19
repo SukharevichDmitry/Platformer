@@ -1524,8 +1524,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 RoomInstance band = null;
                 for (RoomInstance room : gameWorld.getLocation().getRooms())
                     if (room.contains(heroPos)) band = room;
-                if (band != null) cameraY = clampCamera(heroPos.y, band.getWorldY() + halfHeight,
-                    band.getWorldY() + band.getHeight() - halfHeight);
+                if (band != null) cameraY = frameInRoom(band, heroPos.y, halfHeight);
+                // Only while the hero is actually on the ladder: walking past it keeps the room's framing.
+                VerticalConnection shaft = gameWorld.getHeroController().isClimbing()
+                    ? gameWorld.getLocation().climbConnectionAt(heroPos.x, heroPos.y, Hero.BODY_SIZE) : null;
+                if (shaft != null) cameraY = frameOnLadder(shaft, heroPos.y, halfHeight, cameraY);
             }
         }
         cameraTargetY = cameraY;
@@ -1539,6 +1542,37 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         cam.position.set(cameraX, smoothY, 0);
 
         cam.update();
+    }
+
+    /**
+     * On a ladder between floors the camera scrolls from the lower room's framing to the upper room's in step with
+     * the climb, the way it crosses a horizontal room edge, instead of jumping a whole floor when the hero's room
+     * changes. The scroll runs from where the hero stands on the lower floor to where they stand on the upper one,
+     * eased at both ends. Outside it each room keeps its own framing, so stepping off at either end never jolts and
+     * stacked ladders agree where they overlap.
+     */
+    private float frameOnLadder(VerticalConnection shaft, float heroY, float halfHeight, float fallback) {
+        RoomInstance lower = gameWorld.getLocation().getRoom(shaft.lowerRoomId);
+        RoomInstance upper = gameWorld.getLocation().getRoom(shaft.upperRoomId);
+        if (lower == null || upper == null) return fallback;
+        // The ladder's bottom is where the hero stands in the lower room; the same offset gives the upper floor.
+        float upperStand = upper.getWorldY() + (shaft.bottomY - lower.getWorldY());
+        // The scroll spans the whole climb between the two floors, so it starts the moment the hero starts climbing
+        // at either end and never needs to rush.
+        float span = upperStand - shaft.bottomY;
+        if (span <= 1e-3f || heroY <= shaft.bottomY) return frameInRoom(lower, heroY, halfHeight);
+        if (heroY >= upperStand) return frameInRoom(upper, heroY, halfHeight);
+        // Blend between the two floors' fixed views, eased in and out: the camera starts drifting gently as the
+        // hero begins to climb and settles gently on the next floor, instead of taking off at full climb speed.
+        float t = (heroY - shaft.bottomY) / span;
+        t = t * t * (3f - 2f * t);
+        float lowerFrame = frameInRoom(lower, shaft.bottomY, halfHeight);
+        return lowerFrame + (frameInRoom(upper, upperStand, halfHeight) - lowerFrame) * t;
+    }
+
+    /** Camera height that frames {@code room} for a hero at {@code heroY}, never showing the rooms above or below. */
+    private static float frameInRoom(RoomInstance room, float heroY, float halfHeight) {
+        return clampCamera(heroY, room.getWorldY() + halfHeight, room.getWorldY() + room.getHeight() - halfHeight);
     }
 
     private static float clampCamera(float target, float min, float max) {
