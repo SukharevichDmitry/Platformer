@@ -54,8 +54,11 @@ import java.util.List;
 
 public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
-    private static final float CAMERA_WIDTH = 20f;
-    private static final float CAMERA_HEIGHT = 14f;
+    public static final int INTERNAL_WIDTH = 640;
+    public static final int INTERNAL_HEIGHT = 360;
+    public static final float PIXELS_PER_UNIT = 32f;
+    public static final float CAMERA_WIDTH = INTERNAL_WIDTH / PIXELS_PER_UNIT;
+    public static final float CAMERA_HEIGHT = INTERNAL_HEIGHT / PIXELS_PER_UNIT;
     private static final float BACKDROP_HEIGHT = 10.4f;
     private static final float BACKDROP_OVERLAP = .27f;
     private static final float EDGE_MARGIN = 2f;
@@ -279,14 +282,14 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         slotFont = new BitmapFont();
         slotFont.getData().setScale(0.014f);
         slotFont.setUseIntegerPositions(false);
-        atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
+        atlas = PixelArtTextures.nearest(new TextureAtlas(Gdx.files.internal("atlases/game.atlas")));
         heroSprites = CharacterSpriteSet.load("heroSpriteSet",
             "actor/hero-v2/hero-v2.atlas", "config/hero_animations.json");
         hunterSprites = CharacterSpriteSet.load("enemySpriteSet",
             "actor/enemies-v2/hunter.atlas", "config/enemy_animations/hunter.json");
         archerSprites = CharacterSpriteSet.load("enemySpriteSet",
             "actor/enemies-v2/archer.atlas", "config/enemy_animations/archer.json");
-        ruinsAtlas = new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas"));
+        ruinsAtlas = PixelArtTextures.nearest(new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas")));
         for (int i = 0; i < wallFaces.length; i++) {
             String name = "wall_mask_" + (i & 15);
             if (i >= 16) name += "_corner_" + (i >> 4);
@@ -299,8 +302,8 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         blockBreakable = ruinsAtlas.findRegion("block_breakable");
         ladderSegment = ruinsAtlas.findRegion("ladder_segment");
         ladderCap = ruinsAtlas.findRegion("ladder_cap");
-        bandageSprite = new Texture(Gdx.files.internal("interactions/field-bandage.png"));
-        noteSprite = new Texture(Gdx.files.internal("interactions/sealed-note.png"));
+        bandageSprite = PixelArtTextures.nearest(new Texture(Gdx.files.internal("interactions/field-bandage.png")));
+        noteSprite = PixelArtTextures.nearest(new Texture(Gdx.files.internal("interactions/sealed-note.png")));
         keeperSprite = createKeeperSprite();
         shelterBackdrop = fadedBackdrop("scenery/shelter.png");
         redBackdrop = fadedBackdrop("scenery/red-street.png");
@@ -342,8 +345,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         arrowHitWallSound = Gdx.audio.newSound(Gdx.files.internal("sfx/arrow_hit_wall.wav"));
         glowTexture = radialTexture(false);
         ringTexture = radialTexture(true);
-        bandageSprite.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        noteSprite.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         itemLabelFont = new ItemLabelFont();
         loadTextures();
     }
@@ -355,9 +356,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     }
 
     private static Texture pixelTexture(String path) {
-        Texture texture = new Texture(Gdx.files.internal(path));
-        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        return texture;
+        return PixelArtTextures.nearest(new Texture(Gdx.files.internal(path)));
     }
 
     private static Texture fadedBackdrop(String path) {
@@ -595,10 +594,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         for (int i = 0; i < room.getInteractions().size; i++) {
             InteractionData portal = room.getInteractions().get(i);
             if (!"portal".equals(portal.kind)) continue;
-            boolean locked = "locked_laundry_door".equals(portal.id) &&
-                gameWorld.hasRunFlag("laundry_access_locked") &&
-                !gameWorld.hasRunFlag("alley_key_found");
-            if (portal.requiresFlag != null && !gameWorld.hasRunFlag(portal.requiresFlag) && !locked) continue;
+            if (portal.requiresFlag != null && !gameWorld.hasRunFlag(portal.requiresFlag)) continue;
             float x = room.getWorldX() + portal.position.x;
             float y = room.getWorldY() + portal.position.y;
             if (!foreground) {
@@ -609,9 +605,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 spriteBatch.setColor(.44f, .34f, .25f, 1f);
                 spriteBatch.draw(sceneryPixel, x - 1.4f, y - .75f, 1.1f, .08f);
                 spriteBatch.draw(sceneryPixel, x + .3f, y - .75f, 1.1f, .08f);
-                if (locked && gameWorld.getHero().getPosition().dst(x, y) < 3f)
-                    itemLabelFont.drawCentered(spriteBatch, "LOCKED: FIND THE KEY", x, y + 2.3f, NOTE_LABEL);
-                else if (gameWorld.getNearbyInteraction() == portal)
+                if (gameWorld.getNearbyInteraction() == portal)
                     itemLabelFont.drawCentered(spriteBatch, keyPrefix(portal) +
                         ("alley_door".equals(portal.visualId) ? "ENTER ALLEY" :
                             "street_exit".equals(portal.visualId) ? "RETURN" : "ENTER"),
@@ -2714,6 +2708,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private void drawCombatDebug() {
         debugRenderer.setProjectionMatrix(cam.combined);
         debugRenderer.begin(ShapeType.Line);
+        drawScaleDebug();
         Rectangle box = new Rectangle();
         hero.getHurtboxBounds(box);
         debugRenderer.setColor(Color.CYAN);
@@ -2733,6 +2728,44 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         drawSlotDebug();
         debugRenderer.end();
         drawSlotLabels();
+    }
+
+    /** 1-unit grid, camera bounds and visual metadata for validating the 32 px/unit presentation. */
+    private void drawScaleDebug() {
+        int left = (int) Math.floor(getVisibleLeftEdge());
+        int right = (int) Math.ceil(getVisibleRightEdge());
+        int bottom = (int) Math.floor(getVisibleBottomEdge());
+        int top = (int) Math.ceil(getVisibleTopEdge());
+        debugRenderer.setColor(.22f, .25f, .3f, .55f);
+        for (int x = left; x <= right; x++)
+            debugRenderer.line(x, getVisibleBottomEdge(), x, getVisibleTopEdge());
+        for (int y = bottom; y <= top; y++)
+            debugRenderer.line(getVisibleLeftEdge(), y, getVisibleRightEdge(), y);
+
+        debugRenderer.setColor(Color.WHITE);
+        debugRenderer.rect(getVisibleLeftEdge(), getVisibleBottomEdge(),
+            getVisibleRightEdge() - getVisibleLeftEdge(), getVisibleTopEdge() - getVisibleBottomEdge());
+        if (heroSprites == null) return;
+
+        float feetX = hero.getPosition().x;
+        float feetY = hero.getPosition().y - Hero.BODY_SIZE / 2f;
+        float spriteX = feetX - (heroAnimFacingLeft ? heroSprites.width - heroSprites.anchorX : heroSprites.anchorX);
+        float spriteY = feetY - heroSprites.anchorY;
+        debugRenderer.setColor(Color.YELLOW);
+        debugRenderer.rect(spriteX, spriteY, heroSprites.width, heroSprites.height);
+        float marker = .08f;
+        debugRenderer.line(feetX - marker, feetY, feetX + marker, feetY);
+        debugRenderer.line(feetX, feetY - marker, feetX, feetY + marker);
+        if (heroAnim != null) {
+            float tipX = heroSprites.tipX(heroAnim, heroAnimFrame);
+            if (heroAnimFacingLeft) tipX = -tipX;
+            float tipY = heroSprites.tipY(heroAnim, heroAnimFrame);
+            debugRenderer.setColor(Color.MAGENTA);
+            debugRenderer.line(feetX + tipX - marker, feetY + tipY,
+                feetX + tipX + marker, feetY + tipY);
+            debugRenderer.line(feetX + tipX, feetY + tipY - marker,
+                feetX + tipX, feetY + tipY + marker);
+        }
     }
 
     private static final Color SLOT_MELEE = new Color(.35f, 1f, .4f, 1f), SLOT_RESERVE = new Color(.4f, .75f, 1f, 1f),

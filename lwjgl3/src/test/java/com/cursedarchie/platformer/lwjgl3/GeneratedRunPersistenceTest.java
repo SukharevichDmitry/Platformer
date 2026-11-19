@@ -359,27 +359,26 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
             if (!first.enterPortal(entry) || !"laundry_alley".equals(first.getLocation().getLocation()) ||
                 !first.hasRunFlag("laundry_access_locked"))
                 throw new AssertionError("Generated street portal or locked route failed");
-            first.changeLocation("laundry_alley", roomWithInteraction(first, "locked_laundry_door"));
-            InteractionData locked = interaction(first, "locked_laundry_door");
-            first.getHero().getBody().setTransform(locked.position.x + first.getCurrentRoom().getWorldX(),
-                locked.position.y, 0f);
-            if (first.enterPortal(locked)) throw new AssertionError("Locked door opened without a key");
-            first.changeLocation("laundry_alley", 1);
-            InteractionData key = interaction(first, "alley_door_key");
-            first.getHero().getBody().setTransform(key.position.x + first.getCurrentRoom().getWorldX(),
-                key.position.y, 0f);
-            if (!first.interact() || !first.hasRunFlag("alley_key_found"))
-                throw new AssertionError("Alley key did not unlock the door");
-            first.changeLocation("laundry_alley", roomWithInteraction(first, "locked_laundry_door"));
-            locked = interaction(first, "locked_laundry_door");
-            first.getHero().getBody().setTransform(locked.position.x + first.getCurrentRoom().getWorldX(),
-                locked.position.y, 0f);
-            if (!first.enterPortal(locked)) throw new AssertionError("Unlocked laundry door failed");
-            // The laundry is a room of the alley below the court: the door is a descent, not a new location.
-            int laundryHouse = first.getCurrentRoom().getRoomId();
-            if (!"laundry_alley".equals(first.getLocation().getLocation()) ||
-                roomWithInteraction(first, "red_bracer") != laundryHouse)
-                throw new AssertionError("Laundry door did not descend into the alley's laundry house");
+            com.cursedarchie.platformer.levels.VerticalConnection alleyStairs =
+                connection(first, "alley_to_laundry");
+            com.cursedarchie.platformer.levels.VerticalConnection cellarStairs =
+                connection(first, "laundry_to_cellar");
+            if (alleyStairs.type != com.cursedarchie.platformer.levels.VerticalConnection.Type.STAIR_DESCENT ||
+                cellarStairs.type != com.cursedarchie.platformer.levels.VerticalConnection.Type.STAIR_DESCENT ||
+                alleyStairs.direction != com.cursedarchie.platformer.levels.VerticalConnection.Direction.DOWN ||
+                !"laundry_alley".equals(alleyStairs.sourceLocation) ||
+                !"laundry_alley".equals(alleyStairs.targetLocation))
+                throw new AssertionError("Laundry stairs are not in-location STAIR_DESCENT connections");
+            int laundryHouse = roomWithInteraction(first, "red_bracer");
+            if (alleyStairs.targetRoomId != laundryHouse || cellarStairs.sourceRoomId != laundryHouse)
+                throw new AssertionError("Laundry is not between the alley corridor and catchment cellar");
+            RoomInstance laundryRoom = first.getLocation().getRoom(laundryHouse);
+            first.getHero().getBody().setTransform(laundryRoom.getWorldX() + 16.5f,
+                laundryRoom.getWorldY() + 3f, 0f);
+            first.update(GameWorld.FIXED_STEP);
+            if (first.getCurrentRoom().getRoomId() != laundryHouse ||
+                !"laundry_alley".equals(first.getLocation().getLocation()))
+                throw new AssertionError("Physical descent did not remain in the alley location");
             Enemy collector = null;
             for (Enemy enemy : first.getEnemies()) if ("red_collector".equals(enemy.getArchetypeId())) collector = enemy;
             if (collector == null) throw new AssertionError("Laundry house has no collector");
@@ -390,20 +389,15 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
             if (!first.hasRunFlag(interaction(first, "red_bracer").requiresFlag))
                 throw new AssertionError("Bracer reward is not gated on its own room's defeat");
 
-            // Back up the stairs and down into the holding cellar: same location, nothing respawns or reloads.
+            // Continue down into the catchment cellar: same location, nothing respawns or reloads.
             int enemiesBefore = first.getEnemies().size;
-            InteractionData up = interaction(first, "alley_return");
-            first.getHero().getBody().setTransform(first.getCurrentRoom().localToWorld(up.position), 0f);
-            if (!first.enterPortal(up) || first.getCurrentRoom().getRoomId() != roomWithInteraction(first, "open_laundry_door"))
-                throw new AssertionError("Laundry stairs did not climb back to the court");
-            RoomInstance descentRoom = first.getLocation().getRoom(roomWithInteraction(first, "alley_cellar_stairs"));
-            InteractionData stairs = null;
-            for (InteractionData value : descentRoom.getInteractions())
-                if ("alley_cellar_stairs".equals(value.id)) stairs = value;
-            first.getHero().getBody().setTransform(descentRoom.localToWorld(stairs.position), 0f);
+            int cellar = roomWithInteraction(first, "cellar_prisoner");
+            RoomInstance cellarRoom = first.getLocation().getRoom(cellar);
+            first.getHero().getBody().setTransform(cellarRoom.getWorldX() + 18.5f,
+                cellarRoom.getWorldY() + 3f, 0f);
             first.update(GameWorld.FIXED_STEP);
-            if (!first.enterPortal(stairs) || roomWithInteraction(first, "cellar_prisoner") != first.getCurrentRoom().getRoomId())
-                throw new AssertionError("Cellar stairs did not descend into the holding cellar");
+            if (cellar != first.getCurrentRoom().getRoomId())
+                throw new AssertionError("Cellar boundary did not select the catchment cellar room");
             if (first.getEnemies().size != enemiesBefore)
                 throw new AssertionError("A descent inside the alley reloaded its enemies");
             InteractionData prisoner = interaction(first, "cellar_prisoner");
@@ -417,7 +411,7 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
         try {
             if (!"laundry_alley".equals(resumed.getLocation().getLocation()) ||
                 roomWithInteraction(resumed, "cellar_prisoner") != resumed.getCurrentRoom().getRoomId() ||
-                !resumed.hasRunFlag("alley_key_found") || !resumed.hasRunFlag("cellar_key_found") ||
+                !resumed.hasRunFlag("cellar_key_found") ||
                 !resumed.hasRunFlag(GameWorld.PRISONER_ESCORTED))
                 throw new AssertionError("Route or prisoner decision was lost on Continue");
             for (Enemy enemy : resumed.getEnemies())
@@ -445,6 +439,13 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
         throw new AssertionError("Missing interaction: " + id);
     }
 
+    private com.cursedarchie.platformer.levels.VerticalConnection connection(GameWorld world, String id) {
+        for (com.cursedarchie.platformer.levels.VerticalConnection value :
+            world.getLocation().getVerticalConnections())
+            if (id.equals(value.id)) return value;
+        throw new AssertionError("Missing vertical connection: " + id);
+    }
+
     private void checkGeneratedAlleyVariants() {
         boolean[] lengths = new boolean[2];
         for (long seed = 0; seed < 24; seed++) {
@@ -455,8 +456,8 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
                 int count = world.getLocation().getRooms().size();
                 if (count < 9 || count > 10) throw new AssertionError("Invalid alley length: " + count);
                 lengths[count - 9] = true;
-                int laundry = roomWithInteraction(world, "locked_laundry_door");
-                int stairs = roomWithInteraction(world, "alley_cellar_stairs");
+                int laundry = connection(world, "alley_to_laundry").sourceRoomId;
+                int stairs = roomWithInteraction(world, "main_street_exit") - 1;
                 int exit = roomWithInteraction(world, "main_street_exit");
                 int side = roomWithInteraction(world, "loft_bandage");
                 if (roomWithInteraction(world, "street_return") != 0 || stairs != laundry + 1 || exit != stairs + 1)
@@ -469,12 +470,13 @@ public final class GeneratedRunPersistenceTest extends ApplicationAdapter {
                 int vault = roomWithInteraction(world, "sewing_kit");
                 RoomInstance houseRoom = world.getLocation().getRoom(house);
                 if (houseRoom.getUpNeighbor() == null || houseRoom.getUpNeighbor() != laundry ||
-                    world.getLocation().getRoom(cellar).getUpNeighbor() != stairs ||
+                    world.getLocation().getRoom(cellar).getUpNeighbor() != house ||
                     world.getLocation().getRoom(vault).getUpNeighbor() != cellar)
                     throw new AssertionError("Laundry, cellar and vault are not below their entry rooms");
-                for (InteractionData value : houseRoom.getInteractions())
-                    if ("alley_return".equals(value.id) && value.targetRoomId != laundry)
-                        throw new AssertionError("Laundry stairs lead to the wrong room");
+                if (connection(world, "alley_to_laundry").targetRoomId != house ||
+                    connection(world, "laundry_to_cellar").sourceRoomId != house ||
+                    connection(world, "laundry_to_cellar").targetRoomId != cellar)
+                    throw new AssertionError("Physical laundry/cellar stair chain is incorrect");
             } finally { world.dispose(); }
         }
         for (boolean seen : lengths)

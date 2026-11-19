@@ -26,7 +26,7 @@ import java.util.Set;
 /** Controls save immediately; display changes remain staged until Save. */
 public final class SettingsScreen implements Screen {
     private static final int[][] RESOLUTIONS = {
-        {640, 480}, {800, 600}, {960, 540}, {1024, 768},
+        {640, 360}, {800, 450}, {960, 540}, {1024, 576},
         {1280, 720}, {1440, 900}, {1600, 900}, {1920, 1080}
     };
 

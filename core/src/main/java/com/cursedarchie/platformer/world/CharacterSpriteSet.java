@@ -59,19 +59,23 @@ final class CharacterSpriteSet implements Disposable {
     private final ObjectMap<String, Anim> animations = new ObjectMap<>();
     /** World size of a frame and the anchor's offset from the frame's bottom-left corner, in world units. */
     final float width, height, anchorX, anchorY, pixelsPerUnit;
+    private final float assetToWorldScale;
     private final int frameHeightPx;
 
     private CharacterSpriteSet(String atlasPath, JsonValue meta) {
-        atlas = new TextureAtlas(Gdx.files.internal(atlasPath));
-        pixelsPerUnit = meta.getFloat("pixelsPerUnit", 64f);
+        atlas = PixelArtTextures.nearest(new TextureAtlas(Gdx.files.internal(atlasPath)));
+        pixelsPerUnit = meta.getFloat("pixelsPerUnit", 32f);
         int[] frame = meta.get("frame").asIntArray();
         int[] anchor = meta.get("anchor").asIntArray();
         frameHeightPx = frame[1];
-        width = frame[0] / pixelsPerUnit;
-        height = frame[1] / pixelsPerUnit;
-        anchorX = anchor[0] / pixelsPerUnit;
+        float unscaledHeight = frame[1] / pixelsPerUnit;
+        float visualHeight = meta.getFloat("visualHeight", unscaledHeight);
+        assetToWorldScale = visualHeight / unscaledHeight;
+        width = frame[0] / pixelsPerUnit * assetToWorldScale;
+        height = visualHeight;
+        anchorX = anchor[0] / pixelsPerUnit * assetToWorldScale;
         // Pixel rows count down from the top; the anchor row is the lowest row of the feet.
-        anchorY = (frame[1] - 1 - anchor[1]) / pixelsPerUnit;
+        anchorY = (frame[1] - 1 - anchor[1]) / pixelsPerUnit * assetToWorldScale;
         for (JsonValue anim = meta.get("animations").child; anim != null; anim = anim.next) {
             Array<TextureAtlas.AtlasRegion> regions = atlas.findRegions(anim.name);
             if (regions.size != anim.getInt("frames"))
@@ -108,9 +112,11 @@ final class CharacterSpriteSet implements Disposable {
     }
 
     /** Weapon tip of a frame relative to the anchor, in world units, for a right-facing frame. */
-    float tipX(Anim anim, int frame) { return anim.tips[frame][0] / pixelsPerUnit - anchorX; }
+    float tipX(Anim anim, int frame) {
+        return anim.tips[frame][0] / pixelsPerUnit * assetToWorldScale - anchorX;
+    }
     float tipY(Anim anim, int frame) {
-        return (frameHeightPx - 1 - anim.tips[frame][1]) / pixelsPerUnit - anchorY;
+        return (frameHeightPx - 1 - anim.tips[frame][1]) / pixelsPerUnit * assetToWorldScale - anchorY;
     }
 
     @Override public void dispose() { atlas.dispose(); }

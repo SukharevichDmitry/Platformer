@@ -26,6 +26,7 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.cursedarchie.platformer.levels.TransitionProfile;
 import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 import com.cursedarchie.platformer.world.WorldRenderer;
+import com.cursedarchie.platformer.world.PixelArtTextures;
 
 /**
  * 2.5D camera turn between a street and an alley, timed by a {@link TransitionProfile}. The street and the alley
@@ -413,8 +414,8 @@ final class AlleyTurnTransition implements Disposable {
         disposeBuffers();
         source = new FrameBuffer(Pixmap.Format.RGBA8888, Math.max(1, width), Math.max(1, height), true);
         target = new FrameBuffer(Pixmap.Format.RGBA8888, Math.max(1, width), Math.max(1, height), true);
-        source.getColorBufferTexture().setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-        target.getColorBufferTexture().setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        PixelArtTextures.nearest(source.getColorBufferTexture());
+        PixelArtTextures.nearest(target.getColorBufferTexture());
     }
 
     private void rebuildPlanes() {

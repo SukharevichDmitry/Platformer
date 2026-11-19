@@ -58,6 +58,18 @@ public final class LocationReachability {
         boolean grew = true;
         while (grew) {
             int before = reach.standing.size();
+            for (VerticalConnection connection : location.getVerticalConnections()) {
+                RoomInstance upper = location.getRoom(connection.upperRoomId);
+                RoomInstance lower = location.getRoom(connection.lowerRoomId);
+                Vector2 upperLanding = new Vector2(connection.centerX - 1.5f,
+                    upper.getWorldY() + 2.5f);
+                Vector2 lowerLanding = new Vector2(connection.centerX,
+                    lower.getWorldY() + 2.5f);
+                if (reach.reachesRoom(upper))
+                    reach.flood(reach.landAt(lowerLanding));
+                if (reach.reachesRoom(lower))
+                    reach.flood(reach.landAt(upperLanding));
+            }
             for (RoomInstance room : location.getRooms())
                 for (InteractionData portal : room.getInteractions()) {
                     if (!"portal".equals(portal.kind) || portal.returnToOrigin ||

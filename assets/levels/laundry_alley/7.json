@@ -5,7 +5,7 @@
   "width": 32,
   "height": 14,
   "tileRows": [
-    "################################",
+    "##################  ############",
     "#                              #",
     "#                              #",
     "#                              #",
@@ -17,8 +17,8 @@
     "#                              #",
     "#                              #",
     "#        __  __                #",
-    "################################",
-    "################################"
+    "##################==############",
+    "##################  ############"
   ],
   "enemySpawns": [
     {
@@ -33,7 +33,7 @@
     {
       "id": "alley_entry",
       "position": {
-        "x": 4.5,
+        "x": 19.0,
         "y": 2.5
       }
     }
@@ -46,12 +46,25 @@
       "visualId": "cellar_stairs",
       "eventId": "laundry_left",
       "position": {
-        "x": 3.5,
+        "x": 19.0,
         "y": 3.0
       },
-      "targetRole": "laundry",
+      "targetRole": "alley_corridor",
       "targetSpawnId": "laundry_return",
       "transition": "climb_stairs"
+    },
+    {
+      "id": "laundry_to_cellar",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "cellar_entered",
+      "position": {
+        "x": 19.0,
+        "y": 3.0
+      },
+      "targetRole": "catchment_cellar",
+      "targetSpawnId": "laundry_entry",
+      "transition": "descend_stairs"
     },
     {
       "id": "red_bracer",
@@ -60,10 +73,10 @@
       "itemId": "red_bracer",
       "eventId": "red_bracer_taken",
       "position": {
-        "x": 25.5,
+        "x": 16.5,
         "y": 3
       },
-      "requiresFlag": "defeated:{room:laundry_house}:0"
+      "requiresFlag": "defeated:{room:laundry}:0"
     },
     {
       "id": "key_mold_workbench",
@@ -71,7 +84,7 @@
       "visualId": "sealed_note",
       "eventId": "cellar_key_mold",
       "position": {
-        "x": 27.5,
+        "x": 14.5,
         "y": 3.0
       }
     }

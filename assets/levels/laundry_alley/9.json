@@ -41,7 +41,7 @@
         "x": 3.5,
         "y": 3
       },
-      "targetRole": "holding_cellar",
+      "targetRole": "catchment_cellar",
       "targetSpawnId": "vault_return",
       "transition": "climb_stairs"
     },

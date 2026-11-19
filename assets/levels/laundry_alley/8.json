@@ -5,10 +5,10 @@
   "width": 36,
   "height": 14,
   "tileRows": [
-    "####################################",
-    "#                   ##             #",
-    "#                   ##             #",
-    "#                   ##             #",
+    "##################  ################",
+    "#                                  #",
+    "#                                  #",
+    "#                                  #",
     "#                                  #",
     "#                                  #",
     "#                                  #",
@@ -33,7 +33,7 @@
     {
       "id": "laundry_entry",
       "position": {
-        "x": 4.5,
+        "x": 19.0,
         "y": 2.5
       }
     },
@@ -53,11 +53,11 @@
       "visualId": "cellar_stairs",
       "eventId": "cellar_left",
       "position": {
-        "x": 3.5,
+        "x": 19.0,
         "y": 3.0
       },
-      "targetRole": "cellar_descent",
-      "targetSpawnId": "cellar_return",
+      "targetRole": "laundry",
+      "targetSpawnId": "alley_entry",
       "transition": "climb_stairs"
     },
     {

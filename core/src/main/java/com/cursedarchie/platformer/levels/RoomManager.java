@@ -6,7 +6,6 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.cursedarchie.platformer.levels.wrappers.RoomData;
-import com.cursedarchie.platformer.levels.wrappers.InteractionData;
 import com.cursedarchie.platformer.run.RunCheckpoint;
 
 import java.util.*;
@@ -60,6 +59,8 @@ public class RoomManager {
 
     public LocationInstance loadLocation(String location) {
         if ("laundry_alley".equals(location)) return generateAlley();
+        if ("laundry_house".equals(location) || "catchment_cellar".equals(location))
+            throw new IllegalArgumentException(location + " is a room of laundry_alley, not a separate location");
         FileHandle profile = Gdx.files.internal("generation/" + location + ".json");
         if (profile.exists()) {
             LocationInstance existing = generatedLocations.get(location);
@@ -108,13 +109,6 @@ public class RoomManager {
             }
 
             RoomData data = RoomLoader.load(roomFile);
-            if ("laundry_house".equals(location) || "catchment_cellar".equals(location)) {
-                for (InteractionData interaction : data.interactions) {
-                    if (!"alley_return".equals(interaction.id)) continue;
-                    interaction.targetRoomId = alley().roomId("laundry_house".equals(location) ? "laundry" : "cellar_descent");
-                }
-            }
-
             cache.put(data.id, data);
 
             RoomInstance room = new RoomInstance(data);

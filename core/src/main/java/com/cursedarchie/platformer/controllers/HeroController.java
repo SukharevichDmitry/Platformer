@@ -57,6 +57,7 @@ public class HeroController implements InputProcessor {
     }
 
     public void setBindings(ControlBindings bindings) { this.bindings = bindings; clearInput(); }
+    public boolean isClimbing() { return climbing; }
 
     @Override
     public boolean keyDown(int keycode) {
@@ -65,11 +66,24 @@ public class HeroController implements InputProcessor {
         else if (bindings.matches(Action.RIGHT, keycode)) rightHeld = true;
         else if (bindings.matches(Action.UP, keycode)) upHeld = true;
         else if (bindings.matches(Action.DOWN, keycode)) {
-            if (!downHeld && gameWorld.isHeroOnOneWaySurface()) {
+            VerticalConnection descent = gameWorld.getLocation().climbConnectionAt(
+                hero.getPosition().x, hero.getPosition().y, Hero.BODY_SIZE);
+            boolean stairMouth = descent != null && descent.type == VerticalConnection.Type.STAIR_DESCENT &&
+                hero.getPosition().y >= descent.topY - 1.5f;
+            if (!downHeld && (gameWorld.isHeroOnOneWaySurface() || stairMouth)) {
                 hero.setPlatformDropRemaining(0.32f);
                 hero.setGrounded(false);
-                climbing = false;
-                climbRegrabBlocked = true;
+                // Down over an ordinary one-way ledge is a drop. At a stair mouth
+                // it must immediately grip the ladder and continue into the room below.
+                climbing = descent != null;
+                climbRegrabBlocked = descent == null;
+                if (descent != null) {
+                    // Move the feet just through the thin one-way lip. Disabling the
+                    // contact alone can leave Box2D's warm-started impulse holding a
+                    // resting body on the landing for the whole descent.
+                    hero.getBody().setTransform(descent.centerX,
+                        hero.getPosition().y - 0.55f, hero.getBody().getAngle());
+                }
                 hero.getBody().setLinearVelocity(hero.getBody().getLinearVelocity().x, -4f);
             }
             downHeld = true;
@@ -336,7 +350,9 @@ public class HeroController implements InputProcessor {
             hero.getPosition().x, hero.getPosition().y, Hero.BODY_SIZE);
         if (shaft == null) climbing = false;
         if (!upHeld && !downHeld) climbRegrabBlocked = false;
-        if (shaft != null && !climbRegrabBlocked && upHeld != downHeld) climbing = true;
+        boolean stairDescent = shaft != null && shaft.type == VerticalConnection.Type.STAIR_DESCENT &&
+            downHeld && !upHeld;
+        if (shaft != null && (stairDescent || !climbRegrabBlocked) && upHeld != downHeld) climbing = true;
         if (shaft != null && climbing) {
             if (jumpBufferRemaining > 0f) {
                 // Space always releases the ladder, even when no terrain foot contact exists.
@@ -358,6 +374,10 @@ public class HeroController implements InputProcessor {
             }
             // Releasing Up/Down grips the shaft; Left/Right can traverse or leave it.
             float climbX = direction * CLIMB_HORIZONTAL_SPEED;
+            // Stair mouths use a one-way landing so the corridor remains walkable.
+            // Keep that surface disabled while descending; otherwise it catches the
+            // body before it can cross into the room below.
+            if (downHeld) hero.setPlatformDropRemaining(0.1f);
             hero.getBody().setGravityScale(0f);
             hero.getBody().setLinearVelocity(climbX, climbY);
             if (isJumpState) hero.getMotionStateMachine().changeState(new MotionIdleState());

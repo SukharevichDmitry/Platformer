@@ -3028,6 +3028,54 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 route.getCurrentRoom().getWorldY() + entrance.position.y, 0f);
             if (!route.enterPortal(entrance) || !"laundry_alley".equals(route.getLocation().getLocation()))
                 throw new AssertionError("Alley portal did not enter its authored room");
+            // This slice verifies navigation, not combat. Keep authored room enemies
+            // from interrupting the deliberately slow full-height stair traversal.
+            for (Enemy enemy : route.getEnemies()) enemy.setActive(false);
+            com.cursedarchie.platformer.levels.VerticalConnection alleyToLaundry = null;
+            com.cursedarchie.platformer.levels.VerticalConnection laundryToCellar = null;
+            for (com.cursedarchie.platformer.levels.VerticalConnection connection :
+                route.getLocation().getVerticalConnections()) {
+                if ("alley_to_laundry".equals(connection.id)) alleyToLaundry = connection;
+                if ("laundry_to_cellar".equals(connection.id)) laundryToCellar = connection;
+            }
+            if (alleyToLaundry == null || laundryToCellar == null)
+                throw new AssertionError("Laundry alley has no physical stair chain");
+            route.getHero().getBody().setTransform(alleyToLaundry.centerX,
+                route.getLocation().getRoom(alleyToLaundry.sourceRoomId).getWorldY() + 2.515f, 0f);
+            route.getHeroController().clearInput();
+            route.update(GameWorld.FIXED_STEP); // establish the stair-mouth platform contact
+            route.getHeroController().keyDown(Input.Keys.DOWN);
+            route.update(GameWorld.FIXED_STEP);
+            if (!route.getHeroController().isClimbing())
+                throw new AssertionError("Down did not grip STAIR_DESCENT at " +
+                    route.getHero().getPosition() + ", shaft=" +
+                    route.getLocation().climbConnectionAt(route.getHero().getPosition().x,
+                        route.getHero().getPosition().y, Hero.BODY_SIZE));
+            for (int i = 0; i < 180 && route.getCurrentRoom().getRoomId() != alleyToLaundry.targetRoomId; i++)
+                route.update(GameWorld.FIXED_STEP);
+            if (route.getCurrentRoom().getRoomId() != alleyToLaundry.targetRoomId)
+                throw new AssertionError("Holding Down did not physically descend into laundry: room=" +
+                    route.getCurrentRoom().getRoomId() + ", pos=" + route.getHero().getPosition() +
+                    ", velocity=" + route.getHero().getBody().getLinearVelocity() +
+                    ", drop=" + route.getHero().getPlatformDropRemaining() +
+                    ", climbing=" + route.getHeroController().isClimbing() +
+                    ", ladder=" + alleyToLaundry.bottomY + ".." + alleyToLaundry.topY);
+            route.getHero().getBody().setTransform(laundryToCellar.centerX,
+                route.getLocation().getRoom(laundryToCellar.sourceRoomId).getWorldY() + 2.515f, 0f);
+            route.getHeroController().clearInput();
+            route.update(GameWorld.FIXED_STEP);
+            route.getHeroController().keyDown(Input.Keys.DOWN);
+            for (int i = 0; i < 180 && route.getCurrentRoom().getRoomId() != laundryToCellar.targetRoomId; i++)
+                route.update(GameWorld.FIXED_STEP);
+            route.getHeroController().keyUp(Input.Keys.DOWN);
+            if (route.getCurrentRoom().getRoomId() != laundryToCellar.targetRoomId ||
+                !"laundry_alley".equals(route.getLocation().getLocation()))
+                throw new AssertionError("Holding Down did not physically descend into catchment cellar: room=" +
+                    route.getCurrentRoom().getRoomId() + ", target=" + laundryToCellar.targetRoomId +
+                    ", pos=" + route.getHero().getPosition() + ", velocity=" +
+                    route.getHero().getBody().getLinearVelocity() + ", climbing=" +
+                    route.getHeroController().isClimbing() + ", alive=" + route.getHero().isAlive() +
+                    ", staggered=" + route.getHero().isStaggered() + ", falling=" + route.getHero().isFalling());
             int lastRoom = route.getLocation().getRooms().size() - 1;
             if (lastRoom < 3) throw new AssertionError("Generated alley is too short");
             for (int roomId = 1; roomId <= lastRoom; roomId++) {

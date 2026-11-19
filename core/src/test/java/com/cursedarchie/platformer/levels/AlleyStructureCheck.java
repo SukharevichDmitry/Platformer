@@ -18,18 +18,20 @@ public final class AlleyStructureCheck {
             if (sideRoom.getDownNeighbor() == null || sideRoom.getDownNeighbor() != corridor ||
                 sideRoom.getWorldY() != below.getWorldY() + below.getHeight())
                 throw new AssertionError("Side room does not sit on the first corridor (seed " + seed + ")");
-            RoomInstance house = location.getRoom(structure.roomId("laundry_house"));
-            RoomInstance cellar = location.getRoom(structure.roomId("holding_cellar"));
-            if (house.getUpNeighbor() != structure.roomId("laundry") ||
-                cellar.getUpNeighbor() != structure.roomId("cellar_descent") ||
-                house.getWorldY() >= 0f || cellar.getWorldY() >= 0f)
-                throw new AssertionError("Laundry house and cellar are not below their entry rooms (seed " + seed + ")");
-            for (com.cursedarchie.platformer.levels.wrappers.InteractionData i : house.getInteractions())
-                if ("red_bracer".equals(i.id) && !i.requiresFlag.equals("defeated:laundry_alley:" + house.getRoomId() + ":0"))
+            RoomInstance laundry = location.getRoom(structure.roomId("laundry"));
+            RoomInstance cellar = location.getRoom(structure.roomId("catchment_cellar"));
+            if (laundry.getUpNeighbor() != structure.roomId("alley_corridor") ||
+                cellar.getUpNeighbor() != structure.roomId("laundry") ||
+                laundry.getWorldY() >= 0f || cellar.getWorldY() >= laundry.getWorldY())
+                throw new AssertionError("Laundry and cellar are not stacked below the alley (seed " + seed + ")");
+            for (com.cursedarchie.platformer.levels.wrappers.InteractionData i : laundry.getInteractions())
+                if ("red_bracer".equals(i.id) && !i.requiresFlag.equals("defeated:laundry_alley:" + laundry.getRoomId() + ":0"))
                     throw new AssertionError("Laundry reward flag does not follow its room: " + i.requiresFlag);
+            if (location.getVerticalConnections().size() != 2)
+                throw new AssertionError("Alley does not expose its two physical stair descents");
             if (!location.isCameraPerRoom()) throw new AssertionError("Alley camera is not per room");
-            if (structure.roomId("exit") <= structure.roomId("cellar_descent") ||
-                structure.roomId("cellar_descent") <= structure.roomId("laundry"))
+            if (structure.roomId("laundry") <= structure.roomId("exit") ||
+                structure.roomId("catchment_cellar") <= structure.roomId("laundry"))
                 throw new AssertionError("Alley rooms are out of story order (seed " + seed + ")");
             if (location.getRooms().size() == 10) withExtraCorridor++;
             else if (location.getRooms().size() != 9)
@@ -52,17 +54,15 @@ public final class AlleyStructureCheck {
         String structure = alley.child(AlleyStructure.FILE).readString("UTF-8");
         expect(fixture, structure.replace("\"role\": \"exit\",\n      \"template\": 4", "\"role\": \"exit\",\n      \"template\": 0"),
             "exit portal must not land at the entrance's return spawn");
-        expect(fixture, structure.replace("\"over\": \"corridor\"", "\"over\": \"laundry\""), "cannot be reached on foot");
-        expect(fixture, structure.replace("\"side_room\",\n    \"laundry\"", "\"side_room\",\n    \"rooftop\",\n    \"laundry\""),
+        expect(fixture, structure.replace("\"over\": \"corridor\"", "\"over\": \"laundry\""),
+            "side_room has no 'laundry' room");
+        expect(fixture, structure.replace("\"side_room\",\n    \"alley_corridor\"",
+                "\"side_room\",\n    \"rooftop\",\n    \"alley_corridor\""),
             "required room role is missing: rooftop");
-        FileHandle stairsRoom = fixture.child("3.json");
+        FileHandle stairsRoom = fixture.child("2.json");
         String stairsJson = stairsRoom.readString("UTF-8");
-        stairsRoom.writeString(stairsJson.replace("\"targetSpawnId\": \"laundry_entry\"", "\"targetSpawnId\": \"nowhere\""), false);
+        stairsRoom.writeString(stairsJson.replace("\"targetSpawnId\": \"alley_entry\"", "\"targetSpawnId\": \"nowhere\""), false);
         expect(fixture, structure, "lands at a missing spawn nowhere");
-        // Stairs that lead elsewhere leave the holding cellar (and the vault below it) without a way in.
-        stairsRoom.writeString(stairsJson.replace("\"targetRole\": \"holding_cellar\"", "\"targetRole\": \"laundry_house\"")
-            .replace("\"targetSpawnId\": \"laundry_entry\"", "\"targetSpawnId\": \"alley_entry\""), false);
-        expect(fixture, structure, "cannot be reached");
         stairsRoom.writeString(stairsJson, false);
         System.out.println("ALLEY STRUCTURE PASSED: 200 seeds, roles in order, side room above corridor, " +
             "laundry, cellar and vault below their rooms, separate street exit, reachability on foot and by descents, malformed structure diagnostics");

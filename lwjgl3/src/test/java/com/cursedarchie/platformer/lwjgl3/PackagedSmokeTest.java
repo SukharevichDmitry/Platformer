@@ -90,10 +90,10 @@ public final class PackagedSmokeTest extends Main {
                     throw new AssertionError("Interaction binding disappeared after Esc");
                 click("SETTINGS");
                 expect(SettingsScreen.class);
-                if (getDisplaySettings().supported(800, 600)) {
+                if (getDisplaySettings().supported(800, 450)) {
                     click("DISPLAY");
                     getScreen().render(0f);
-                    click("800 x 600");
+                    click("800 x 450");
                     click("FULLSCREEN: OFF");
                     Gdx.input.getInputProcessor().keyDown(Input.Keys.ESCAPE);
                     expect(MenuScreen.class);
@@ -104,7 +104,7 @@ public final class PackagedSmokeTest extends Main {
                     getScreen().render(0f);
                     click("DISPLAY");
                     getScreen().render(0f);
-                    click("800 x 600");
+                    click("800 x 450");
                     Gdx.input.getInputProcessor().keyDown(Input.Keys.ENTER);
                     if (Gdx.app.getPreferences(getClass().getName() + ".settings")
                         .getInteger("display.width") != 800)

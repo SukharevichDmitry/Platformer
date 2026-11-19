@@ -1517,7 +1517,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     public RunCheckpoint checkpoint() {
         if (!hero.isAlive()) throw new IllegalStateException("Cannot save a dead run");
         RunCheckpoint checkpoint = new RunCheckpoint();
-        checkpoint.worldLayoutVersion = 10;
+        checkpoint.worldLayoutVersion = 11;
         checkpoint.seed = roomManager.getRunSeed();
         checkpoint.locationId = currentLocationName;
         checkpoint.roomId = currentRoomId;
@@ -1557,7 +1557,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     private void restore(RunCheckpoint checkpoint) {
-        if (checkpoint.worldLayoutVersion != 10)
+        if (checkpoint.worldLayoutVersion != 11)
             throw new IllegalArgumentException("Checkpoint uses an older world layout");
         for (RunCheckpoint.GeneratedLocationRef ref : checkpoint.generatedLocations) {
             if (ref == null || ref.locationId == null || ref.topologySignature == null ||

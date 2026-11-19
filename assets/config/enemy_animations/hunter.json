@@ -9,7 +9,8 @@
     64,
     93
   ],
-  "pixelsPerUnit": 64,
+  "pixelsPerUnit": 32,
+  "visualHeight": 1.55,
   "facing": "right",
   "animations": {
     "idle": {

@@ -51,6 +51,6 @@ public final class DisplaySettings {
 
     public boolean supported(int width, int height) {
         Graphics.DisplayMode mode = Gdx.graphics.getDisplayMode();
-        return width >= 640 && height >= 480 && width <= mode.width && height <= mode.height;
+        return width >= 640 && height >= 360 && width <= mode.width && height <= mode.height;
     }
 }

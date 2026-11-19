@@ -17,8 +17,8 @@
     "                                ",
     "                                ",
     "                                ",
-    "################################",
-    "################################"
+    "##################==############",
+    "##################  ############"
   ],
   "enemySpawns": [],
   "spawnPoints": [
@@ -36,60 +36,17 @@
   },
   "interactions": [
     {
-      "id": "open_laundry_door",
+      "id": "alley_to_laundry",
       "kind": "portal",
-      "visualId": "laundry_door",
+      "visualId": "cellar_stairs",
       "eventId": "laundry_entered",
       "position": {
-        "x": 18.5,
+        "x": 19.0,
         "y": 3
       },
       "targetSpawnId": "alley_entry",
-      "requiresFlag": "laundry_access_open",
-      "targetRole": "laundry_house",
+      "targetRole": "laundry",
       "transition": "descend_stairs"
-    },
-    {
-      "id": "locked_laundry_door",
-      "kind": "portal",
-      "visualId": "laundry_door",
-      "eventId": "laundry_entered",
-      "position": {
-        "x": 18.5,
-        "y": 3
-      },
-      "targetSpawnId": "alley_entry",
-      "requiresFlag": "alley_key_found",
-      "targetRole": "laundry_house",
-      "transition": "descend_stairs"
-    },
-    {
-      "id": "rubble_bypass",
-      "kind": "portal",
-      "visualId": "rubble_gap",
-      "eventId": "laundry_entered",
-      "position": {
-        "x": 18.5,
-        "y": 3
-      },
-      "targetSpawnId": "alley_entry",
-      "requiresFlag": "laundry_access_rubble",
-      "targetRole": "laundry_house",
-      "transition": "descend_breach"
-    },
-    {
-      "id": "upper_laundry_window",
-      "kind": "portal",
-      "visualId": "upper_window",
-      "eventId": "laundry_entered",
-      "position": {
-        "x": 18.5,
-        "y": 6
-      },
-      "targetSpawnId": "alley_entry",
-      "requiresFlag": "laundry_access_window",
-      "targetRole": "laundry_house",
-      "transition": "descend_drop"
     }
   ]
 }

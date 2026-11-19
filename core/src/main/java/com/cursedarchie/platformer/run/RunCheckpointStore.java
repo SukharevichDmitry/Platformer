@@ -9,7 +9,7 @@ import java.util.ArrayList;
 /** One active run, stored beside its generated-location records. */
 public final class RunCheckpointStore {
     private static final int FORMAT_VERSION = 7;
-    private static final int WORLD_LAYOUT_VERSION = 10;
+    private static final int WORLD_LAYOUT_VERSION = 11;
     private static final String KEY = "run.active";
     private final Preferences preferences;
     private final Json json = new Json(JsonWriter.OutputType.json);

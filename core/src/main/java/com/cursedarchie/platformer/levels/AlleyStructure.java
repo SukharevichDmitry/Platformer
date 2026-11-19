@@ -14,8 +14,8 @@ import java.util.Random;
 /**
  * A multi-room alley built from {@code structure.json} in its level directory: a left-to-right sequence of rooms
  * with story roles (entrance, corridor, laundry, cellar descent, exit), optional seeded rooms, rooms placed above
- * a room (a side room reached through a gap in its floor) and rooms below one (laundry house, holding cellar,
- * vault) reached by in-location descents. Room templates are the directory's numbered room files. The built
+ * a room (a side room reached through a gap in its floor) and rooms below one (laundry, catchment cellar,
+ * transfer rooms) reached by physical stair shafts. Room templates are the directory's numbered room files. The built
  * location is validated: every required role is present, rooms do not overlap, the exit is its own room and
  * leads back to the street at a different spawn than the entrance, and every room and interaction can be reached
  * from the entrance spawn on foot or through the location's own descents. Pure data and file I/O, so it also
@@ -67,6 +67,7 @@ public final class AlleyStructure {
         }
         location.setCameraPerRoom("room".equals(root.getString("camera", "location")));
         RoomManager.buildRoomLayout(location);
+        buildStairConnections(directory);
         validate(directory, root);
     }
 
@@ -112,6 +113,45 @@ public final class AlleyStructure {
             interaction.targetLocation = location.getLocation();
             interaction.targetRoomId = target;
         }
+    }
+
+    /** Converts authored descent/return markers into one continuous physical ladder inside this location. */
+    private void buildStairConnections(FileHandle directory) {
+        Array<InteractionData> descents = new Array<>();
+        for (RoomInstance room : location.getRooms())
+            for (InteractionData interaction : room.getInteractions())
+                if ("portal".equals(interaction.kind) && "descend_stairs".equals(interaction.transition) &&
+                    location.getLocation().equals(interaction.targetLocation)) descents.add(interaction);
+
+        for (InteractionData descent : descents) {
+            RoomInstance upper = roomHolding(descent);
+            RoomInstance lower = location.getRoom(descent.targetRoomId);
+            if (upper == null || lower == null || upper.getDownNeighbor() == null ||
+                upper.getDownNeighbor() != lower.getRoomId())
+                throw invalid(directory, descent.id + " is not a stair descent into the room directly below");
+            InteractionData ascent = reciprocalStair(lower, upper.getRoomId());
+            if (ascent == null)
+                throw invalid(directory, descent.id + " has no climb-stairs marker in its target room");
+            float centerX = upper.getWorldX() + descent.position.x;
+            location.addVerticalConnection(VerticalConnection.stairDescent(
+                location.getLocation(), descent.id, descent.id, ascent.id,
+                upper, lower, centerX));
+            upper.getInteractions().removeValue(descent, true);
+            lower.getInteractions().removeValue(ascent, true);
+        }
+    }
+
+    private RoomInstance roomHolding(InteractionData value) {
+        for (RoomInstance room : location.getRooms())
+            if (room.getInteractions().contains(value, true)) return room;
+        return null;
+    }
+
+    private static InteractionData reciprocalStair(RoomInstance room, int targetRoomId) {
+        for (InteractionData value : room.getInteractions())
+            if ("portal".equals(value.kind) && "climb_stairs".equals(value.transition) &&
+                value.targetRoomId == targetRoomId) return value;
+        return null;
     }
 
     private String roomTokens(FileHandle directory, String text) {

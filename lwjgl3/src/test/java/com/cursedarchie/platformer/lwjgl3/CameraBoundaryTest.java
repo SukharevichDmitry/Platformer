@@ -17,7 +17,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
         config.setInitialVisible(false);
-        config.setWindowedMode(640, 480);
+        config.setWindowedMode(640, 360);
         CameraBoundaryTest test = new CameraBoundaryTest();
         new Lwjgl3Application(test, config);
         if (!test.passed) throw new AssertionError("Camera boundary test did not complete");
@@ -27,7 +27,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
     @Override public void create() {
         world = new GameWorld();
         renderer = new WorldRenderer(world, false);
-        renderer.setSize(640, 480);
+        renderer.setSize(640, 360);
         checkRightEdge("start", 3);
         checkRightEdge("forest", 0);
         checkRightEdge("start", 3);
@@ -52,7 +52,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         float roomLeft = world.getCurrentRoom().getWorldX();
         world.getHero().getBody().setTransform(roomLeft + 10f, 4, 0);
         renderSettled();
-        float expectedFollowEdge = roomLeft + 10f + 14f * (640f / 480f) / 2f;
+        float expectedFollowEdge = roomLeft + 10f + WorldRenderer.CAMERA_WIDTH / 2f;
         if (Math.abs(renderer.getVisibleRightEdge() - expectedFollowEdge) > 0.001f) {
             throw new AssertionError(location + " camera stopped following before the boundary");
         }
@@ -71,7 +71,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         float worldHeight = renderer.getVisibleTopEdge() - renderer.getVisibleBottomEdge();
         if (Math.abs(worldWidth / worldHeight - 16f / 9f) > 0.001f)
             throw new AssertionError("World pixels stretch at 1920x1080");
-        renderer.setSize(640, 480);
+        renderer.setSize(640, 360);
     }
 
     private void checkLeftEdge(String location, int roomId) {
@@ -80,7 +80,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         for (RoomInstance room : world.getLocation().getRooms()) {
             levelLeft = Math.min(levelLeft, room.getWorldX());
         }
-        world.getHero().getBody().setTransform(levelLeft + 14f * (640f / 480f) / 2f, 4, 0);
+        world.getHero().getBody().setTransform(levelLeft + WorldRenderer.CAMERA_WIDTH / 2f, 4, 0);
         renderSettled();
         assertLeftEdge(location, levelLeft);
         world.getHero().getBody().setTransform(levelLeft + 0.2f, 4, 0);
@@ -113,7 +113,8 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         }
         float middle = (bottom + top) / 2f;
         moveHeroVertically(middle);
-        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), middle - 7f, "following");
+        assertVerticalEdge(location, renderer.getVisibleBottomEdge(), middle - WorldRenderer.CAMERA_HEIGHT / 2f,
+            "following");
         float beforeJump = renderer.getVisibleBottomEdge();
         world.getHero().getBody().setTransform(10, middle + 4f, 0);
         renderer.render(GameWorld.FIXED_STEP);
