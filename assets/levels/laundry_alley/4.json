@@ -38,7 +38,7 @@
       "visualId": "street_exit",
       "eventId": "alley_left_to_main_street",
       "position": {
-        "x": 23.5,
+        "x": 27.5,
         "y": 3.0
       },
       "returnToOrigin": true,

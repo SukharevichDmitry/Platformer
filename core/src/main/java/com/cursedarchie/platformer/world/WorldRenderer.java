@@ -593,7 +593,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         if (room == null) return;
         for (int i = 0; i < room.getInteractions().size; i++) {
             InteractionData portal = room.getInteractions().get(i);
-            if (!"portal".equals(portal.kind)) continue;
+            if (!"portal".equals(portal.kind) || GameWorld.isBoundaryPortal(portal)) continue;   // no door to draw
             if (portal.requiresFlag != null && !gameWorld.hasRunFlag(portal.requiresFlag)) continue;
             float x = room.getWorldX() + portal.position.x;
             float y = room.getWorldY() + portal.position.y;

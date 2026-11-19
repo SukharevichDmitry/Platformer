@@ -3045,6 +3045,34 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         route.getHeroController().keyDown(Input.Keys.DOWN);
     }
 
+    /**
+     * An alley exit to the street has no door: no prompt anywhere near it, nothing while the hero is still inside
+     * the alley, and the transition as soon as the hero crosses its line toward the room's edge.
+     */
+    private static void checkBoundaryExit(GameWorld route, String exitId) {
+        com.cursedarchie.platformer.levels.RoomInstance exitRoom = null;
+        com.cursedarchie.platformer.levels.wrappers.InteractionData exit = null;
+        for (com.cursedarchie.platformer.levels.RoomInstance room : route.getLocation().getRooms())
+            for (com.cursedarchie.platformer.levels.wrappers.InteractionData interaction : room.getInteractions())
+                if (exitId.equals(interaction.id)) { exitRoom = room; exit = interaction; }
+        if (exit == null || !GameWorld.isBoundaryPortal(exit))
+            throw new AssertionError(exitId + " is not a walk-out boundary exit");
+        boolean left = exit.position.x < exitRoom.getWidth() / 2f;
+        float line = exitRoom.getWorldX() + exit.position.x;
+        float y = exitRoom.getWorldY() + 2.5f;
+        for (float inside = 3f; inside > 0f; inside -= .25f) {
+            route.getHero().getBody().setTransform(line + (left ? inside : -inside), y, 0f);
+            route.update(GameWorld.FIXED_STEP);
+            if (route.getNearbyInteraction() == exit) throw new AssertionError(exitId + " shows a door prompt");
+            if (route.getTouchedPortal() != null)
+                throw new AssertionError(exitId + " fired " + inside + " units before its boundary");
+        }
+        route.getHero().getBody().setTransform(line + (left ? -.05f : .05f), y, 0f);
+        route.update(GameWorld.FIXED_STEP);
+        if (route.getTouchedPortal() != exit)
+            throw new AssertionError(exitId + " did not start when the hero crossed its boundary");
+    }
+
     private void checkAlleyPortalsAndChoices() {
         GameWorld route = new GameWorld(412L);
         try {
@@ -3061,8 +3089,14 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             float streetX = route.getCurrentRoom().getWorldX() + entrance.position.x;
             route.getHero().getBody().setTransform(streetX,
                 route.getCurrentRoom().getWorldY() + entrance.position.y, 0f);
+            route.update(GameWorld.FIXED_STEP);
+            // The street door waits for the interact key: standing in it shows its prompt but never walks in.
+            if (route.getTouchedPortal() != null || route.getNearbyInteraction() != entrance)
+                throw new AssertionError("Alley entrance starts on approach instead of waiting for E");
             if (!route.enterPortal(entrance) || !"laundry_alley".equals(route.getLocation().getLocation()))
                 throw new AssertionError("Alley portal did not enter its authored room");
+            checkBoundaryExit(route, "street_return");
+            checkBoundaryExit(route, "main_street_exit");
             // This slice verifies navigation, not combat. Keep authored room enemies
             // from interrupting the deliberately slow full-height stair traversal.
             for (Enemy enemy : route.getEnemies()) enemy.setActive(false);
@@ -3189,9 +3223,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (!route.enterPortal(mouth) || !"laundry_alley".equals(route.getLocation().getLocation()) ||
                 route.getCurrentRoom().namedSpawn("exit_approach") == null)
                 throw new AssertionError("Far alley mouth did not lead into the alley's exit room");
-            route.getHero().getBody().setTransform(3.5f, 3f, 0f);
+            // Walk out past the entrance's street boundary at the alley's start.
+            com.cursedarchie.platformer.levels.RoomInstance start = route.getLocation().getRoom(0);
+            com.cursedarchie.platformer.levels.wrappers.InteractionData streetReturn = start.getInteractions().first();
+            route.getHero().getBody().setTransform(start.getWorldX() + streetReturn.position.x,
+                start.getWorldY() + streetReturn.position.y, 0f);
             route.update(GameWorld.FIXED_STEP);
-            if (!route.enterPortal(route.getCurrentRoom().getInteractions().first()) ||
+            if (!route.enterPortal(streetReturn) ||
                 route.getCurrentRoom().getRoomId() != streetRoom || route.getCurrentRoom().getRoomId() == farRoom)
                 throw new AssertionError("Entrance exit did not return to the entrance door after a far-mouth entry");
         } finally { route.dispose(); }

@@ -1,8 +1,8 @@
 {
-  "note": "Location transition profiles. trigger: touch = starts when the hero walks into the doorway (|dx| <= triggerHalfWidth), interact = on the interact key; touch portals also accept the key. A portal names one in its \"transition\" field. Times are seconds; fractions are of the turn (0..1) or of the screen width. Physics never rotates: the turn is drawn from captured 2D frames. kind descent = a vertical move between rooms of the same location (stairs, breach, drop, hatch): control is locked, the hero travels along the path shape while the camera follows vertically, and nothing is reloaded, so enemies, items, opened passages and room state stay as they are. The hero is hidden while it passes through the floor between fadeFrom and fadeTo.",
+  "note": "Location transition profiles. trigger: touch = starts when the hero walks into the doorway (|dx| <= triggerHalfWidth), interact = on the interact key; touch portals also accept the key; boundary = no doorway is drawn, the portal's x is a line near the nearer room edge and the transition starts when the hero crosses it heading out. A portal names one in its \"transition\" field. Times are seconds; fractions are of the turn (0..1) or of the screen width. Physics never rotates: the turn is drawn from captured 2D frames. kind descent = a vertical move between rooms of the same location (stairs, breach, drop, hatch): control is locked, the hero travels along the path shape while the camera follows vertically, and nothing is reloaded, so enemies, items, opened passages and room state stay as they are. The hero is hidden while it passes through the floor between fadeFrom and fadeTo.",
   "alley_enter": {
     "kind": "alley_turn",
-    "trigger": "touch",
+    "trigger": "interact",
     "triggerHalfWidth": 0.4,
     "direction": "counterclockwise",
     "turnDuration": 0.9,
@@ -22,7 +22,7 @@
   },
   "alley_exit": {
     "kind": "alley_turn",
-    "trigger": "touch",
+    "trigger": "boundary",
     "triggerHalfWidth": 0.4,
     "direction": "clockwise",
     "turnDuration": 0.9,

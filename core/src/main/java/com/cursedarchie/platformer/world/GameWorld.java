@@ -136,8 +136,10 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         if (delta <= 0f || Float.isNaN(delta)) return;
         // Drop excess accumulated time after a stall instead of simulating an unbounded backlog.
         accumulator = Math.min(accumulator + delta, FIXED_STEP * MAX_STEPS_PER_FRAME);
-        int steps = (int) (accumulator / FIXED_STEP);
-        accumulator -= steps * FIXED_STEP;
+        // Float rounding can leave the remainder a hair below zero or a whole step a hair short; either would
+        // silently drop a step (one frame of FIXED_STEP then simulating nothing), so both are absorbed here.
+        int steps = (int) ((accumulator + 1e-5f) / FIXED_STEP);
+        accumulator = Math.max(0f, accumulator - steps * FIXED_STEP);
         for (int i = 0; i < steps; i++) simulateStep(FIXED_STEP);
     }
 
@@ -828,8 +830,9 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
     }
 
     public boolean enterPortal(InteractionData portal) {
-        if (portal == null || !"portal".equals(portal.kind) ||
-            getNearbyInteraction() != portal) return false;
+        if (portal == null || !"portal".equals(portal.kind)) return false;
+        // A doorway is used by standing at it; a boundary exit by having crossed its line.
+        if (isBoundaryPortal(portal) ? getTouchedPortal() != portal : getNearbyInteraction() != portal) return false;
         if (portal.returnToOrigin) {
             if (portalOriginLocation == null) return false;
             // A far exit names its own street spawn; it lands in whichever origin room holds that spawn.
@@ -1319,6 +1322,7 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         for (InteractionData interaction : currentRoom.getInteractions()) {
             if (isInteractionConsumed(currentRoom, interaction)) continue;
             if (interaction.requiresFlag != null && !runFlags.contains(interaction.requiresFlag)) continue;
+            if (isBoundaryPortal(interaction)) continue;   // nothing to stand at or press: it is crossed
             float dx = currentRoom.getWorldX() + interaction.position.x - hero.getPosition().x;
             float dy = currentRoom.getWorldY() + interaction.position.y - hero.getPosition().y;
             float distance2 = dx * dx + dy * dy;
@@ -1332,8 +1336,27 @@ public class GameWorld implements com.badlogic.gdx.utils.Disposable {
         return nearest;
     }
 
-    /** Walk-in portal whose doorway the hero is standing in, or null. Its transition must use trigger "touch". */
+    /** A portal with no doorway: its transition starts when the hero crosses its line ("boundary" trigger). */
+    public static boolean isBoundaryPortal(InteractionData interaction) {
+        if (!"portal".equals(interaction.kind)) return false;
+        TransitionProfile profile = TransitionProfile.get(interaction.transition);
+        return profile != null && profile.boundaryTrigger;
+    }
+
+    /**
+     * Walk-in portal the hero has just entered, or null: a "boundary" portal whose line the hero has crossed toward
+     * the nearer room edge, or a "touch" doorway the hero is standing in.
+     */
     public InteractionData getTouchedPortal() {
+        if (currentRoom != null && hero.isAlive()) {
+            for (InteractionData interaction : currentRoom.getInteractions()) {
+                if (!isBoundaryPortal(interaction) || isInteractionConsumed(currentRoom, interaction)) continue;
+                if (interaction.requiresFlag != null && !runFlags.contains(interaction.requiresFlag)) continue;
+                float line = currentRoom.getWorldX() + interaction.position.x;
+                boolean leftEdge = interaction.position.x < currentRoom.getWidth() / 2f;
+                if (leftEdge ? hero.getPosition().x <= line : hero.getPosition().x >= line) return interaction;
+            }
+        }
         InteractionData nearby = getNearbyInteraction();
         if (nearby == null || !"portal".equals(nearby.kind)) return null;
         TransitionProfile profile = TransitionProfile.get(nearby.transition);
