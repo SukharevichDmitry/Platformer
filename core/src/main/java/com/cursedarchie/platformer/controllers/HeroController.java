@@ -66,24 +66,15 @@ public class HeroController implements InputProcessor {
         else if (bindings.matches(Action.RIGHT, keycode)) rightHeld = true;
         else if (bindings.matches(Action.UP, keycode)) upHeld = true;
         else if (bindings.matches(Action.DOWN, keycode)) {
-            VerticalConnection descent = gameWorld.getLocation().climbConnectionAt(
-                hero.getPosition().x, hero.getPosition().y, Hero.BODY_SIZE);
-            boolean stairMouth = descent != null && descent.type == VerticalConnection.Type.STAIR_DESCENT &&
-                hero.getPosition().y >= descent.topY - 1.5f;
-            if (!downHeld && (gameWorld.isHeroOnOneWaySurface() || stairMouth)) {
+            // Down over an ordinary one-way ledge is a drop. Over a ladder it is only a held
+            // direction: handleMovementInput grips the ladder and climbs down while it stays held.
+            boolean onLadder = gameWorld.getLocation().climbConnectionAt(
+                hero.getPosition().x, hero.getPosition().y, Hero.BODY_SIZE) != null;
+            if (!downHeld && !onLadder && gameWorld.isHeroOnOneWaySurface()) {
                 hero.setPlatformDropRemaining(0.32f);
                 hero.setGrounded(false);
-                // Down over an ordinary one-way ledge is a drop. At a stair mouth
-                // it must immediately grip the ladder and continue into the room below.
-                climbing = descent != null;
-                climbRegrabBlocked = descent == null;
-                if (descent != null) {
-                    // Move the feet just through the thin one-way lip. Disabling the
-                    // contact alone can leave Box2D's warm-started impulse holding a
-                    // resting body on the landing for the whole descent.
-                    hero.getBody().setTransform(descent.centerX,
-                        hero.getPosition().y - 0.55f, hero.getBody().getAngle());
-                }
+                climbing = false;
+                climbRegrabBlocked = true;
                 hero.getBody().setLinearVelocity(hero.getBody().getLinearVelocity().x, -4f);
             }
             downHeld = true;
@@ -347,7 +338,8 @@ public class HeroController implements InputProcessor {
         float currentX = hero.getBody().getLinearVelocity().x - shoveApplied;
         float currentY = hero.getBody().getLinearVelocity().y;
         VerticalConnection shaft = gameWorld.getLocation().climbConnectionAt(
-            hero.getPosition().x, hero.getPosition().y, Hero.BODY_SIZE);
+            hero.getPosition().x, hero.getPosition().y, Hero.BODY_SIZE,
+            upHeld == downHeld ? 0 : upHeld ? 1 : -1);
         if (shaft == null) climbing = false;
         if (!upHeld && !downHeld) climbRegrabBlocked = false;
         boolean stairDescent = shaft != null && shaft.type == VerticalConnection.Type.STAIR_DESCENT &&
@@ -365,19 +357,29 @@ public class HeroController implements InputProcessor {
                 hero.getMotionStateMachine().changeState(new JumpState());
                 return;
             }
+            // Up/Down move along the ladder at a steady speed for as long as they are held; the
+            // last step is only shortened so the hero stops exactly at the ladder's end. Rooms
+            // change purely because the body crosses their bounds, never by moving it there.
             float climbY = 0f;
-            if (upHeld != downHeld) {
-                float targetY = upHeld ? shaft.topY : shaft.bottomY;
-                float distance = targetY - hero.getPosition().y;
-                if (Math.abs(distance) >= 0.04f)
-                    climbY = Math.copySign(Math.min(CLIMB_SPEED, Math.abs(distance) / delta), distance);
-            }
-            // Releasing Up/Down grips the shaft; Left/Right can traverse or leave it.
+            float y = hero.getPosition().y;
+            if (upHeld && !downHeld && y < shaft.topY)
+                climbY = Math.min(CLIMB_SPEED, (shaft.topY - y) / delta);
+            else if (downHeld && !upHeld && y > shaft.bottomY)
+                climbY = -Math.min(CLIMB_SPEED, (y - shaft.bottomY) / delta);
+            // Releasing Up/Down grips the shaft in place; Left/Right can traverse or leave it.
             float climbX = direction * CLIMB_HORIZONTAL_SPEED;
+            if (direction == 0f && climbY != 0f) {
+                // Drift onto the ladder's centre line while climbing so the narrow grip is kept.
+                float offset = shaft.centerX - hero.getPosition().x;
+                climbX = Math.copySign(Math.min(CLIMB_HORIZONTAL_SPEED, Math.abs(offset) / delta), offset);
+            }
             // Stair mouths use a one-way landing so the corridor remains walkable.
             // Keep that surface disabled while descending; otherwise it catches the
             // body before it can cross into the room below.
-            if (downHeld) hero.setPlatformDropRemaining(0.1f);
+            if (downHeld) {
+                hero.setPlatformDropRemaining(0.1f);
+                hero.setGrounded(false);
+            }
             hero.getBody().setGravityScale(0f);
             hero.getBody().setLinearVelocity(climbX, climbY);
             if (isJumpState) hero.getMotionStateMachine().changeState(new MotionIdleState());

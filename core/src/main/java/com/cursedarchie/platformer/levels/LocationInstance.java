@@ -64,9 +64,22 @@ public class LocationInstance {
     }
 
     public VerticalConnection climbConnectionAt(float x, float y, float heroWidth) {
-        for (VerticalConnection connection : verticalConnections)
-            if (connection.contains(x, y, heroWidth)) return connection;
-        return null;
+        return climbConnectionAt(x, y, heroWidth, 0);
+    }
+
+    /**
+     * Ladders stacked through several rooms overlap where one ends and the next begins. With a climb direction
+     * (+1 up, -1 down) the ladder that still continues that way wins, so the hero climbs straight through the join.
+     */
+    public VerticalConnection climbConnectionAt(float x, float y, float heroWidth, int direction) {
+        VerticalConnection any = null;
+        for (VerticalConnection connection : verticalConnections) {
+            if (!connection.contains(x, y, heroWidth)) continue;
+            if (direction > 0 ? connection.topY > y : direction < 0 ? connection.bottomY < y : true)
+                return connection;
+            if (any == null) any = connection;
+        }
+        return any;
     }
 
     void setGeneration(GeneratedRunSave save, int entryRoomId) {
