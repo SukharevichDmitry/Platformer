@@ -167,6 +167,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private int heroAnimFrame;
     private boolean heroAnimFacingLeft;
     private final TextureAtlas ruinsAtlas;
+    private final RuinsStreetRenderer ruinsStreet;
     private final TextureRegion[] wallFaces = new TextureRegion[256];
     private final TextureRegion backgroundStone;
     private final TextureRegion stoneHalf;
@@ -289,6 +290,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             "actor/enemies-v2/hunter.atlas", "config/enemy_animations/hunter.json");
         archerSprites = CharacterSpriteSet.load("enemySpriteSet",
             "actor/enemies-v2/archer.atlas", "config/enemy_animations/archer.json");
+        ruinsStreet = new RuinsStreetRenderer();
         ruinsAtlas = PixelArtTextures.nearest(new TextureAtlas(Gdx.files.internal("atlases/ruins-tiles.atlas")));
         for (int i = 0; i < wallFaces.length; i++) {
             String name = "wall_mask_" + (i & 15);
@@ -496,9 +498,16 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         spriteBatch.setProjectionMatrix(cam.combined);
 
         spriteBatch.begin();
-            if ("start".equals(gameWorld.getLocation().getLocation()) ||
-                "ruins".equals(gameWorld.getLocation().getLocation())) drawOpeningScenery();
-            else drawBackgroundMasonry();
+            String location = gameWorld.getLocation().getLocation();
+            if ("start".equals(location)) drawOpeningScenery();
+            else if ("ruins".equals(location)) {
+                float left = getVisibleLeftEdge();
+                float bottom = getVisibleBottomEdge();
+                fillScenery(left, bottom, getVisibleRightEdge() - left, getVisibleTopEdge() - bottom,
+                    .34f, .31f, .37f);
+                spriteBatch.setColor(Color.WHITE);
+                ruinsStreet.draw(gameWorld.getLocation(), spriteBatch, left, getVisibleRightEdge(), cam.position.x);
+            } else drawBackgroundMasonry();
             drawTiles();
             drawCollapsedWallSample();
             roadSurface.draw(gameWorld.getLocation(), spriteBatch,
@@ -597,6 +606,20 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
             if (portal.requiresFlag != null && !gameWorld.hasRunFlag(portal.requiresFlag)) continue;
             float x = room.getWorldX() + portal.position.x;
             float y = room.getWorldY() + portal.position.y;
+            if ("ruins".equals(room.getLocation()) && "alley_door".equals(portal.visualId)) {
+                if (!foreground) {
+                    ruinsStreet.drawAlley(spriteBatch, x, room.getWorldY() + 2f);
+                    if (gameWorld.getNearbyInteraction() == portal) {
+                        itemLabelFont.drawCentered(spriteBatch, keyPrefix(portal) + "ENTER ALLEY",
+                            x, y + 2.3f, NOTE_LABEL);
+                    }
+                } else if (enteringPortal == portal) {
+                    spriteBatch.setColor(.03f, .03f, .05f, portalProgress * .75f);
+                    spriteBatch.draw(sceneryPixel, x - .65f, y - .65f, 1.3f, 1.45f);
+                    spriteBatch.setColor(Color.WHITE);
+                }
+                continue;
+            }
             if (!foreground) {
                 spriteBatch.setColor(.08f, .07f, .09f, 1f);
                 spriteBatch.draw(sceneryPixel, x - .85f, y - .65f, 1.7f, 2.5f);
@@ -3237,6 +3260,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         roadSurface.dispose();
         spriteBatch.dispose();
         debugRenderer.dispose();
+        ruinsStreet.dispose();
         ruinsAtlas.dispose();
         atlas.dispose();
         if (heroSprites != null) heroSprites.dispose();
