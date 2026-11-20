@@ -1,0 +1,85 @@
+{
+  "location": "transfer_gate",
+  "id": 0,
+  "sceneryTheme": "red",
+  "width": 40,
+  "height": 14,
+  "tileRows": [
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "                                        ",
+    "########################################",
+    "########################################"
+  ],
+  "enemySpawns": [
+    {
+      "type": "heavy_hunter",
+      "position": {
+        "x": 10,
+        "y": 3.0
+      }
+    },
+    {
+      "type": "boss",
+      "position": {
+        "x": 18,
+        "y": 3.0
+      }
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "warden_return",
+      "position": {
+        "x": 4.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {},
+  "interactions": [
+    {
+      "id": "shelter_return",
+      "kind": "portal",
+      "visualId": "street_exit",
+      "eventId": "gate_returned",
+      "position": {
+        "x": 34.5,
+        "y": 3.0
+      },
+      "targetLocation": "start",
+      "targetRoomId": 1,
+      "targetSpawnId": "gate_return",
+      "requiresFlag": "gate_victory"
+    },
+    {
+      "id": "gate_documents",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "gate_incomplete_documents",
+      "requiresFlag": "gate_victory",
+      "position": {
+        "x": 27.5,
+        "y": 3.0
+      }
+    }
+  ],
+  "locationEntry": {
+    "location": "ruins",
+    "id": -1
+  },
+  "locationExit": {
+    "location": "keeper_chamber",
+    "id": 0,
+    "requiresFlag": "gate_victory"
+  }
+}

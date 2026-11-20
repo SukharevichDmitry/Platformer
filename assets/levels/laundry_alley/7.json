@@ -1,0 +1,92 @@
+{
+  "location": "laundry_alley",
+  "id": 7,
+  "sceneryTheme": "shelter",
+  "width": 32,
+  "height": 14,
+  "tileRows": [
+    "##################  ############",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#               ======         #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#                              #",
+    "#        __  __                #",
+    "##################==############",
+    "##################  ############"
+  ],
+  "enemySpawns": [
+    {
+      "type": "red_collector",
+      "position": {
+        "x": 24,
+        "y": 3.0
+      }
+    }
+  ],
+  "spawnPoints": [
+    {
+      "id": "alley_entry",
+      "position": {
+        "x": 19.0,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {},
+  "interactions": [
+    {
+      "id": "alley_return",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "laundry_left",
+      "position": {
+        "x": 19.0,
+        "y": 3.0
+      },
+      "targetRole": "alley_corridor",
+      "targetSpawnId": "laundry_return",
+      "transition": "climb_stairs"
+    },
+    {
+      "id": "laundry_to_cellar",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "cellar_entered",
+      "position": {
+        "x": 19.0,
+        "y": 3.0
+      },
+      "targetRole": "catchment_cellar",
+      "targetSpawnId": "laundry_entry",
+      "transition": "descend_stairs"
+    },
+    {
+      "id": "red_bracer",
+      "kind": "pickup",
+      "visualId": "red_bracer",
+      "itemId": "red_bracer",
+      "eventId": "red_bracer_taken",
+      "position": {
+        "x": 16.5,
+        "y": 3
+      },
+      "requiresFlag": "defeated:{room:laundry}:0"
+    },
+    {
+      "id": "key_mold_workbench",
+      "kind": "evidence",
+      "visualId": "sealed_note",
+      "eventId": "cellar_key_mold",
+      "position": {
+        "x": 14.5,
+        "y": 3.0
+      }
+    }
+  ]
+}

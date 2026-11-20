@@ -1,0 +1,74 @@
+{
+  "note": "Laundry and catchment cellar are rooms of laundry_alley. Authored descend/climb markers are converted into physical STAIR_DESCENT connections at load time; no location transition runs between these rooms.",
+  "location": "laundry_alley",
+  "start": {
+    "role": "entrance",
+    "spawn": "street_entry"
+  },
+  "farEntry": {
+    "role": "exit",
+    "spawn": "exit_approach"
+  },
+  "sequence": [
+    {
+      "role": "entrance",
+      "template": 0
+    },
+    {
+      "role": "corridor",
+      "template": 1
+    },
+    {
+      "role": "corridor",
+      "template": 6,
+      "chance": 0.5
+    },
+    {
+      "role": "alley_corridor",
+      "template": 2
+    },
+    {
+      "role": "transfer_gate",
+      "template": 3
+    },
+    {
+      "role": "exit",
+      "template": 4
+    }
+  ],
+  "above": [
+    {
+      "role": "side_room",
+      "template": 5,
+      "over": "corridor"
+    }
+  ],
+  "requiredRoles": [
+    "entrance",
+    "corridor",
+    "side_room",
+    "alley_corridor",
+    "laundry",
+    "catchment_cellar",
+    "transfer_gate",
+    "exit"
+  ],
+  "below": [
+    {
+      "role": "laundry",
+      "template": 7,
+      "under": "alley_corridor"
+    },
+    {
+      "role": "catchment_cellar",
+      "template": 8,
+      "under": "laundry"
+    },
+    {
+      "role": "vault",
+      "template": 9,
+      "under": "catchment_cellar"
+    }
+  ],
+  "camera": "room"
+}

@@ -1,0 +1,490 @@
+package com.cursedarchie.platformer.actors.hero;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.*;
+import com.cursedarchie.platformer.actors.Actor;
+import com.cursedarchie.platformer.actors.hero.machines.CombatStateMachine;
+import com.cursedarchie.platformer.actors.hero.machines.MotionStateMachine;
+import com.cursedarchie.platformer.physics.AttackConfig;
+import com.cursedarchie.platformer.physics.PhysicsTags;
+import com.cursedarchie.platformer.physics.PhysicsCategories;
+import com.cursedarchie.platformer.run.Inventory;
+import com.cursedarchie.platformer.run.ItemCatalog;
+import com.cursedarchie.platformer.physics.CombatHit;
+import com.cursedarchie.platformer.combat.AttackDefinition;
+import com.cursedarchie.platformer.combat.AttackRhythmConfig;
+import com.cursedarchie.platformer.combat.Hurtbox;
+import com.cursedarchie.platformer.actors.hero.states.combat.AttackState;
+import com.cursedarchie.platformer.actors.hero.states.combat.CombatIdleState;
+import com.cursedarchie.platformer.actors.hero.states.motion.MotionIdleState;
+
+public class Hero extends Actor<Hero.HeroMotionState, Hero.HeroCombatState> {
+    public static final float BODY_SIZE = 1f;
+    public static final float WALK_SPEED = 13f;
+    public static final float AIR_ACCELERATION = 150f;
+    public static final float AIR_BRAKING = 100f;
+    public static final float JUMP_SPEED = 32.8f;
+    public static final float FALL_GRAVITY_SCALE = 1.25f;
+    public static final float RELEASE_GRAVITY_SCALE = 1.5f;
+    public static final float MAX_FALL_SPEED = 28f;
+    public static final float ATTACK_STARTUP = 0.12f;
+    public static final float ATTACK_ACTIVE_END = 0.24f;
+    public static final float ATTACK_DURATION = 0.36f;
+    public static final float DAMAGE_INVULNERABILITY = 0.5f;
+
+    /*===========================================PARAMETERS===========================================================*/
+
+    public enum HeroMotionState {
+        IDLE,
+        WALK,
+        JUMP,
+        DIE
+    }
+
+    public enum HeroCombatState {
+        IDLE,
+        ATTACK
+    }
+
+    protected MotionStateMachine motionStateMachine;
+    protected CombatStateMachine combatStateMachine;
+    private float invulnerabilityRemaining;
+    private float staggerRemaining;
+    private float lastHitSourceX = Float.NaN;
+    private float platformDropRemaining;
+    private boolean blockHeld;
+    private float blockStability = 3f;
+    private float blockBrokenRemaining;
+    private float blockCounterCooldown;
+    private float blockFlashRemaining;
+    private float blockHeavyFlashRemaining, blockBreakFlashRemaining;
+    private final AttackConfig firstAttackLeft = new AttackConfig(.9f, .82f, -1.0f, .02f);
+    private final AttackConfig firstAttackRight = new AttackConfig(.9f, .82f, 1.0f, .02f);
+    private final AttackConfig secondAttackLeft = new AttackConfig(1.32f, .66f, -1.38f, .16f);
+    private final AttackConfig secondAttackRight = new AttackConfig(1.32f, .66f, 1.38f, .16f);
+    private final AttackConfig finisherAttackLeft = new AttackConfig(1.45f, .95f, -1.55f, .06f);
+    private final AttackConfig finisherAttackRight = new AttackConfig(1.45f, .95f, 1.55f, .06f);
+    private static AttackDefinition light1Definition() {
+        AttackRhythmConfig c = AttackRhythmConfig.get();
+        return new AttackDefinition("hero_light_1", CombatHit.Type.MELEE_LIGHT, .10f, .09f, .20f,
+            1.45f, .9f, .82f, .02f, 1f, 5f, .14f, 1f, true, c.light1WindowStart, .39f);
+    }
+    private static AttackDefinition light2Definition() {
+        AttackRhythmConfig c = AttackRhythmConfig.get();
+        return new AttackDefinition("hero_light_2", CombatHit.Type.MELEE_LIGHT, .07f, .12f, .29f,
+            2.04f, 1.32f, .66f, .16f, 1.1f, 8.5f, .2f, 1f, true, c.light2WindowStart, .48f);
+    }
+    private static AttackDefinition finisherDefinition() {
+        AttackRhythmConfig c = AttackRhythmConfig.get();
+        float total = c.finisherStartupDuration + c.finisherActiveDuration + c.finisherRecoveryDuration;
+        return new AttackDefinition("hero_light_3", CombatHit.Type.MELEE_FINISHER,
+            c.finisherStartupDuration, c.finisherActiveDuration, c.finisherRecoveryDuration,
+            c.finisherRange, c.finisherHitboxWidth, c.finisherHitboxHeight, c.finisherOffsetY,
+            c.finisherDamageMultiplier, c.finisherKnockback, c.finisherStaggerDuration,
+            c.finisherShieldDamageMultiplier, true, total, total, 0f);
+    }
+    /** Block cannot be raised while staggered or mid-swing; an already raised guard drops when staggered. */
+    public void setBlockHeld(boolean value) {
+        boolean wasHeld = blockHeld;
+        // Attack recovery (the "cooldown") never prevents blocking: raising the guard cuts the recovery short.
+        // Only a rushed strike's punishing recovery still leaves the hero open.
+        if (value && combatStateMachine.getCurrentState() instanceof AttackState) {
+            AttackState attack = (AttackState) combatStateMachine.getCurrentState();
+            if (attack.isInRecovery(this) && !attack.getRuntime().isHurried() && !isRolling() && !isStaggered())
+                combatStateMachine.changeState(new CombatIdleState());
+        }
+        blockHeld = value && !isRolling() && !isStaggered() && !isFalling() &&
+            !(combatStateMachine.getCurrentState() instanceof AttackState);
+    }
+    public boolean isBlocking() {
+        return blockHeld && !isStaggered() && !isFalling() && blockBrokenRemaining == 0f && blockStability > 0f && !attackLocksBlock();
+    }
+    /** The recovery of a rushed strike leaves the hero unable to guard. */
+    private boolean attackLocksBlock() {
+        if (!(combatStateMachine.getCurrentState() instanceof AttackState)) return false;
+        AttackState a = (AttackState) combatStateMachine.getCurrentState();
+        return a.getRuntime() != null && a.getRuntime().isHurried() && a.isInRecovery(this);
+    }
+    /** Hero stages of landing on an enemy's head: tumble beside it, then get back up. */
+    public enum FallPhase { NONE, FALL_COLLISION, FALL_RECOVERY }
+    private FallPhase fallPhase = FallPhase.NONE;
+    private float fallTimer, fallDuration, fallRecoveryDuration, fallDirection;
+    private com.cursedarchie.platformer.actors.enemies.Enemy fallPartner;
+    public FallPhase getFallPhase() { return fallPhase; }
+    /** True through the whole fall and recovery: no control, attack, guard, roll or dash. */
+    public boolean isFalling() { return fallPhase != FallPhase.NONE; }
+    public float getFallDirection() { return fallDirection; }
+    /** The enemy whose head caused the fall; null outside the event (and for heavy enemies that do not fall). */
+    public com.cursedarchie.platformer.actors.enemies.Enemy getFallPartner() { return fallPartner; }
+    /** 0..1 through the tumble, 0 when not in FALL_COLLISION. */
+    public float getFallProgress() {
+        return fallPhase == FallPhase.FALL_COLLISION && fallDuration > 0f ? Math.min(1f, fallTimer / fallDuration) : 0f;
+    }
+    /** 0..1 through the get-up, 0 when not in FALL_RECOVERY. */
+    public float getFallRecoveryProgress() {
+        return fallPhase == FallPhase.FALL_RECOVERY && fallRecoveryDuration > 0f ? Math.min(1f, fallTimer / fallRecoveryDuration) : 0f;
+    }
+    /**
+     * Loses balance on an enemy's head. {@code partner} is the enemy that falls with the hero (null when the enemy
+     * is too heavy to topple: the hero then only goes through the recovery).
+     */
+    public void beginFall(com.cursedarchie.platformer.actors.enemies.Enemy partner, float direction,
+                          float fallSeconds, float recoverySeconds) {
+        fallDirection = direction < 0f ? -1f : 1f;
+        fallPartner = partner;
+        fallDuration = fallSeconds;
+        fallRecoveryDuration = recoverySeconds;
+        fallTimer = 0f;
+        fallPhase = partner != null ? FallPhase.FALL_COLLISION : FallPhase.FALL_RECOVERY;
+        haltForFall();
+    }
+    /** The enemy the light strikes are locked on to; kept for the following strikes while it stays in the strike zone. */
+    private Actor lightTarget;
+    public Actor getLightTarget() { return lightTarget; }
+    public void setLightTarget(Actor target) { lightTarget = target; }
+    private float pushbackRemaining, pushVelocityX, pushApplied;
+    /** True while a jump onto an enemy's head is shoving the hero away. The hero stays fully in control meanwhile. */
+    public boolean isPushedBack() { return pushbackRemaining > 0f; }
+    /** The shove's sideways speed right now: added to whatever the player's own steering asks for. */
+    public float currentPushX() { return pushbackRemaining > 0f ? pushVelocityX : 0f; }
+    /** The part of the body's horizontal speed that came from the shove last step (the controller subtracts it). */
+    public float getPushApplied() { return pushApplied; }
+    public void setPushApplied(float value) { pushApplied = value; }
+    /** A mild knock-away: an added sideways speed plus a small hop. No damage, no stun, no loss of control. */
+    public void beginPushback(float direction, float speed, float hop, float seconds) {
+        pushbackRemaining = seconds;
+        pushVelocityX = direction < 0f ? -speed : speed;
+        if (body != null) {
+            body.setLinearVelocity(body.getLinearVelocity().x - pushApplied + pushVelocityX, hop);
+            pushApplied = pushVelocityX;
+        }
+    }
+    /** Cancels every action the hero could be in the middle of. */
+    private void haltForFall() {
+        rollRemaining = 0f;
+        blockHeld = false;
+        if (combatStateMachine.getCurrentState() instanceof AttackState)
+            combatStateMachine.changeState(new CombatIdleState());
+        if (body != null) body.setLinearVelocity(0f, body.getLinearVelocity().y);
+    }
+    private void updateFall(float delta) {
+        if (fallPhase == FallPhase.NONE) return;
+        fallTimer += delta;
+        if (fallPhase == FallPhase.FALL_COLLISION && fallTimer >= fallDuration) {
+            fallPhase = FallPhase.FALL_RECOVERY;
+            fallTimer = 0f;
+        } else if (fallPhase == FallPhase.FALL_RECOVERY && fallTimer >= fallRecoveryDuration) {
+            endFall();
+            return;
+        }
+        haltForFall();
+    }
+    /** Back to normal: reference dropped, so contacts with the partner are solid again, and control returns. */
+    public void endFall() {
+        fallPhase = FallPhase.NONE;
+        fallTimer = 0f;
+        fallPartner = null;
+        if (combatStateMachine.getCurrentState() instanceof AttackState)
+            combatStateMachine.changeState(new CombatIdleState());
+        if (!(motionStateMachine.getCurrentState() instanceof MotionIdleState))
+            motionStateMachine.changeState(new MotionIdleState());
+    }
+    public static final float ROLL_DURATION = .30f, ROLL_INVULNERABLE = .2f;
+    /** A roll is 25% faster than walking: quick enough to cross an enemy's reach, not a teleport. No cooldown. */
+    public static final float ROLL_SPEED = WALK_SPEED * 1.25f;
+    public static final float PERFECT_BLOCK_WINDOW = .18f, COUNTER_WINDOW = .7f;
+    private float rollRemaining, rollDirection, blockAge, counterWindowRemaining, perfectFlashRemaining;
+    private boolean jumpAttackUsed;
+    public boolean isRolling() { return rollRemaining > 0f; }
+    public float getRollDirection() { return rollDirection; }
+    public float getRollProgress() { return rollRemaining > 0f ? 1f - rollRemaining / ROLL_DURATION : 0f; }
+    public boolean isRollInvulnerable() { return rollRemaining > ROLL_DURATION - ROLL_INVULNERABLE; }
+    public boolean isCounterReady() { return counterWindowRemaining > 0f; }
+    public float getPerfectFlashRemaining() { return perfectFlashRemaining; }
+    public void consumeCounter() { counterWindowRemaining = 0f; }
+    public boolean isAirborne() { return !isGrounded(); }
+    public boolean canJumpAttack() { return isAirborne() && !jumpAttackUsed && !isStaggered() && !isFalling(); }
+    public void markJumpAttackUsed() { jumpAttackUsed = true; }
+    /** The dodge roll: ground only, fixed direction, brief invulnerability, no cooldown. It cannot cancel an attack or a stagger. */
+    public boolean tryRoll(float direction) {
+        if (rollRemaining > 0f || isStaggered() || isFalling() || isBlockBroken() || !isGrounded() ||
+            combatStateMachine.getCurrentState() instanceof AttackState) return false;
+        rollDirection = direction == 0f ? (facingLeft ? -1f : 1f) : Math.signum(direction);   // fixed at start
+        rollRemaining = ROLL_DURATION;
+        blockHeld = false;
+        return true;
+    }
+    private boolean whiffPending;
+    public void markWhiff() { whiffPending = true; }
+    public boolean consumeWhiff() { boolean w = whiffPending; whiffPending = false; return w; }
+    public float getBlockHeavyFlashRemaining() { return blockHeavyFlashRemaining; }
+    public float getBlockBreakFlashRemaining() { return blockBreakFlashRemaining; }
+    public com.cursedarchie.platformer.combat.CombatPhase getCombatPhase() {
+        if (!alive) return com.cursedarchie.platformer.combat.CombatPhase.DEAD;
+        if (isStaggered() || isBlockBroken()) return com.cursedarchie.platformer.combat.CombatPhase.STAGGER;
+        if (isRolling()) return com.cursedarchie.platformer.combat.CombatPhase.DODGE;
+        Object cur = combatStateMachine.getCurrentState();
+        if (cur instanceof AttackState && ((AttackState) cur).getRuntime() != null) {
+            switch (((AttackState) cur).getRuntime().phase()) {
+                case STARTUP: return com.cursedarchie.platformer.combat.CombatPhase.WINDUP;
+                case ACTIVE: return com.cursedarchie.platformer.combat.CombatPhase.ACTIVE;
+                default: return com.cursedarchie.platformer.combat.CombatPhase.RECOVERY;
+            }
+        }
+        return isBlocking() ? com.cursedarchie.platformer.combat.CombatPhase.BLOCK :
+            com.cursedarchie.platformer.combat.CombatPhase.IDLE;
+    }
+    /** True while a hero swing is winding up or active: the signal enemies use to decide to guard. */
+    public boolean isAttackTelegraphing() {
+        Object cur = combatStateMachine.getCurrentState();
+        if (!(cur instanceof AttackState)) return false;
+        AttackState a = (AttackState) cur;
+        return a != null && a.getRuntime() != null &&
+            a.getRuntime().phase() != com.cursedarchie.platformer.combat.AttackRuntime.Phase.RECOVERY;
+    }
+    public boolean isBlockBroken() { return blockBrokenRemaining > 0f; }
+    public float getBlockFlashRemaining() { return blockFlashRemaining; }
+    public float getBlockStability() { return blockStability; }
+    public float getMaxBlockStability() {
+        return inventory != null && inventory.count(ItemCatalog.WEIGHTED_BRACER) > 0 ? 3.75f :
+            inventory != null && inventory.count(ItemCatalog.RED_BRACER) > 0 ? 3.75f : 3f;
+    }
+    public boolean receiveHit(CombatHit hit) {
+        if (!alive || invulnerabilityRemaining > 0f || isRollInvulnerable()) return false;
+        boolean frontal = (hit.sourceX < getPosition().x) == facingLeft;
+        if (hit.blockable && frontal && isBlocking() && blockAge < PERFECT_BLOCK_WINDOW) {
+            // Perfect block: no damage and no stability cost, the attacker is staggered and a counter opens.
+            counterWindowRemaining = COUNTER_WINDOW;
+            perfectFlashRemaining = .35f;
+            blockFlashRemaining = .18f;
+            if (hit.source instanceof com.cursedarchie.platformer.actors.enemies.Enemy)
+                ((com.cursedarchie.platformer.actors.enemies.Enemy) hit.source).applyStagger(.55f);
+            return true;
+        }
+        if (hit.blockable && frontal && isBlocking()) {
+            blockStability = Math.max(0f, blockStability - hit.stabilityDamage);
+            blockFlashRemaining = .18f;
+            if (hit.type == CombatHit.Type.MELEE_HEAVY || hit.type == CombatHit.Type.MELEE_FINISHER) {
+                takeDamage(hit.damage * .5f);
+                blockHeavyFlashRemaining = .3f;
+                // A strong blow shoves the guard back even though it holds.
+                body.setLinearVelocity(Math.copySign(Math.max(3f, hit.recoil * .6f), getPosition().x - hit.sourceX),
+                    body.getLinearVelocity().y);
+                if (inventory != null && inventory.count(ItemCatalog.WEIGHTED_BRACER) > 0 &&
+                    blockCounterCooldown == 0f && hit.source != null) {
+                    hit.source.getBody().setLinearVelocity(
+                        Math.copySign(3f, hit.sourceX - getPosition().x),
+                        hit.source.getBody().getLinearVelocity().y);
+                    blockCounterCooldown = 3f;
+                }
+            }
+            if (blockStability == 0f) { blockBrokenRemaining = .85f; blockBreakFlashRemaining = .45f; }
+            return true;
+        }
+        float healthBefore = health;
+        takeDamage(hit.damage);
+        lastHitSourceX = hit.sourceX;
+        if (alive) staggerRemaining = Math.max(staggerRemaining, hit.staggerDuration);
+        // A hit breaks off a swing or a recovery.
+        if (combatStateMachine.getCurrentState() instanceof AttackState)
+            combatStateMachine.changeState(new CombatIdleState());
+        if (hit.recoil > 0f && alive)
+            body.setLinearVelocity(hit.direction == 0f ?
+                    Math.copySign(hit.recoil, getPosition().x - hit.sourceX) : hit.direction * hit.recoil,
+                body.getLinearVelocity().y);
+        return health < healthBefore;
+    }
+    public float getPlatformDropRemaining() { return platformDropRemaining; }
+    public void setPlatformDropRemaining(float seconds) { platformDropRemaining = Math.max(0f, seconds); }
+
+    /** Restores a neutral, repeatable state when the debug combat room is reset. */
+    public void resetForCombatTest() {
+        alive = true;
+        health = maxHealth;
+        damage = 1f;
+        invulnerabilityRemaining = 0f;
+        staggerRemaining = 0f;
+        lastHitSourceX = Float.NaN;
+        platformDropRemaining = 0f;
+        blockHeld = false;
+        blockStability = getMaxBlockStability();
+        blockBrokenRemaining = 0f;
+        blockCounterCooldown = 0f;
+        blockFlashRemaining = 0f;
+        blockHeavyFlashRemaining = 0f;
+        blockBreakFlashRemaining = 0f;
+        rollRemaining = 0f;
+        fallPhase = FallPhase.NONE;
+        fallTimer = 0f;
+        fallPartner = null;
+        pushbackRemaining = 0f;
+        lightTarget = null;
+        rollDirection = 0f;
+        blockAge = 0f;
+        counterWindowRemaining = 0f;
+        perfectFlashRemaining = 0f;
+        jumpAttackUsed = false;
+        whiffPending = false;
+        combatStateMachine.changeState(new CombatIdleState());
+        motionStateMachine.changeState(new MotionIdleState());
+        body.setGravityScale(1f);
+        body.setLinearVelocity(0f, 0f);
+    }
+    private Inventory inventory;
+
+    /*===========================================CONSTRUCTOR==========================================================*/
+
+    public Hero(Vector2 pos, World world) {
+        super();
+
+        //PARAMETERS=============================================================
+
+        this.motionStateMachine = new MotionStateMachine(this);
+        this.combatStateMachine = new CombatStateMachine(this);
+        this.motionState = HeroMotionState.IDLE;
+        this.combatState = HeroCombatState.IDLE;
+        this.motionStateTime = 0f;
+        this.combatStateTime = 0f;
+        this.size = BODY_SIZE;
+        this.maxHealth = 3;
+        this.health = maxHealth;
+        this.velocity = WALK_SPEED;
+        this.jumpForce = JUMP_SPEED;
+        this.alive = true;
+        this.facingLeft = false;
+        this.attackHandled = false;
+        this.damage = 1f;
+        this.attackDuration = ATTACK_DURATION;
+        this.attackLeft = firstAttackLeft;
+        this.attackRight = firstAttackRight;
+        this.hurtbox = new Hurtbox(.78f, .94f, 0f, .02f);
+
+        //BODY===================================================================
+
+        createBody(
+            world,
+            pos,
+            PhysicsCategories.HERO,
+            (short)(
+                PhysicsCategories.WALL |
+                PhysicsCategories.GROUND |
+                PhysicsCategories.ENEMY |
+                PhysicsCategories.ENEMY_ATTACK |
+                PhysicsCategories.VISION
+            )
+        );
+
+        //FOOT_SENSOR============================================================
+
+        createFootSensor(
+            PhysicsCategories.HERO,
+            (short)(
+                PhysicsCategories.WALL |
+                PhysicsCategories.GROUND
+            )
+        );
+
+        //ATTACK_SENSORS=========================================================
+
+        createAttackSensors(
+            PhysicsTags.HERO_ATTACK_SENSOR,
+            PhysicsCategories.HERO_ATTACK,
+            PhysicsCategories.ENEMY,
+            secondAttackLeft,
+            secondAttackRight
+        );
+
+        //=======================================================================
+    }
+
+    /*=========================================GETTERS/SETTERS========================================================*/
+
+    public MotionStateMachine getMotionStateMachine() {
+        return motionStateMachine;
+    }
+    public CombatStateMachine getCombatStateMachine() {
+        return combatStateMachine;
+    }
+    public float getInvulnerabilityRemaining() { return invulnerabilityRemaining; }
+    private int rhythmCombos;
+    /** Counts clean, correctly timed combo presses; the timing highlight fades as this grows. */
+    public void noteRhythmSuccess() { rhythmCombos++; }
+    public int getRhythmCombos() { return rhythmCombos; }
+    public boolean isStaggered() { return staggerRemaining > 0f; }
+    public float getLastHitSourceX() { return lastHitSourceX; }
+    public void setInventory(Inventory inventory) { this.inventory = inventory; }
+    public float meleeDamageMultiplier(int comboStep) {
+        if (inventory == null) return 1f;
+        boolean fused = inventory.count(ItemCatalog.FUSED_RELIC) > 0;
+        if (!fused && inventory.count(ItemCatalog.BLADE_SHARD) == 0) return 1f;
+        float base = ItemCatalog.bladeShard().bonus;
+        float bonus = comboStep == AttackState.COMBO_FINISHER ? base * 3f :
+            comboStep == AttackState.COMBO_SECOND ? base * 2f : base;
+        if (fused && comboStep == AttackState.COMBO_FINISHER) bonus += ItemCatalog.fusedRelic().bonus;
+        return 1f + bonus;
+    }
+    public float meleeRecoilBonus() {
+        return inventory != null && (inventory.count(ItemCatalog.IMPACT_CORE) > 0 ||
+            inventory.count(ItemCatalog.FUSED_RELIC) > 0) ?
+            ItemCatalog.impactCore().bonus : 0f;
+    }
+
+    private static final AttackDefinition COUNTER = new AttackDefinition("hero_counter",
+        CombatHit.Type.MELEE_HEAVY, .08f, .14f, .3f,
+        1.7f, 1.2f, .9f, .02f, 1.5f, 8f, .6f, 1.5f, true, .6f, .52f, .3f);
+    private static final AttackDefinition JUMP_ATTACK = new AttackDefinition("hero_jump_attack",
+        CombatHit.Type.MELEE_LIGHT, .08f, .16f, .1f,
+        1.25f, .85f, .8f, -.3f, .9f, 4f, .12f, 1f, true, .34f, .34f, .5f);
+    public AttackDefinition attackDefinition(int comboStep) {
+        if (comboStep == AttackState.COUNTER_ATTACK) return COUNTER;
+        if (comboStep == AttackState.JUMP_ATTACK) return JUMP_ATTACK;
+        if (comboStep == AttackState.COMBO_FINISHER) return finisherDefinition();
+        return comboStep == AttackState.COMBO_SECOND ? light2Definition() : light1Definition();
+    }
+
+    /** Every light strike uses the geometry of its own combo step. */
+    public boolean isTargetInAttack(Actor target, boolean attackFacesLeft, int comboStep) {
+        AttackConfig attack = comboStep == AttackState.COMBO_FINISHER ?
+            (attackFacesLeft ? finisherAttackLeft : finisherAttackRight) :
+            comboStep == AttackState.COMBO_SECOND ?
+                (attackFacesLeft ? secondAttackLeft : secondAttackRight) :
+                (attackFacesLeft ? firstAttackLeft : firstAttackRight);
+        return isTargetInAttack(target, attack);
+    }
+
+    /*==========================================CONTROLLERS===========================================================*/
+
+    @Override
+    public void update(float delta) {
+        blockBrokenRemaining = Math.max(0f, blockBrokenRemaining - delta);
+        blockCounterCooldown = Math.max(0f, blockCounterCooldown - delta);
+        blockFlashRemaining = Math.max(0f, blockFlashRemaining - delta);
+        rollRemaining = Math.max(0f, rollRemaining - delta);
+        counterWindowRemaining = Math.max(0f, counterWindowRemaining - delta);
+        perfectFlashRemaining = Math.max(0f, perfectFlashRemaining - delta);
+        blockAge = blockHeld ? blockAge + delta : 0f;
+        if (isGrounded()) jumpAttackUsed = false;
+        blockHeavyFlashRemaining = Math.max(0f, blockHeavyFlashRemaining - delta);
+        blockBreakFlashRemaining = Math.max(0f, blockBreakFlashRemaining - delta);
+        if (isStaggered()) blockHeld = false;
+        if (!blockHeld && blockBrokenRemaining == 0f)
+            blockStability = Math.min(getMaxBlockStability(), blockStability + 1.15f * delta);
+        invulnerabilityRemaining = Math.max(0f, invulnerabilityRemaining - delta);
+        staggerRemaining = Math.max(0f, staggerRemaining - delta);
+        motionStateMachine.update(delta);
+        combatStateMachine.update(delta);
+        updateFall(delta);
+        pushbackRemaining = Math.max(0f, pushbackRemaining - delta);
+    }
+
+    @Override
+    public void takeDamage(float damage) {
+        if (!alive || invulnerabilityRemaining > 0f) return;
+        super.takeDamage(damage);
+        if (alive) invulnerabilityRemaining = DAMAGE_INVULNERABILITY;
+    }
+
+    @Override
+    protected void die() {
+        this.setAlive(false);
+    }
+}

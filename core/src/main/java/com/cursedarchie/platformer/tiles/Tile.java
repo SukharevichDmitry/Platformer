@@ -1,27 +1,18 @@
 package com.cursedarchie.platformer.tiles;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.graphics.g2d.TextureAtlas;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 
 public abstract class Tile {
 
-    public float SIZE;
-    TextureAtlas atlas = new TextureAtlas(Gdx.files.internal("atlases/game.atlas"));
-
-    Vector2  position = new Vector2();
-    Rectangle  bounds = new Rectangle();
+    protected final Vector2 position;
+    protected final Rectangle bounds;
     private boolean isBlockingSight = true;
 
 
-    public Tile(Vector2 pos) {
-        this.position = pos;
-        this.bounds.setX(pos.x);
-        this.bounds.setY(pos.y);
-        this.bounds.width = SIZE;
-        this.bounds.height = SIZE;
+    public Tile(Vector2 localPos, float width, float height) {
+        this.position = localPos;
+        this.bounds = new Rectangle(localPos.x, localPos.y, width, height);
     }
 
     public Vector2 getPosition() {
@@ -30,13 +21,14 @@ public abstract class Tile {
     public Rectangle getBounds() {
         return bounds;
     }
-    public void setSize(float SIZE) {
-        this.SIZE = SIZE;
-    }
-    public float getSize() {
-        return SIZE;
+    public boolean isSolid() {
+        return true;
     }
 
+    /** Only whole grid cells may join the location's merged terrain fixtures. */
+    public boolean isFullCellSolid() {
+        return false;
+    }
 
     public boolean isBlockingSight() {
         return isBlockingSight;
@@ -45,5 +37,4 @@ public abstract class Tile {
         isBlockingSight = blockingSight;
     }
 
-    public abstract TextureRegion getTextureRegion();
 }

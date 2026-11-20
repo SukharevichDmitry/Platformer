@@ -1,0 +1,62 @@
+GIMP Palette
+Name: ruins
+Columns: 4
+#
+ 20  14  24	outline_0
+ 28  18  22	env_soil_0
+ 42  28  32	env_soil_1
+ 58  42  44	env_soil_2
+ 58  42  50	env_stone_0
+ 78  60  68	env_stone_1
+100  80  90	env_stone_2
+124 100 102	env_stone_3
+122  86  68	env_warm_0
+160 120  88	env_warm_1
+200 154 106	env_warm_2
+ 90  84  80	env_ash_0
+138 128 120	env_ash_1
+180 170 156	env_ash_2
+ 26  44  48	hero_coat_0
+ 38  68  74	hero_coat_1
+ 58 100 104	hero_coat_2
+ 94 142 138	hero_coat_3
+ 30  26  36	hero_cloth_0
+ 46  42  54	hero_cloth_1
+ 68  62  78	hero_cloth_2
+110  74  64	skin_0
+168 120  98	skin_1
+210 164 134	skin_2
+140 128 112	bone_0
+196 184 154	bone_1
+236 226 196	bone_2
+ 46  30  24	leather_0
+ 74  48  36	leather_1
+106  70  50	leather_2
+ 58  38  24	wood_0
+ 92  62  38	wood_1
+126  90  56	wood_2
+ 60  68  72	steel_0
+120 134 138	steel_1
+198 210 208	steel_2
+238 244 240	steel_3
+ 58  60  46	ink_olive_0
+ 90  94  72	ink_olive_1
+126 130 100	ink_olive_2
+ 92  18  24	red_mark_0
+142  30  38	red_mark_1
+196  66  58	red_mark_2
+ 78  60  30	ochre_0
+106  84  40	ochre_1
+156 126  64	ochre_2
+106  74  30	brass_0
+168 122  52	brass_1
+224 180  90	brass_2
+ 36  40  44	iron_0
+ 58  64  70	iron_1
+ 86  96 106	iron_2
+154 148 138	fur_0
+216 212 200	fur_1
+242 239 230	fur_2
+240 192  80	fx_0
+255 244 200	fx_1
+255  90  60	fx_2

@@ -1,0 +1,37 @@
+{
+  "location": "laundry_alley",
+  "id": 3,
+  "sceneryTheme": "red",
+  "width": 30,
+  "height": 14,
+  "tileRows": [
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "                              ",
+    "##############################",
+    "##############################"
+  ],
+  "enemySpawns": [],
+  "spawnPoints": [
+    {
+      "id": "cellar_return",
+      "position": {
+        "x": 17.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {
+    "left": 2
+  },
+  "interactions": []
+}

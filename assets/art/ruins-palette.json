@@ -1,0 +1,26 @@
+{
+  "name": "ruins",
+  "version": 1,
+  "note": "Shared palette for characters, decoration and new ruins modules. Environment ramps are sampled from assets/terrain/ruins-road-*.png. Ramps run shadow -> base -> light (-> highlight).",
+  "ramps": {
+    "outline":   ["#140e18"],
+    "env_soil":  ["#1c1216", "#2a1c20", "#3a2a2c"],
+    "env_stone": ["#3a2a32", "#4e3c44", "#64505a", "#7c6466"],
+    "env_warm":  ["#7a5644", "#a07858", "#c89a6a"],
+    "env_ash":   ["#5a5450", "#8a8078", "#b4aa9c"],
+    "hero_coat": ["#1a2c30", "#26444a", "#3a6468", "#5e8e8a"],
+    "hero_cloth":["#1e1a24", "#2e2a36", "#443e4e"],
+    "skin":      ["#6e4a40", "#a87862", "#d2a486"],
+    "bone":      ["#8c8070", "#c4b89a", "#ece2c4"],
+    "leather":   ["#2e1e18", "#4a3024", "#6a4632"],
+    "wood":      ["#3a2618", "#5c3e26", "#7e5a38"],
+    "steel":     ["#3c4448", "#78868a", "#c6d2d0", "#eef4f0"],
+    "ink_olive": ["#3a3c2e", "#5a5e48", "#7e8264"],
+    "red_mark":  ["#5c1218", "#8e1e26", "#c4423a"],
+    "ochre":     ["#4e3c1e", "#6a5428", "#9c7e40"],
+    "brass":     ["#6a4a1e", "#a87a34", "#e0b45a"],
+    "iron":      ["#24282c", "#3a4046", "#56606a"],
+    "fur":       ["#9a948a", "#d8d4c8", "#f2efe6"],
+    "fx":        ["#f0c050", "#fff4c8", "#ff5a3c"]
+  }
+}

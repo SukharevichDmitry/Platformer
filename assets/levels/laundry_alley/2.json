@@ -1,0 +1,52 @@
+{
+  "location": "laundry_alley",
+  "id": 2,
+  "sceneryTheme": "red",
+  "width": 32,
+  "height": 14,
+  "tileRows": [
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+    "##################==############",
+    "##################  ############"
+  ],
+  "enemySpawns": [],
+  "spawnPoints": [
+    {
+      "id": "laundry_return",
+      "position": {
+        "x": 16.5,
+        "y": 2.5
+      }
+    }
+  ],
+  "neighbors": {
+    "left": 1,
+    "right": 3
+  },
+  "interactions": [
+    {
+      "id": "alley_to_laundry",
+      "kind": "portal",
+      "visualId": "cellar_stairs",
+      "eventId": "laundry_entered",
+      "position": {
+        "x": 19.0,
+        "y": 3
+      },
+      "targetSpawnId": "alley_entry",
+      "targetRole": "laundry",
+      "transition": "descend_stairs"
+    }
+  ]
+}
