@@ -59,8 +59,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     public static final float PIXELS_PER_UNIT = 32f;
     public static final float CAMERA_WIDTH = INTERNAL_WIDTH / PIXELS_PER_UNIT;
     public static final float CAMERA_HEIGHT = INTERNAL_HEIGHT / PIXELS_PER_UNIT;
+    /**
+     * The view aims at this many art pixels of height, at the whole-number screen scale nearest to it, so every art
+     * pixel always covers the same number of screen pixels: 1080p and 4K show 270 (8.44 units, 4x / 8x), 720p shows
+     * 240 (7.5 units, 3x), 1440p 288 (9 units, 5x). Windows of 360 px or less keep the full 640 x 360 view.
+     */
+    public static final int TARGET_VIEW_PIXELS = 270;
     private static final float EDGE_MARGIN = 2f;
-    private static final float RUINS_FLOOR_CAMERA_LIFT = 1.4f;
+    /** On the street, this share of the view's height lies below the walk line (the road's front face). */
+    public static final float ROAD_VIEW_SHARE = 2.6f / CAMERA_HEIGHT;
     private static final float VERTICAL_FOLLOW_SPEED = 8f;
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.12f;
@@ -250,10 +257,21 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         this.width = w;
         this.height = h;
         if (w > 0 && h > 0) {
-            cam.viewportWidth = CAMERA_HEIGHT * w / (float) h;
-            cam.viewportHeight = CAMERA_HEIGHT;
+            cam.viewportHeight = viewHeightFor(h);
+            cam.viewportWidth = cam.viewportHeight * w / (float) h;
             updateCamera(0f);
         }
+    }
+
+    /** View height in world units for a window this many pixels tall (see {@link #TARGET_VIEW_PIXELS}). */
+    public static float viewHeightFor(int screenHeight) {
+        return screenHeight / (float) pixelScaleFor(screenHeight) / PIXELS_PER_UNIT;
+    }
+
+    /** Screen pixels per art pixel for a window this many pixels tall: always a whole number. */
+    public static int pixelScaleFor(int screenHeight) {
+        if (screenHeight <= INTERNAL_HEIGHT) return 1;
+        return Math.max(1, Math.round(screenHeight / (float) TARGET_VIEW_PIXELS));
     }
     public void toggleCombatDebug() { combatDebug = !combatDebug; }
     public boolean isCombatDebug() { return combatDebug; }
@@ -1451,8 +1469,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 levelLeft - EDGE_MARGIN + halfWidth,
                 levelRight + EDGE_MARGIN - halfWidth);
             String locationId = gameWorld.getLocation().getLocation();
+            // The street keeps the same share of the screen for the road at every zoom: the view's bottom sits
+            // ROAD_VIEW_SHARE of its height below the walk line (two floor rows above the level's bottom).
             float floorLift = "start".equals(locationId) || "ruins".equals(locationId)
-                ? RUINS_FLOOR_CAMERA_LIFT : 0f;
+                ? EDGE_MARGIN + 2f - ROAD_VIEW_SHARE * halfHeight * 2f : 0f;
             cameraY = clampCamera(heroPos.y,
                 levelBottom - EDGE_MARGIN + floorLift + halfHeight,
                 levelTop + EDGE_MARGIN - halfHeight);

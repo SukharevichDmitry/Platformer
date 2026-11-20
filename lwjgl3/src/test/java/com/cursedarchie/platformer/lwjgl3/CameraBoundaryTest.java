@@ -23,7 +23,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         CameraBoundaryTest test = new CameraBoundaryTest();
         new Lwjgl3Application(test, config);
         if (!test.passed) throw new AssertionError("Camera boundary test did not complete");
-        System.out.println("CAMERA BOUNDARY PASSED: raised opening floor framing, bounded location edges, smooth ladder floors");
+        System.out.println("CAMERA BOUNDARY PASSED: raised opening floor framing, bounded location edges, smooth ladder floors, whole-pixel closer camera");
     }
 
     @Override public void create() {
@@ -222,6 +222,17 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         float worldHeight = renderer.getVisibleTopEdge() - renderer.getVisibleBottomEdge();
         if (Math.abs(worldWidth / worldHeight - 16f / 9f) > 0.001f)
             throw new AssertionError("World pixels stretch at 1920x1080");
+        // Closer camera with whole-number pixel scale: 1080p shows 270 art rows at 4x, 720p 240 rows at 3x.
+        int[][] sizes = {{1920, 1080, 4}, {1280, 720, 3}, {2560, 1440, 5}, {640, 360, 1}};
+        for (int[] size : sizes) {
+            renderer.setSize(size[0], size[1]);
+            renderer.render(0f);
+            float height = renderer.getVisibleTopEdge() - renderer.getVisibleBottomEdge();
+            float screenPerArt = size[1] / (height * WorldRenderer.PIXELS_PER_UNIT);
+            if (WorldRenderer.pixelScaleFor(size[1]) != size[2] || Math.abs(screenPerArt - size[2]) > 0.001f)
+                throw new AssertionError("Art pixels are not " + size[2] + " screen pixels at " + size[0] + "x" +
+                    size[1] + ": " + screenPerArt);
+        }
         renderer.setSize(640, 360);
     }
 
@@ -278,7 +289,10 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         if (Math.abs(atSixty - atThirty) > 0.001f || Math.abs(atSixty - atOneTwenty) > 0.001f)
             throw new AssertionError(location + " vertical smoothing depends on render FPS");
         moveHeroVertically(bottom + 0.2f);
-        float expectedBottom = bottom - ("start".equals(location) || "ruins".equals(location) ? .6f : 2f);
+        float viewHeight = renderer.getVisibleTopEdge() - renderer.getVisibleBottomEdge();
+        // On the street the road's front face keeps its share of the view below the walk line (two floor rows up).
+        float expectedBottom = "start".equals(location) || "ruins".equals(location)
+            ? bottom + 2f - WorldRenderer.ROAD_VIEW_SHARE * viewHeight : bottom - 2f;
         assertVerticalEdge(location, renderer.getVisibleBottomEdge(), expectedBottom, "bottom");
         moveHeroVertically(bottom - 6f);
         assertVerticalEdge(location, renderer.getVisibleBottomEdge(), expectedBottom, "past bottom");
