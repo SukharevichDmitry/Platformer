@@ -263,6 +263,14 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         }
     }
 
+    /**
+     * Where a backdrop that follows {@code follow} of the camera's motion sits relative to the camera, in world units
+     * snapped to whole screen pixels, so it moves at a steady (1 - follow) of the street's speed on screen.
+     */
+    public static float parallaxOffsetFromCamera(float cameraX, float follow, float screenPixelsPerUnit) {
+        return Math.round(cameraX * (follow - 1f) * screenPixelsPerUnit) / screenPixelsPerUnit;
+    }
+
     /** View height in world units for a window this many pixels tall (see {@link #TARGET_VIEW_PIXELS}). */
     public static float viewHeightFor(int screenHeight) {
         return screenHeight / (float) pixelScaleFor(screenHeight) / PIXELS_PER_UNIT;
@@ -477,7 +485,9 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 fillScenery(left, bottom, getVisibleRightEdge() - left, getVisibleTopEdge() - bottom,
                     .34f, .31f, .37f);
                 spriteBatch.setColor(Color.WHITE);
-                ruinsStreet.draw(gameWorld.getLocation(), spriteBatch, left, getVisibleRightEdge(), cam.position.x);
+                float screenPixelsPerUnit = height > 0 ? height / (cam.viewportHeight * cam.zoom) : PIXELS_PER_UNIT;
+                ruinsStreet.draw(gameWorld.getLocation(), spriteBatch, left, getVisibleRightEdge(), cam.position.x,
+                    screenPixelsPerUnit);
             } else drawBackgroundMasonry();
             drawTiles();
             drawCollapsedWallSample();

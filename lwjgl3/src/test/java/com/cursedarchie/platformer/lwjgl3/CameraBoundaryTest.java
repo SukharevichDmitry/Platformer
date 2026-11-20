@@ -23,7 +23,7 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
         CameraBoundaryTest test = new CameraBoundaryTest();
         new Lwjgl3Application(test, config);
         if (!test.passed) throw new AssertionError("Camera boundary test did not complete");
-        System.out.println("CAMERA BOUNDARY PASSED: raised opening floor framing, bounded location edges, smooth ladder floors, whole-pixel closer camera");
+        System.out.println("CAMERA BOUNDARY PASSED: raised opening floor framing, bounded location edges, smooth ladder floors, whole-pixel closer camera, steady backdrops");
     }
 
     @Override public void create() {
@@ -234,6 +234,29 @@ public final class CameraBoundaryTest extends ApplicationAdapter {
                     size[1] + ": " + screenPerArt);
         }
         renderer.setSize(640, 360);
+        checkSteadyBackdrops();
+    }
+
+    /**
+     * Running at full speed, every backdrop (sky, far city, rooftops) moves a steady whole number of screen pixels per
+     * frame. Snapping backdrops in world space made them jump back and forth against the camera (3 to 12 px per frame
+     * for a layer that should move 10), a shimmer of the whole skyline while running.
+     */
+    private void checkSteadyBackdrops() {
+        float screenPerUnit = 1080f / WorldRenderer.viewHeightFor(1080);
+        float step = 13f / 60f;
+        for (float follow : new float[] {.85f, .63f, .38f}) {
+            float exact = step * (1f - follow) * screenPerUnit;
+            float previous = WorldRenderer.parallaxOffsetFromCamera(100f, follow, screenPerUnit);
+            for (int frame = 1; frame <= 600; frame++) {
+                float current = WorldRenderer.parallaxOffsetFromCamera(100f + frame * step, follow, screenPerUnit);
+                float moved = (previous - current) * screenPerUnit;
+                if (Math.abs(moved - exact) > 1.001f)
+                    throw new AssertionError("Backdrop following " + follow + " moved " + moved +
+                        " px in one frame, expected about " + exact);
+                previous = current;
+            }
+        }
     }
 
     private void checkLeftEdge(String location, int roomId) {
