@@ -23,7 +23,7 @@ final class RoadSurfaceRenderer implements Disposable {
         TRANSPARENT_TOP_PIXELS * COLUMN_WIDTH / PIXELS_PER_COLUMN;
     // The visible pavement continues behind the hero's feet, giving the road
     // depth without moving the Box2D floor or changing jump/collision behavior.
-    private static final float WALK_LINE_INSET = .18f;
+    static final float WALK_LINE_INSET = .18f;
 
     private final Texture[] textures = new Texture[3];
     private final TextureRegion[][] columns = new TextureRegion[3][COLUMNS_PER_MODULE];

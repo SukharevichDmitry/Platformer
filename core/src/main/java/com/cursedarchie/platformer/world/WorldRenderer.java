@@ -59,10 +59,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     public static final float PIXELS_PER_UNIT = 32f;
     public static final float CAMERA_WIDTH = INTERNAL_WIDTH / PIXELS_PER_UNIT;
     public static final float CAMERA_HEIGHT = INTERNAL_HEIGHT / PIXELS_PER_UNIT;
-    private static final float BACKDROP_HEIGHT = 10.4f;
-    private static final float BACKDROP_OVERLAP = .27f;
+    /**
+     * The view aims at this many art pixels of height, at the whole-number screen scale nearest to it, so every art
+     * pixel always covers the same number of screen pixels: 1080p and 4K show 270 (8.44 units, 4x / 8x), 720p shows
+     * 240 (7.5 units, 3x), 1440p 288 (9 units, 5x). Windows of 360 px or less keep the full 640 x 360 view.
+     */
+    public static final int TARGET_VIEW_PIXELS = 270;
     private static final float EDGE_MARGIN = 2f;
-    private static final float RUINS_FLOOR_CAMERA_LIFT = 1.4f;
+    /** On the street, this share of the view's height lies below the walk line (the road's front face). */
+    public static final float ROAD_VIEW_SHARE = 2.6f / CAMERA_HEIGHT;
     private static final float VERTICAL_FOLLOW_SPEED = 8f;
     public static final float RUNNING_FRAME_DURATION = 0.06f;
     public static final float ATTACK_FRAME_DURATION = 0.12f;
@@ -197,11 +202,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
     private final Texture ringTexture;
     /** Free-running clock (seconds) for flicker and orbit effects; advanced by the render delta. */
     private float effectClock;
-    private final Texture shelterBackdrop;
-    private final Texture redBackdrop;
-    private final Texture inkBackdrop;
-    private final Texture mechanicalBackdrop;
-    private final TextureRegion[][] sceneryRegions;
     private final Texture wardenSprite;
     private final Texture scavengerSprite;
     private final Texture redCollectorSprite;
@@ -257,10 +257,29 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         this.width = w;
         this.height = h;
         if (w > 0 && h > 0) {
-            cam.viewportWidth = CAMERA_HEIGHT * w / (float) h;
-            cam.viewportHeight = CAMERA_HEIGHT;
+            cam.viewportHeight = viewHeightFor(h);
+            cam.viewportWidth = cam.viewportHeight * w / (float) h;
             updateCamera(0f);
         }
+    }
+
+    /**
+     * Where a backdrop that follows {@code follow} of the camera's motion sits relative to the camera, in world units
+     * snapped to whole screen pixels, so it moves at a steady (1 - follow) of the street's speed on screen.
+     */
+    public static float parallaxOffsetFromCamera(float cameraX, float follow, float screenPixelsPerUnit) {
+        return Math.round(cameraX * (follow - 1f) * screenPixelsPerUnit) / screenPixelsPerUnit;
+    }
+
+    /** View height in world units for a window this many pixels tall (see {@link #TARGET_VIEW_PIXELS}). */
+    public static float viewHeightFor(int screenHeight) {
+        return screenHeight / (float) pixelScaleFor(screenHeight) / PIXELS_PER_UNIT;
+    }
+
+    /** Screen pixels per art pixel for a window this many pixels tall: always a whole number. */
+    public static int pixelScaleFor(int screenHeight) {
+        if (screenHeight <= INTERNAL_HEIGHT) return 1;
+        return Math.max(1, Math.round(screenHeight / (float) TARGET_VIEW_PIXELS));
     }
     public void toggleCombatDebug() { combatDebug = !combatDebug; }
     public boolean isCombatDebug() { return combatDebug; }
@@ -284,8 +303,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         slotFont.getData().setScale(0.014f);
         slotFont.setUseIntegerPositions(false);
         atlas = PixelArtTextures.nearest(new TextureAtlas(Gdx.files.internal("atlases/game.atlas")));
-        heroSprites = CharacterSpriteSet.load("heroSpriteSet",
-            "actor/hero-v2/hero-v2.atlas", "config/hero_animations.json");
+        // config/art.json: "v3" = the dagger-and-buckler hero, "v2" = the generated spear hero, "legacy".
+        heroSprites = "v3".equals(CharacterSpriteSet.selection("heroSpriteSet"))
+            ? CharacterSpriteSet.load("actor/hero-v3/hero-v3.atlas", "config/hero_animations_v3.json")
+            : CharacterSpriteSet.load("heroSpriteSet", "actor/hero-v2/hero-v2.atlas", "config/hero_animations.json");
         hunterSprites = CharacterSpriteSet.load("enemySpriteSet",
             "actor/enemies-v2/hunter.atlas", "config/enemy_animations/hunter.json");
         archerSprites = CharacterSpriteSet.load("enemySpriteSet",
@@ -307,14 +328,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         bandageSprite = PixelArtTextures.nearest(new Texture(Gdx.files.internal("interactions/field-bandage.png")));
         noteSprite = PixelArtTextures.nearest(new Texture(Gdx.files.internal("interactions/sealed-note.png")));
         keeperSprite = createKeeperSprite();
-        shelterBackdrop = fadedBackdrop("scenery/shelter.png");
-        redBackdrop = fadedBackdrop("scenery/red-street.png");
-        inkBackdrop = fadedBackdrop("scenery/ink-street.png");
-        mechanicalBackdrop = fadedBackdrop("scenery/mechanical-street.png");
-        sceneryRegions = new TextureRegion[][] {
-            sceneryVariants(shelterBackdrop), sceneryVariants(redBackdrop),
-            sceneryVariants(inkBackdrop), sceneryVariants(mechanicalBackdrop)
-        };
         wardenSprite = pixelTexture("characters/shelter-warden.png");
         scavengerSprite = pixelTexture("characters/scavenger.png");
         redCollectorSprite = pixelTexture("characters/red-collector.png");
@@ -359,39 +372,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
     private static Texture pixelTexture(String path) {
         return PixelArtTextures.nearest(new Texture(Gdx.files.internal(path)));
-    }
-
-    private static Texture fadedBackdrop(String path) {
-        Pixmap pixels = new Pixmap(Gdx.files.internal(path));
-        int width = pixels.getWidth();
-        int height = pixels.getHeight();
-        float sideFade = width * .18f;
-        float topFade = height * .20f;
-        for (int y = 0; y < height; y++) {
-            float vertical = Math.min(1f, y / topFade);
-            for (int x = 0; x < width; x++) {
-                float horizontal = Math.min(1f,
-                    Math.min(x, width - 1 - x) / sideFade);
-                int pixel = pixels.getPixel(x, y);
-                int alpha = Math.round((pixel & 255) * horizontal * vertical);
-                pixels.drawPixel(x, y, (pixel & 0xffffff00) | alpha);
-            }
-        }
-        Texture texture = new Texture(pixels);
-        pixels.dispose();
-        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        return texture;
-    }
-
-    private static TextureRegion[] sceneryVariants(Texture texture) {
-        TextureRegion[] variants = new TextureRegion[2];
-        // The source paintings include a road. It is now drawn by macro modules,
-        // so keep only their buildings, shelter and sky above the ground line.
-        int sceneryHeight = Math.round(texture.getHeight() * .76f);
-        variants[0] = new TextureRegion(texture, 0, 0, texture.getWidth(), sceneryHeight);
-        variants[1] = new TextureRegion(texture, 0, 0, texture.getWidth(), sceneryHeight);
-        variants[1].flip(true, false);
-        return variants;
     }
 
     private void loadTextures() {
@@ -499,14 +479,15 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
 
         spriteBatch.begin();
             String location = gameWorld.getLocation().getLocation();
-            if ("start".equals(location)) drawOpeningScenery();
-            else if ("ruins".equals(location)) {
+            if ("start".equals(location) || "ruins".equals(location)) {
                 float left = getVisibleLeftEdge();
                 float bottom = getVisibleBottomEdge();
                 fillScenery(left, bottom, getVisibleRightEdge() - left, getVisibleTopEdge() - bottom,
                     .34f, .31f, .37f);
                 spriteBatch.setColor(Color.WHITE);
-                ruinsStreet.draw(gameWorld.getLocation(), spriteBatch, left, getVisibleRightEdge(), cam.position.x);
+                float screenPixelsPerUnit = height > 0 ? height / (cam.viewportHeight * cam.zoom) : PIXELS_PER_UNIT;
+                ruinsStreet.draw(gameWorld.getLocation(), spriteBatch, left, getVisibleRightEdge(), cam.position.x,
+                    screenPixelsPerUnit);
             } else drawBackgroundMasonry();
             drawTiles();
             drawCollapsedWallSample();
@@ -602,7 +583,7 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         if (room == null) return;
         for (int i = 0; i < room.getInteractions().size; i++) {
             InteractionData portal = room.getInteractions().get(i);
-            if (!"portal".equals(portal.kind)) continue;
+            if (!"portal".equals(portal.kind) || GameWorld.isBoundaryPortal(portal)) continue;   // no door to draw
             if (portal.requiresFlag != null && !gameWorld.hasRunFlag(portal.requiresFlag)) continue;
             float x = room.getWorldX() + portal.position.x;
             float y = room.getWorldY() + portal.position.y;
@@ -1435,45 +1416,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         return texture;
     }
 
-    /** Story-themed scenery is visual only and stays behind the physical tile layer. */
-    private void drawOpeningScenery() {
-        float left = getVisibleLeftEdge() - 2f;
-        float bottom = getVisibleBottomEdge() - 2f;
-        float viewWidth = getVisibleRightEdge() - left + 2f;
-        float viewHeight = getVisibleTopEdge() - bottom + 2f;
-        fillScenery(left, bottom, viewWidth, viewHeight, .17f, .19f, .23f);
-        for (RoomInstance room : gameWorld.getLocation().getRooms()) {
-            int theme = backdropIndex(room);
-            float panelWidth = BACKDROP_HEIGHT * sceneryRegions[theme][0].getRegionWidth() /
-                sceneryRegions[theme][0].getRegionHeight();
-            float stride = panelWidth * (1f - BACKDROP_OVERLAP);
-            int panelCount = Math.max(1, (int) Math.ceil((room.getWidth() + panelWidth) / stride));
-            spriteBatch.setColor(.58f, .59f, .65f, 1f);
-            for (int panel = 0; panel < panelCount; panel++) {
-                float panelX = room.getWorldX() - panelWidth * .5f + panel * stride;
-                if (panelX > getVisibleRightEdge() || panelX + panelWidth < getVisibleLeftEdge()) continue;
-                int variant = Math.floorMod(room.getRoomId() * 3 + panel,
-                    sceneryRegions[theme].length);
-                spriteBatch.draw(sceneryRegions[theme][variant], panelX,
-                    room.getWorldY() + 2f, panelWidth, BACKDROP_HEIGHT);
-            }
-        }
-        spriteBatch.setColor(Color.WHITE);
-    }
-
-    private int backdropIndex(RoomInstance room) {
-        String theme = room.getSceneryTheme();
-        if ("shelter".equals(theme)) return 0;
-        if ("red".equals(theme)) return 1;
-        if ("ink".equals(theme)) return 2;
-        if ("mechanical".equals(theme)) return 3;
-        switch (Math.floorMod(room.getRoomId(), 3)) {
-            case 0: return 1;
-            case 1: return 2;
-            default: return 3;
-        }
-    }
-
     private void fillScenery(float x, float y, float width, float height,
                              float red, float green, float blue) {
         spriteBatch.setColor(red, green, blue, 1f);
@@ -1537,8 +1479,10 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 levelLeft - EDGE_MARGIN + halfWidth,
                 levelRight + EDGE_MARGIN - halfWidth);
             String locationId = gameWorld.getLocation().getLocation();
+            // The street keeps the same share of the screen for the road at every zoom: the view's bottom sits
+            // ROAD_VIEW_SHARE of its height below the walk line (two floor rows above the level's bottom).
             float floorLift = "start".equals(locationId) || "ruins".equals(locationId)
-                ? RUINS_FLOOR_CAMERA_LIFT : 0f;
+                ? EDGE_MARGIN + 2f - ROAD_VIEW_SHARE * halfHeight * 2f : 0f;
             cameraY = clampCamera(heroPos.y,
                 levelBottom - EDGE_MARGIN + floorLift + halfHeight,
                 levelTop + EDGE_MARGIN - halfHeight);
@@ -1547,8 +1491,11 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
                 RoomInstance band = null;
                 for (RoomInstance room : gameWorld.getLocation().getRooms())
                     if (room.contains(heroPos)) band = room;
-                if (band != null) cameraY = clampCamera(heroPos.y, band.getWorldY() + halfHeight,
-                    band.getWorldY() + band.getHeight() - halfHeight);
+                if (band != null) cameraY = frameInRoom(band, heroPos.y, halfHeight);
+                // Only while the hero is actually on the ladder: walking past it keeps the room's framing.
+                VerticalConnection shaft = gameWorld.getHeroController().isClimbing()
+                    ? gameWorld.getLocation().climbConnectionAt(heroPos.x, heroPos.y, Hero.BODY_SIZE) : null;
+                if (shaft != null) cameraY = frameOnLadder(shaft, heroPos.y, halfHeight, cameraY);
             }
         }
         cameraTargetY = cameraY;
@@ -1562,6 +1509,37 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         cam.position.set(cameraX, smoothY, 0);
 
         cam.update();
+    }
+
+    /**
+     * On a ladder between floors the camera scrolls from the lower room's framing to the upper room's in step with
+     * the climb, the way it crosses a horizontal room edge, instead of jumping a whole floor when the hero's room
+     * changes. The scroll runs from where the hero stands on the lower floor to where they stand on the upper one,
+     * eased at both ends. Outside it each room keeps its own framing, so stepping off at either end never jolts and
+     * stacked ladders agree where they overlap.
+     */
+    private float frameOnLadder(VerticalConnection shaft, float heroY, float halfHeight, float fallback) {
+        RoomInstance lower = gameWorld.getLocation().getRoom(shaft.lowerRoomId);
+        RoomInstance upper = gameWorld.getLocation().getRoom(shaft.upperRoomId);
+        if (lower == null || upper == null) return fallback;
+        // The ladder's bottom is where the hero stands in the lower room; the same offset gives the upper floor.
+        float upperStand = upper.getWorldY() + (shaft.bottomY - lower.getWorldY());
+        // The scroll spans the whole climb between the two floors, so it starts the moment the hero starts climbing
+        // at either end and never needs to rush.
+        float span = upperStand - shaft.bottomY;
+        if (span <= 1e-3f || heroY <= shaft.bottomY) return frameInRoom(lower, heroY, halfHeight);
+        if (heroY >= upperStand) return frameInRoom(upper, heroY, halfHeight);
+        // Blend between the two floors' fixed views, eased in and out: the camera starts drifting gently as the
+        // hero begins to climb and settles gently on the next floor, instead of taking off at full climb speed.
+        float t = (heroY - shaft.bottomY) / span;
+        t = t * t * (3f - 2f * t);
+        float lowerFrame = frameInRoom(lower, shaft.bottomY, halfHeight);
+        return lowerFrame + (frameInRoom(upper, upperStand, halfHeight) - lowerFrame) * t;
+    }
+
+    /** Camera height that frames {@code room} for a hero at {@code heroY}, never showing the rooms above or below. */
+    private static float frameInRoom(RoomInstance room, float heroY, float halfHeight) {
+        return clampCamera(heroY, room.getWorldY() + halfHeight, room.getWorldY() + room.getHeight() - halfHeight);
     }
 
     private static float clampCamera(float target, float min, float max) {
@@ -3216,10 +3194,6 @@ public class WorldRenderer implements com.badlogic.gdx.utils.Disposable {
         keeperSprite.dispose();
         collapsedWallSample.dispose();
         sceneryPixel.dispose();
-        shelterBackdrop.dispose();
-        redBackdrop.dispose();
-        inkBackdrop.dispose();
-        mechanicalBackdrop.dispose();
         wardenSprite.dispose();
         scavengerSprite.dispose();
         redCollectorSprite.dispose();

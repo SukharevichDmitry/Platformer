@@ -1,4 +1,8 @@
 {
+  "facadeScale": 1.5,
+  "rooftopsScale": 0.75,
+  "farScale": 0.75,
+  "skyScale": 1,
   "routes": [
     {
       "left": 1,

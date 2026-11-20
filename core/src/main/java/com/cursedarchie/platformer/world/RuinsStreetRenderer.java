@@ -22,9 +22,21 @@ final class RuinsStreetRenderer implements Disposable {
     private static final String DIRECTORY = "backgrounds/ruins/";
     private static final float PX = 1f / WorldRenderer.PIXELS_PER_UNIT;
     private static final int FACADE_COUNT = 12;
+    /**
+     * The road's paving runs WALK_LINE_INSET past the walk line (the street's depth behind the hero's feet), so a
+     * facade standing on the walk line had its doorsteps and the bottom of its doors hidden behind the paving. The
+     * whole street stands on the paving's back edge instead, rounded down to whole art pixels so no gap opens
+     * between the paving and the facades.
+     */
+    static final float GROUND_LIFT = (float) Math.floor(RoadSurfaceRenderer.WALK_LINE_INSET / PX) * PX;
 
     private static final class Catalog {
         public Route[] routes;
+        /**
+         * Drawing scale of each part of the street (1 = the art's own 32 px per unit). The street facades and the alley
+         * entrance stand at the gameplay depth; the far city and rooftops are backdrops behind them.
+         */
+        public float facadeScale = 1f, rooftopsScale = 1f, farScale = 1f, skyScale = 1f;
     }
 
     private static final class Route {
@@ -66,7 +78,9 @@ final class RuinsStreetRenderer implements Disposable {
         return new TextureRegion(texture);
     }
 
-    void draw(LocationInstance location, SpriteBatch batch, float visibleLeft, float visibleRight, float cameraX) {
+    /** {@code screenPixelsPerUnit}: screen pixels per world unit at the current zoom (backdrops snap to them). */
+    void draw(LocationInstance location, SpriteBatch batch, float visibleLeft, float visibleRight, float cameraX,
+              float screenPixelsPerUnit) {
         if (current != location) {
             strips.clear();
             current = location;
@@ -77,47 +91,63 @@ final class RuinsStreetRenderer implements Disposable {
             float left = Math.max(visibleLeft, room.getWorldX());
             float right = Math.min(visibleRight, room.getWorldX() + room.getWidth());
             if (right <= left) continue;
-            float floor = room.getWorldY() + 2f;
-            drawBackdrop(batch, sky, left, right, floor - 13 * PX, cameraX * .85f);
-            drawBackdrop(batch, far, left, right, floor + 41 * PX, cameraX * .63f);
-            drawBackdrop(batch, rooftops, left, right, floor - 39 * PX, cameraX * .38f);
+            float floor = room.getWorldY() + 2f + GROUND_LIFT;
+            drawBackdrop(batch, sky, left, right, floor - 13 * PX * catalog.skyScale, cameraX, .85f,
+                screenPixelsPerUnit, catalog.skyScale);
+            drawBackdrop(batch, far, left, right, floor + 41 * PX * catalog.farScale, cameraX, .63f,
+                screenPixelsPerUnit, catalog.farScale);
+            drawBackdrop(batch, rooftops, left, right, floor - 39 * PX * catalog.rooftopsScale, cameraX, .38f,
+                screenPixelsPerUnit, catalog.rooftopsScale);
         }
         for (RoomInstance room : location.getRooms()) {
             float left = Math.max(visibleLeft, room.getWorldX());
             float right = Math.min(visibleRight, room.getWorldX() + room.getWidth());
             if (right <= left) continue;
             float row = room.getWorldY();
+            float floor = row + 2f + GROUND_LIFT;
             Strip strip = strips.computeIfAbsent(row, y -> buildStrip(seed ^ Float.floatToIntBits(y)));
-            float width = strip.width * PX;
+            float scale = catalog.facadeScale;
+            float width = strip.width * PX * scale;
             float start = (float) Math.floor(left / width) * width;
             for (float x = start; x < right; x += width) {
-                drawPieces(batch, strip.rear, x, row + 2f, left, right);
-                drawPieces(batch, strip.front, x, row + 2f, left, right);
+                drawPieces(batch, strip.rear, x, floor, left, right, scale);
+                drawPieces(batch, strip.front, x, floor, left, right, scale);
             }
         }
     }
 
-    void drawAlley(SpriteBatch batch, float x, float floor) {
-        float left = x - 34 * PX;
-        batch.draw(alleyRear, left, floor, alleyRear.getRegionWidth() * PX, alleyRear.getRegionHeight() * PX);
-        batch.draw(alleyFront, left, floor, alleyFront.getRegionWidth() * PX, alleyFront.getRegionHeight() * PX);
+    /** The alley entrance at a portal; {@code walkLine} is the room's floor, the visual stands on the paving's back edge. */
+    void drawAlley(SpriteBatch batch, float x, float walkLine) {
+        float floor = walkLine + GROUND_LIFT;
+        float scale = catalog.facadeScale;
+        float left = x - 34 * PX * scale;
+        batch.draw(alleyRear, left, floor, alleyRear.getRegionWidth() * PX * scale,
+            alleyRear.getRegionHeight() * PX * scale);
+        batch.draw(alleyFront, left, floor, alleyFront.getRegionWidth() * PX * scale,
+            alleyFront.getRegionHeight() * PX * scale);
     }
+    /**
+     * A backdrop follows {@code follow} of the camera's motion, so on screen it moves at (1 - follow) of the street's
+     * speed. Its offset from the camera is snapped to whole screen pixels. Snapping its world position instead (to art
+     * pixels) made it jump back and forth by up to half an art pixel against the smoothly moving camera every frame,
+     * a visible shimmer of the whole skyline while running.
+     */
     private void drawBackdrop(SpriteBatch batch, TextureRegion region, float left, float right,
-                              float y, float shift) {
-        float width = region.getRegionWidth() * PX;
-        float offset = Math.round(shift / PX) * PX;
+                              float y, float cameraX, float follow, float screenPixelsPerUnit, float scale) {
+        float width = region.getRegionWidth() * PX * scale;
+        float offset = cameraX + WorldRenderer.parallaxOffsetFromCamera(cameraX, follow, screenPixelsPerUnit);
         float start = offset + (float) Math.floor((left - offset) / width) * width;
-        for (float x = start; x < right; x += width) drawClipped(batch, region, x, y, left, right);
+        for (float x = start; x < right; x += width) drawClipped(batch, region, x, y, left, right, scale);
     }
 
     private void drawPieces(SpriteBatch batch, List<Piece> pieces, float origin, float y,
-                            float left, float right) {
-        for (Piece piece : pieces) drawClipped(batch, piece.region, origin + piece.x * PX, y, left, right);
+                            float left, float right, float scale) {
+        for (Piece piece : pieces) drawClipped(batch, piece.region, origin + piece.x * PX * scale, y, left, right, scale);
     }
 
     private void drawClipped(SpriteBatch batch, TextureRegion region, float x, float y,
-                             float left, float right) {
-        float width = region.getRegionWidth() * PX;
+                             float left, float right, float scale) {
+        float width = region.getRegionWidth() * PX * scale;
         float from = Math.max(left, x);
         float to = Math.min(right, x + width);
         if (to <= from) return;
@@ -125,7 +155,7 @@ final class RuinsStreetRenderer implements Disposable {
         float uWidth = region.getU2() - region.getU();
         clipped.setU(region.getU() + uWidth * (from - x) / width);
         clipped.setU2(region.getU() + uWidth * (to - x) / width);
-        batch.draw(clipped, from, y, to - from, region.getRegionHeight() * PX);
+        batch.draw(clipped, from, y, to - from, region.getRegionHeight() * PX * scale);
     }
 
     private Strip buildStrip(long seed) {

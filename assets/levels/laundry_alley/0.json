@@ -40,7 +40,7 @@
       "visualId": "street_exit",
       "eventId": "alley_returned",
       "position": {
-        "x": 3.5,
+        "x": 0.5,
         "y": 3.0
       },
       "returnToOrigin": true,

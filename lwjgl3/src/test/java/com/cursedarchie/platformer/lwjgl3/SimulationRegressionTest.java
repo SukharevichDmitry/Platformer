@@ -3010,6 +3010,69 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
         throw new AssertionError("Missing inventory item: " + id);
     }
 
+    /**
+     * Expects Down to be held on the ladder. Climbing moves only while a direction is held, at a steady speed,
+     * and the hero hangs in place (no gravity, no sliding) once it is released. Leaves Down held again.
+     */
+    private static void checkLadderHoldToClimb(GameWorld route,
+                                               com.cursedarchie.platformer.levels.VerticalConnection ladder) {
+        float step = GameWorld.FIXED_STEP;
+        for (int i = 0; i < 12; i++) route.update(step);
+        float before = route.getHero().getPosition().y;
+        for (int i = 0; i < 10; i++) route.update(step);
+        float moved = before - route.getHero().getPosition().y;
+        if (moved < 1.2f || moved > 1.8f)
+            throw new AssertionError("Holding Down did not climb at a steady speed: moved " + moved + " in 10 steps");
+        route.getHeroController().keyUp(Input.Keys.DOWN);
+        route.update(step);
+        float held = route.getHero().getPosition().y;
+        for (int i = 0; i < 60; i++) route.update(step);
+        if (!route.getHeroController().isClimbing() || Math.abs(route.getHero().getPosition().y - held) > 0.01f)
+            throw new AssertionError("Hero did not stay put on the ladder after Down was released: " + held +
+                " -> " + route.getHero().getPosition().y + ", climbing=" + route.getHeroController().isClimbing());
+        if (held <= ladder.bottomY || held >= ladder.topY)
+            throw new AssertionError("Ladder hold check left the ladder's span at y=" + held);
+        route.getHeroController().keyDown(Input.Keys.UP);
+        for (int i = 0; i < 5; i++) route.update(step);
+        route.getHeroController().keyUp(Input.Keys.UP);
+        float climbedUp = route.getHero().getPosition().y - held;
+        if (climbedUp < .5f)
+            throw new AssertionError("Holding Up did not climb back up the ladder: " + climbedUp);
+        float upHeld = route.getHero().getPosition().y;
+        for (int i = 0; i < 30; i++) route.update(step);
+        if (Math.abs(route.getHero().getPosition().y - upHeld) > 0.01f)
+            throw new AssertionError("Hero slid after Up was released");
+        route.getHeroController().keyDown(Input.Keys.DOWN);
+    }
+
+    /**
+     * An alley exit to the street has no door: no prompt anywhere near it, nothing while the hero is still inside
+     * the alley, and the transition as soon as the hero crosses its line toward the room's edge.
+     */
+    private static void checkBoundaryExit(GameWorld route, String exitId) {
+        com.cursedarchie.platformer.levels.RoomInstance exitRoom = null;
+        com.cursedarchie.platformer.levels.wrappers.InteractionData exit = null;
+        for (com.cursedarchie.platformer.levels.RoomInstance room : route.getLocation().getRooms())
+            for (com.cursedarchie.platformer.levels.wrappers.InteractionData interaction : room.getInteractions())
+                if (exitId.equals(interaction.id)) { exitRoom = room; exit = interaction; }
+        if (exit == null || !GameWorld.isBoundaryPortal(exit))
+            throw new AssertionError(exitId + " is not a walk-out boundary exit");
+        boolean left = exit.position.x < exitRoom.getWidth() / 2f;
+        float line = exitRoom.getWorldX() + exit.position.x;
+        float y = exitRoom.getWorldY() + 2.5f;
+        for (float inside = 3f; inside > 0f; inside -= .25f) {
+            route.getHero().getBody().setTransform(line + (left ? inside : -inside), y, 0f);
+            route.update(GameWorld.FIXED_STEP);
+            if (route.getNearbyInteraction() == exit) throw new AssertionError(exitId + " shows a door prompt");
+            if (route.getTouchedPortal() != null)
+                throw new AssertionError(exitId + " fired " + inside + " units before its boundary");
+        }
+        route.getHero().getBody().setTransform(line + (left ? -.05f : .05f), y, 0f);
+        route.update(GameWorld.FIXED_STEP);
+        if (route.getTouchedPortal() != exit)
+            throw new AssertionError(exitId + " did not start when the hero crossed its boundary");
+    }
+
     private void checkAlleyPortalsAndChoices() {
         GameWorld route = new GameWorld(412L);
         try {
@@ -3026,8 +3089,14 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             float streetX = route.getCurrentRoom().getWorldX() + entrance.position.x;
             route.getHero().getBody().setTransform(streetX,
                 route.getCurrentRoom().getWorldY() + entrance.position.y, 0f);
+            route.update(GameWorld.FIXED_STEP);
+            // The street door waits for the interact key: standing in it shows its prompt but never walks in.
+            if (route.getTouchedPortal() != null || route.getNearbyInteraction() != entrance)
+                throw new AssertionError("Alley entrance starts on approach instead of waiting for E");
             if (!route.enterPortal(entrance) || !"laundry_alley".equals(route.getLocation().getLocation()))
                 throw new AssertionError("Alley portal did not enter its authored room");
+            checkBoundaryExit(route, "street_return");
+            checkBoundaryExit(route, "main_street_exit");
             // This slice verifies navigation, not combat. Keep authored room enemies
             // from interrupting the deliberately slow full-height stair traversal.
             for (Enemy enemy : route.getEnemies()) enemy.setActive(false);
@@ -3044,13 +3113,17 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                 route.getLocation().getRoom(alleyToLaundry.sourceRoomId).getWorldY() + 2.515f, 0f);
             route.getHeroController().clearInput();
             route.update(GameWorld.FIXED_STEP); // establish the stair-mouth platform contact
+            float mouthY = route.getHero().getPosition().y;
             route.getHeroController().keyDown(Input.Keys.DOWN);
+            if (route.getHero().getPosition().y != mouthY)
+                throw new AssertionError("Pressing Down moved the hero by script instead of climbing");
             route.update(GameWorld.FIXED_STEP);
             if (!route.getHeroController().isClimbing())
                 throw new AssertionError("Down did not grip STAIR_DESCENT at " +
                     route.getHero().getPosition() + ", shaft=" +
                     route.getLocation().climbConnectionAt(route.getHero().getPosition().x,
                         route.getHero().getPosition().y, Hero.BODY_SIZE));
+            checkLadderHoldToClimb(route, alleyToLaundry);
             for (int i = 0; i < 180 && route.getCurrentRoom().getRoomId() != alleyToLaundry.targetRoomId; i++)
                 route.update(GameWorld.FIXED_STEP);
             if (route.getCurrentRoom().getRoomId() != alleyToLaundry.targetRoomId)
@@ -3075,7 +3148,28 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
                     ", pos=" + route.getHero().getPosition() + ", velocity=" +
                     route.getHero().getBody().getLinearVelocity() + ", climbing=" +
                     route.getHeroController().isClimbing() + ", alive=" + route.getHero().isAlive() +
-                    ", staggered=" + route.getHero().isStaggered() + ", falling=" + route.getHero().isFalling());
+                    ", staggered=" + route.getHero().isStaggered() + ", falling=" + route.getHero().isFalling() +
+                    ", ladder=" + laundryToCellar.bottomY + ".." + laundryToCellar.topY);
+            // Holding Up climbs back through the laundry into the alley; rooms change only as the body crosses them.
+            route.getHeroController().keyDown(Input.Keys.UP);
+            for (int i = 0; i < 400 && route.getCurrentRoom().getRoomId() != alleyToLaundry.sourceRoomId; i++)
+                route.update(GameWorld.FIXED_STEP);
+            for (int i = 0; i < 30; i++) route.update(GameWorld.FIXED_STEP);
+            route.getHeroController().keyUp(Input.Keys.UP);
+            if (route.getCurrentRoom().getRoomId() != alleyToLaundry.sourceRoomId ||
+                Math.abs(route.getHero().getPosition().y - alleyToLaundry.topY) > 0.05f)
+                throw new AssertionError("Holding Up did not climb from the cellar to the top of the alley ladder: room=" +
+                    route.getCurrentRoom().getRoomId() + ", pos=" + route.getHero().getPosition() +
+                    ", top=" + alleyToLaundry.topY);
+            // Stepping sideways off the top of the ladder lands the hero on the alley floor.
+            route.getHeroController().keyDown(Input.Keys.RIGHT);
+            for (int i = 0; i < 20; i++) route.update(GameWorld.FIXED_STEP);
+            route.getHeroController().keyUp(Input.Keys.RIGHT);
+            for (int i = 0; i < 40; i++) route.update(GameWorld.FIXED_STEP);
+            if (route.getHeroController().isClimbing() || !route.getHero().isGrounded() ||
+                route.getCurrentRoom().getRoomId() != alleyToLaundry.sourceRoomId)
+                throw new AssertionError("Stepping off the top of the ladder did not land in the alley: pos=" +
+                    route.getHero().getPosition() + ", climbing=" + route.getHeroController().isClimbing());
             int lastRoom = route.getLocation().getRooms().size() - 1;
             if (lastRoom < 3) throw new AssertionError("Generated alley is too short");
             for (int roomId = 1; roomId <= lastRoom; roomId++) {
@@ -3129,9 +3223,13 @@ public final class SimulationRegressionTest extends ApplicationAdapter {
             if (!route.enterPortal(mouth) || !"laundry_alley".equals(route.getLocation().getLocation()) ||
                 route.getCurrentRoom().namedSpawn("exit_approach") == null)
                 throw new AssertionError("Far alley mouth did not lead into the alley's exit room");
-            route.getHero().getBody().setTransform(3.5f, 3f, 0f);
+            // Walk out past the entrance's street boundary at the alley's start.
+            com.cursedarchie.platformer.levels.RoomInstance start = route.getLocation().getRoom(0);
+            com.cursedarchie.platformer.levels.wrappers.InteractionData streetReturn = start.getInteractions().first();
+            route.getHero().getBody().setTransform(start.getWorldX() + streetReturn.position.x,
+                start.getWorldY() + streetReturn.position.y, 0f);
             route.update(GameWorld.FIXED_STEP);
-            if (!route.enterPortal(route.getCurrentRoom().getInteractions().first()) ||
+            if (!route.enterPortal(streetReturn) ||
                 route.getCurrentRoom().getRoomId() != streetRoom || route.getCurrentRoom().getRoomId() == farRoom)
                 throw new AssertionError("Entrance exit did not return to the entrance door after a far-mouth entry");
         } finally { route.dispose(); }

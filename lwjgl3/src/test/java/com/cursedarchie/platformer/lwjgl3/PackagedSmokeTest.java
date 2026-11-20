@@ -370,7 +370,10 @@ public final class PackagedSmokeTest extends Main {
         if (!name.equals(world.getLocation().getLocation()) ||
             world.getWorld().getBodyCount() != bodies || world.getEnemies().size != enemies ||
             bodies != 2 + enemies) {
-            throw new AssertionError("Location resources did not return to baseline: " + name);
+            throw new AssertionError("Location resources did not return to baseline: " + name + " (location " +
+                world.getLocation().getLocation() + ", bodies " + world.getWorld().getBodyCount() + "/" + bodies +
+                ", enemies " + world.getEnemies().size + "/" + enemies + ", hero " + world.getHero().getPosition() +
+                " alive=" + world.getHero().isAlive() + " room=" + world.getCurrentRoom().getRoomId() + ")");
         }
     }
 

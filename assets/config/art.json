@@ -1,5 +1,5 @@
 {
-  "heroSpriteSet": "v2",
+  "heroSpriteSet": "v3",
   "enemySpriteSet": "v2",
-  "note": "v2 = generated pixel-art frames (tools/sprites, documents/ART_ASSET_GUIDE.md); legacy = original frames. enemySpriteSet covers the regular melee hunter (type default) and the scavenger archer."
+  "note": "heroSpriteSet: v3 = dagger-and-buckler hero (actor/hero-v3, config/hero_animations_v3.json, documents/RUINS_ART_HANDOFF.md); v2 = generated pixel-art frames (tools/sprites, documents/ART_ASSET_GUIDE.md); legacy = original frames. enemySpriteSet covers the regular melee hunter (type default) and the scavenger archer."
 }

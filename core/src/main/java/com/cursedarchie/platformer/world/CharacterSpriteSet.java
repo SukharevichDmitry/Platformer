@@ -84,19 +84,27 @@ final class CharacterSpriteSet implements Disposable {
         }
     }
 
-    /** True when {@code config/art.json} selects the generated set under {@code key} (default "v2"). */
-    static boolean selected(String key) {
+    /** The set {@code config/art.json} names under {@code key}: "v2" (the default), "v3" or "legacy". */
+    static String selection(String key) {
         try {
-            if (!Gdx.files.internal(CONFIG).exists()) return true;
-            return "v2".equals(new JsonReader().parse(Gdx.files.internal(CONFIG)).getString(key, "v2"));
+            if (!Gdx.files.internal(CONFIG).exists()) return "v2";
+            return new JsonReader().parse(Gdx.files.internal(CONFIG)).getString(key, "v2");
         } catch (RuntimeException e) {
-            return true;
+            return "v2";
         }
     }
+
+    /** True when {@code config/art.json} selects the generated v2 set under {@code key}. */
+    static boolean selected(String key) { return "v2".equals(selection(key)); }
 
     /** The set, or null when it is not selected in config/art.json or cannot be read (legacy art is used then). */
     static CharacterSpriteSet load(String configKey, String atlasPath, String metadataPath) {
         if (!selected(configKey)) return null;
+        return load(atlasPath, metadataPath);
+    }
+
+    /** The set at these paths, or null (logged) when it cannot be read. */
+    static CharacterSpriteSet load(String atlasPath, String metadataPath) {
         try {
             return new CharacterSpriteSet(atlasPath, new JsonReader().parse(Gdx.files.internal(metadataPath)));
         } catch (RuntimeException e) {

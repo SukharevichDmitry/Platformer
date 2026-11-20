@@ -20,6 +20,11 @@ public final class TransitionProfile {
     public final String kind;
     /** "touch": starts when the hero walks into the doorway; "interact": only on the interact key. */
     public final boolean touchTrigger;
+    /**
+     * "boundary": no doorway at all. The portal's x marks a line near the room's left or right edge (whichever is
+     * closer) and the transition starts as soon as the hero crosses it heading out of the room.
+     */
+    public final boolean boundaryTrigger;
     /** Half width of the doorway zone in world units, measured from the portal's centre. */
     public final float triggerHalfWidth;
     /** +1 counter-clockwise around the vertical axis (entering an alley), -1 clockwise (leaving it). */
@@ -45,9 +50,10 @@ public final class TransitionProfile {
         this.id = id;
         kind = v.getString("kind", "alley_turn");
         String trigger = v.getString("trigger", "interact");
-        if (!"touch".equals(trigger) && !"interact".equals(trigger))
+        if (!"touch".equals(trigger) && !"interact".equals(trigger) && !"boundary".equals(trigger))
             throw new IllegalArgumentException("Transition " + id + " has an unknown trigger: " + trigger);
         touchTrigger = "touch".equals(trigger);
+        boundaryTrigger = "boundary".equals(trigger);
         triggerHalfWidth = v.getFloat("triggerHalfWidth", .4f);
         if (!(triggerHalfWidth > 0f && triggerHalfWidth < 1.7f))
             throw new IllegalArgumentException("Transition " + id + " needs a doorway narrower than the interact range");
