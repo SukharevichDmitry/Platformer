@@ -22,6 +22,13 @@ final class RuinsStreetRenderer implements Disposable {
     private static final String DIRECTORY = "backgrounds/ruins/";
     private static final float PX = 1f / WorldRenderer.PIXELS_PER_UNIT;
     private static final int FACADE_COUNT = 12;
+    /**
+     * The road's paving runs WALK_LINE_INSET past the walk line (the street's depth behind the hero's feet), so a
+     * facade standing on the walk line had its doorsteps and the bottom of its doors hidden behind the paving. The
+     * whole street stands on the paving's back edge instead, rounded down to whole art pixels so no gap opens
+     * between the paving and the facades.
+     */
+    static final float GROUND_LIFT = (float) Math.floor(RoadSurfaceRenderer.WALK_LINE_INSET / PX) * PX;
 
     private static final class Catalog {
         public Route[] routes;
@@ -77,7 +84,7 @@ final class RuinsStreetRenderer implements Disposable {
             float left = Math.max(visibleLeft, room.getWorldX());
             float right = Math.min(visibleRight, room.getWorldX() + room.getWidth());
             if (right <= left) continue;
-            float floor = room.getWorldY() + 2f;
+            float floor = room.getWorldY() + 2f + GROUND_LIFT;
             drawBackdrop(batch, sky, left, right, floor - 13 * PX, cameraX * .85f);
             drawBackdrop(batch, far, left, right, floor + 41 * PX, cameraX * .63f);
             drawBackdrop(batch, rooftops, left, right, floor - 39 * PX, cameraX * .38f);
@@ -87,17 +94,20 @@ final class RuinsStreetRenderer implements Disposable {
             float right = Math.min(visibleRight, room.getWorldX() + room.getWidth());
             if (right <= left) continue;
             float row = room.getWorldY();
+            float floor = row + 2f + GROUND_LIFT;
             Strip strip = strips.computeIfAbsent(row, y -> buildStrip(seed ^ Float.floatToIntBits(y)));
             float width = strip.width * PX;
             float start = (float) Math.floor(left / width) * width;
             for (float x = start; x < right; x += width) {
-                drawPieces(batch, strip.rear, x, row + 2f, left, right);
-                drawPieces(batch, strip.front, x, row + 2f, left, right);
+                drawPieces(batch, strip.rear, x, floor, left, right);
+                drawPieces(batch, strip.front, x, floor, left, right);
             }
         }
     }
 
-    void drawAlley(SpriteBatch batch, float x, float floor) {
+    /** The alley entrance at a portal; {@code walkLine} is the room's floor, the visual stands on the paving's back edge. */
+    void drawAlley(SpriteBatch batch, float x, float walkLine) {
+        float floor = walkLine + GROUND_LIFT;
         float left = x - 34 * PX;
         batch.draw(alleyRear, left, floor, alleyRear.getRegionWidth() * PX, alleyRear.getRegionHeight() * PX);
         batch.draw(alleyFront, left, floor, alleyFront.getRegionWidth() * PX, alleyFront.getRegionHeight() * PX);
